@@ -15,7 +15,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "default_server": "雪吉拉",
     "default_map": "維多利亞島",
     "default_note": "自動打怪/外掛行為",
-    "hotkey": "F9",
     "record_duration_sec": 8,
     "record_countdown_sec": 3,
     "selected_window_title": "新楓之谷",

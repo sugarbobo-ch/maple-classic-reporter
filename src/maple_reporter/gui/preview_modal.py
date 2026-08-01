@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 from maple_reporter.discord.webhook_service import upload_evidence_to_discord
 from maple_reporter.ocr.ocr_worker import AiReviewWorkerThread
+from maple_reporter.ocr.map_catalog import normalize_map_name
 
 
 class EvidenceUploadThread(QThread):
@@ -205,7 +206,7 @@ class ReportPreviewModal(QDialog):
         self.lbl_ocr_status.setText(status_text)
         if "完成" in status_text:
             self.lbl_ocr_status.setStyleSheet("font-size: 11px; color: #2e7d32; font-weight: bold; margin-bottom: 5px;")
-        elif "🔍" in status_text:
+        elif "本地補充" in status_text:
             self.lbl_ocr_status.setStyleSheet("font-size: 11px; color: #0288d1; font-weight: bold; margin-bottom: 5px;")
         else:
             self.lbl_ocr_status.setStyleSheet("font-size: 11px; color: #666; margin-bottom: 5px;")
@@ -229,8 +230,26 @@ class ReportPreviewModal(QDialog):
             self.id_combo.setEditText(current_text)
 
     def on_live_map_name_found(self, map_name: str):
-        if map_name:
-            self.map_input.setText(map_name)
+        detected_map = map_name.strip()
+        if not detected_map:
+            return
+
+        configured_map = self.map_input.text().strip()
+        if configured_map and normalize_map_name(configured_map) != normalize_map_name(detected_map):
+            choice = QMessageBox.question(
+                self,
+                "偵測到不同地圖名稱",
+                f"偵測文字為：{detected_map}\n"
+                f"預設地圖名稱為：{configured_map}\n\n"
+                "是否使用偵測到的地圖名稱？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if choice != QMessageBox.StandardButton.Yes:
+                self.lbl_ocr_status.setText("已保留預設地圖名稱；可直接在欄位中更新。")
+                return
+
+        self.map_input.setText(detected_map)
 
     def request_ai_review(self):
         if not self.ocr_thread or not self.ocr_thread.api_key or not self.ocr_thread.keyframes:

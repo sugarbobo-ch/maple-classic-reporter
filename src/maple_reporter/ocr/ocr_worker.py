@@ -33,13 +33,13 @@ class OcrWorkerThread(QThread):
         excluded = set(self.whitelist)
 
         # Local OCR is the fast default. AI review is explicit in the preview UI.
-        self.status_changed.emit("🧭 RapidOCR 辨識地圖名稱中...")
+        self.status_changed.emit("RapidOCR 辨識地圖名稱中...")
         map_name = recognize_map_name_from_image_list(self.keyframes)
         if map_name:
             self.map_name_found.emit(map_name)
 
         # RapidOCR / WinSDK — local recognition
-        self.status_changed.emit("🔍 RapidOCR 本地補充掃描中...")
+        self.status_changed.emit("RapidOCR 本地補充掃描中...")
         local_cands = recognize_candidates_from_image_list(self.keyframes, detected_map_name=map_name)
         for lc in local_cands:
             if lc not in seen and lc not in excluded:

@@ -147,6 +147,17 @@ _MAP_NOISE = [
 ]
 
 
+def _clean_map_ocr_text(text: str) -> str:
+    """Correct recurring MapleStory mini-map glyph substitutions only."""
+    value = text.strip().replace(" ", "")
+    # The compact mini-map font frequently loses 「練」 or reads it as 「辣」.
+    value = value.replace("訓辣", "訓練").replace("訓場", "訓練場")
+    # A trailing Roman numeral I is commonly recognised as an exclamation mark.
+    if value.endswith(("!", "！")):
+        value = f"{value[:-1]}Ⅰ"
+    return value
+
+
 def _bbox_cy(bbox) -> float:
     """Return center Y of an OCR bounding box."""
     return sum(pt[1] for pt in bbox) / len(bbox)
@@ -158,8 +169,10 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
     Algorithm:
       1. Crop top-left 38% x 28% of frame.
       2. Sort OCR results by center-Y (top to bottom).
-      3. Resolve only text that matches the offline map catalogue.
-      4. Vote across frames so a single bad OCR result cannot overwrite the map.
+      3. Use the actual second mini-map line, including unlisted hidden maps.
+      4. When the mini-map is hidden, scan the whole frame for a high-confidence
+         catalogue match (for example, a map-transition banner).
+      5. Vote across frames so a single bad OCR result cannot overwrite the map.
     """
     if not HAS_RAPID_OCR or not RAPID_OCR_ENGINE:
         return ""
@@ -179,7 +192,7 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
             label_y = None
 
             for bbox, text, score in sorted_res:
-                txt = text.strip().replace(" ", "")
+                txt = _clean_map_ocr_text(text)
                 cy = _bbox_cy(bbox)
 
                 if "小地圖" in txt or "小地畫" in txt:
@@ -191,34 +204,36 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
                 if score < 0.40 or len(txt) < 2 or len(txt) > 22:
                     continue
 
-            # The map panel shows a region line and then the actual map line.
-            # When both exist, skip the region line and score the actual map
-            # line. This also avoids mapping a partial region label such as
-            # "維多利亞" to an unrelated catalogue entry like "維多利亞港".
+            # The mini-map exposes a region line followed by the actual map
+            # line. The second line is authoritative even for hidden maps that
+            # are not yet present in the offline catalogue.
             if label_y is not None:
-                lines = []
+                lines: list[tuple[str, float]] = []
                 for bbox, text, score in sorted_res:
-                    txt = text.strip().replace(" ", "")
+                    txt = _clean_map_ocr_text(text)
                     cy = _bbox_cy(bbox)
                     if cy <= label_y + 12 or any(n in txt for n in _MAP_NOISE):
                         continue
                     if score < 0.40 or len(txt) < 2 or len(txt) > 22:
                         continue
-                    lines.append(txt)
-                # The first line under the label is the area/region. If the
-                # UI only exposes one line, retain it as the fallback candidate.
-                candidate_lines = lines[1:] if len(lines) >= 2 else lines
-                matches = [best_map_name_match(txt) for txt in candidate_lines]
-                if matches:
-                    candidate, similarity = max(matches, key=lambda item: item[1])
-                    if similarity >= 0.76:
-                        detections.append(candidate)
-                        continue
+                    lines.append((txt, float(score)))
+
+                if len(lines) >= 2:
+                    actual_map_text, _ = lines[1]
+                    # Canonicalise only when the catalogue has a strong match;
+                    # otherwise retain the OCR text so unlisted hidden maps
+                    # can still be reviewed and selected by the user.
+                    canonical = resolve_map_name(actual_map_text, minimum_score=0.86)
+                    detections.append(canonical or actual_map_text)
+
+                # Never reinterpret the first line (the broad region, such as
+                # "維多利亞") as a map name when the second line is missing.
+                continue
 
             # With no detected label, permit a catalogue match only. Never
             # return arbitrary OCR text (e.g. "小地图") as a map name.
             for bbox, text, score in sorted_res:
-                txt = text.strip().replace(" ", "")
+                txt = _clean_map_ocr_text(text)
                 if any(n in txt for n in _MAP_NOISE):
                     continue
                 if score >= 0.45 and 2 <= len(txt) <= 22:
@@ -229,6 +244,38 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
 
         except Exception:
             pass
+    # A hidden mini-map has no title to read in its usual top-left region. In
+    # that case, a map title can still appear elsewhere in a frame (such as a
+    # transition banner). Only accept a stricter catalogue match here so chat
+    # text or ordinary UI labels cannot overwrite the editable map field.
+    if not detections:
+        for img in pil_images:
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            try:
+                res, _ = RAPID_OCR_ENGINE(np.array(img))
+                if not res:
+                    continue
+                for bbox, text, score in res:
+                    txt = _clean_map_ocr_text(text)
+                    xs = [point[0] for point in bbox]
+                    ys = [point[1] for point in bbox]
+                    # This fallback is for a hidden mini-map only. Ignore the
+                    # normal mini-map region so its broad area label cannot
+                    # override the actual map line handled above.
+                    if max(xs) < img.width * 0.38 and max(ys) < img.height * 0.28:
+                        continue
+                    if any(n in txt for n in _MAP_NOISE):
+                        continue
+                    if score < 0.55 or not (2 <= len(txt) <= 22):
+                        continue
+                    candidate, similarity = best_map_name_match(txt)
+                    if candidate and similarity >= 0.88:
+                        detections.append(candidate)
+                        break
+            except Exception:
+                pass
+
     if not detections:
         return ""
     return Counter(detections).most_common(1)[0][0]

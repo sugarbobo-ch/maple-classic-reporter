@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
         self.combo_server.addItems(["雪吉拉", "菇菇寶貝"])
         row_s.addWidget(self.combo_server)
 
-        row_s.addWidget(QLabel("預地圖名稱:"))
+        row_s.addWidget(QLabel("預設地圖名稱:"))
         self.txt_map = QLineEdit("維多利亞島")
         row_s.addWidget(self.txt_map, 1)
         g3_layout.addLayout(row_s)
@@ -443,7 +443,6 @@ class MainWindow(QMainWindow):
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
         ocr_thread = OcrWorkerThread([pil_img], api_key=api_key, whitelist=wl_list, parent=self)
-        ocr_thread.map_name_found.connect(self.txt_map.setText)
 
         folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
         data = {
@@ -510,7 +509,6 @@ class MainWindow(QMainWindow):
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
         ocr_thread = OcrWorkerThread(keyframes, api_key=api_key, whitelist=wl_list, parent=self)
-        ocr_thread.map_name_found.connect(self.txt_map.setText)
 
         folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
         data = {
@@ -567,7 +565,6 @@ class MainWindow(QMainWindow):
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
         ocr_thread = OcrWorkerThread(keyframes, api_key=api_key, whitelist=wl_list, parent=self)
-        ocr_thread.map_name_found.connect(self.txt_map.setText)
 
         folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
         data = {
@@ -607,6 +604,7 @@ class MainWindow(QMainWindow):
     def execute_submission(self, confirmed_data: dict):
         self.cfg["default_server"] = confirmed_data.get("server_name", "雪吉拉")
         self.cfg["default_map"] = confirmed_data.get("map_name", "維多利亞島")
+        self.txt_map.setText(self.cfg["default_map"])
         self.cfg["default_note"] = confirmed_data.get("note", "自動打怪/外掛行為")
         self.cfg["selected_window_title"] = self.combo_windows.currentText()
         self.cfg["record_duration_sec"] = self.spin_duration.value()

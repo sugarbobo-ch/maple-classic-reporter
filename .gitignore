@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 dist/
 build/
+*.spec
 
 # Local application data and evidence
 data/recordings/
