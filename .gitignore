@@ -1,0 +1,16 @@
+# Python and local build output
+.venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+
+# Local application data and evidence
+data/recordings/
+data/config/config.json
+data/config/history.json
+data/config/token.json
+data/config/client_secrets.json
+
+# OAuth credentials from older project layouts
+client_secrets.json
