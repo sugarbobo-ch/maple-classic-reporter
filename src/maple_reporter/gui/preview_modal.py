@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
 )
 from maple_reporter.discord.webhook_service import upload_evidence_to_discord
 from maple_reporter.ocr.ocr_worker import AiReviewWorkerThread
-from maple_reporter.ocr.map_catalog import normalize_map_name
 
 
 class EvidenceUploadThread(QThread):
@@ -234,21 +233,10 @@ class ReportPreviewModal(QDialog):
         if not detected_map:
             return
 
-        configured_map = self.map_input.text().strip()
-        if configured_map and normalize_map_name(configured_map) != normalize_map_name(detected_map):
-            choice = QMessageBox.question(
-                self,
-                "偵測到不同地圖名稱",
-                f"偵測文字為：{detected_map}\n"
-                f"預設地圖名稱為：{configured_map}\n\n"
-                "是否使用偵測到的地圖名稱？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes,
-            )
-            if choice != QMessageBox.StandardButton.Yes:
-                self.lbl_ocr_status.setText("已保留預設地圖名稱；可直接在欄位中更新。")
-                return
-
+        # Directly overwrite the map field with the OCR result.
+        # Showing a QMessageBox from a background-thread Signal is not safe and
+        # silently fails in packaged builds. The user can still edit the field
+        # manually inside the preview modal before confirming.
         self.map_input.setText(detected_map)
 
     def request_ai_review(self):

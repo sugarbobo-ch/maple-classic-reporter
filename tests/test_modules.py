@@ -39,5 +39,15 @@ class TestMapleReporter(unittest.TestCase):
     def test_minimap_map_text_cleans_training_ground_and_roman_numeral(self):
         self.assertEqual(_clean_map_ocr_text("南部森林訓辣場！"), "南部森林訓練場Ⅰ")
 
+    def test_is_valid_suspect_id_accepts_names_containing_ch_or_lv(self):
+        from maple_reporter.ocr.win_ocr import is_valid_suspect_id
+        self.assertTrue(is_valid_suspect_id("Charles"))
+        self.assertTrue(is_valid_suspect_id("Richard"))
+        self.assertTrue(is_valid_suspect_id("Oliver"))
+        self.assertTrue(is_valid_suspect_id("NewType"))
+        self.assertFalse(is_valid_suspect_id("ch"))
+        self.assertFalse(is_valid_suspect_id("lv"))
+        self.assertFalse(is_valid_suspect_id("新楓之谷"))
+
 if __name__ == "__main__":
     unittest.main()

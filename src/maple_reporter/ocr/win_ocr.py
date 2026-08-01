@@ -260,9 +260,6 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
                     txt = _clean_map_ocr_text(text)
                     xs = [point[0] for point in bbox]
                     ys = [point[1] for point in bbox]
-                    # This fallback is for a hidden mini-map only. Ignore the
-                    # normal mini-map region so its broad area label cannot
-                    # override the actual map line handled above.
                     if max(xs) < img.width * 0.38 and max(ys) < img.height * 0.28:
                         continue
                     if any(n in txt for n in _MAP_NOISE):
@@ -284,11 +281,15 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
 # ---------------------------------------------------------------------------
 # Noise keywords & ID validator
 # ---------------------------------------------------------------------------
-UI_NOISE_KEYWORDS = {
-    "hp", "mp", "exp", "lv", "level", "ch", "頻道", "選單", "設定", "背包",
-    "商城", "技能", "任務", "新楓之谷", "經典版", "surveycake", "gamania", "橘子",
-    "news", "new", "pup", "pdn", "0/", "1/", "2/", "3/", "4/", "5/", "(+", "（+",
-    "兔子", "法師", "目錄", "拍賣", "經驗值", "得到", "組隊", "地圖", "商場"
+EXACT_NOISE_TOKENS = {
+    "hp", "mp", "exp", "lv", "level", "ch", "news", "new", "pup", "pdn",
+    "0/", "1/", "2/", "3/", "4/", "5/", "(+", "（+"
+}
+
+SUBSTRING_NOISE_KEYWORDS = {
+    "頻道", "選單", "設定", "背包", "商城", "技能", "任務", "新楓之谷", "經典版",
+    "surveycake", "gamania", "橘子", "經驗值", "得到", "組隊", "地圖", "商場",
+    "目錄", "拍賣", "兔子", "法師"
 }
 
 
@@ -302,9 +303,16 @@ def is_valid_suspect_id(text: str) -> bool:
     if any(c in s for c in ["/", "+", ":", "：", "[", "]", "(", ")", "（", "）"]):
         return False
     s_lower = s.lower()
-    for kw in UI_NOISE_KEYWORDS:
+
+    # Exact token check for short English UI labels (e.g. "hp", "ch", "lv", "new")
+    if s_lower in EXACT_NOISE_TOKENS:
+        return False
+
+    # Substring check for explicit Chinese UI labels
+    for kw in SUBSTRING_NOISE_KEYWORDS:
         if kw in s_lower:
             return False
+
     return True
 
 
@@ -320,7 +328,7 @@ def recognize_candidates_from_image_list(
 ) -> List[str]:
     """
     Recognize candidate player IDs from a list of keyframe Images using RapidOCR.
-    Excludes top-left mini-map region, bottom UI bar, and detected map name.
+    Excludes top-left mini-map region and bottom UI bar (only for full-screen frames).
     Post-filters guild/medal text below each ID bbox.
     Returns candidates ordered by frequency and confidence descending.
     """
@@ -332,6 +340,7 @@ def recognize_candidates_from_image_list(
             img = img.convert("RGB")
 
         w, h = img.size
+        is_snippet = (w < 600 or h < 500)
         frame_seen: set = set()
 
         if HAS_RAPID_OCR and RAPID_OCR_ENGINE:
@@ -350,19 +359,23 @@ def recognize_candidates_from_image_list(
                     cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
                     y_bottom = max(ys)
 
-                    if cx < w * 0.32 and cy < h * 0.22:
-                        continue
-                    if cy > h * _BOTTOM_UI_CROP_Y:
-                        continue
+                    # Only apply screen coordinate exclusions on full frames (not snippets)
+                    if not is_snippet:
+                        if cx < w * 0.32 and cy < h * 0.22:
+                            continue
+                        if cy > h * _BOTTOM_UI_CROP_Y:
+                            continue
+
                     if detected_map_name and detected_map_name in txt_clean:
                         continue
 
                     all_items.append((txt_clean, cx, cy, y_bottom, score))
 
+                min_score = 0.25 if is_snippet else 0.35
                 candidate_entries = [
                     (txt, cx, cy, y_bottom, score)
                     for txt, cx, cy, y_bottom, score in all_items
-                    if score >= 0.5 and is_valid_suspect_id(txt)
+                    if score >= min_score and is_valid_suspect_id(txt)
                 ]
 
                 def _in_guild_medal_zone(cx: float, cy: float) -> bool:
@@ -412,9 +425,6 @@ def recognize_candidates_from_image_list(
     )
 
 
-# ---------------------------------------------------------------------------
-# WinSDK async OCR helper
-# ---------------------------------------------------------------------------
 async def _async_ocr(pil_image: Image.Image) -> str:
     img_byte_arr = io.BytesIO()
     if pil_image.mode != "RGB":
