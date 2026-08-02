@@ -20,4 +20,5 @@
   - `uv` 提供極速的依賴安裝與環境建置。
   - PySide6 視覺效果良好，支援熱鍵、螢幕擷取 overlay 與異步線程 (QThread)。
 - **缺點**:
-  - 獨立打包後 `.exe` 檔案大小約 40MB-80MB。
+  - 獨立打包後 `.exe` 約 400MB，因為發行版同時內嵌 Playwright Chromium、driver 與 RapidOCR ONNX 模型。
+  - one-file EXE 首次啟動需要先解壓內嵌資源；發行時建議提供 `MapleClassicReporter-v0.1.2-windows-x64.zip`。

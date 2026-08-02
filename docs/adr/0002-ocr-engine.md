@@ -1,6 +1,6 @@
 # ADR 0002: OCR Engine Selection
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR 0010
 - **Date**: 2026-08-01
 
 ## Context
@@ -9,13 +9,13 @@
 
 ## Decision
 
-採用 **Windows 原生 API (`Windows.Media.Ocr` / `winsdk`)** 作為文字辨識引擎。
+以 **RapidOCR ONNX** 作為主要本機文字辨識引擎，並保留 **Windows 原生 API (`Windows.Media.Ocr` / `winsdk`)** 作為 RapidOCR 無法初始化時的 fallback。
 
 ## Consequences
 
 - **優點**:
-  - 零額外模型體積，利用 Windows 10/11 內建 OCR 資源。
-  - 辨識速度極快（毫秒等級），支援繁體中文與英數符號。
-  - 簡化 Packaging 與依賴安裝流程。
+  - RapidOCR 對遊戲點陣字與英數角色 ID 的辨識效果較佳，且可離線執行。
+  - Windows OCR 保留作為不依賴 RapidOCR 模型的 Windows fallback。
+  - 發行版透過 PyInstaller 將 RapidOCR 的 ONNX 模型一併封裝，使用者不需另外下載模型。
 - **缺點**:
-  - 僅限 Windows 作業系統（本工具主要針對 MapleStory 玩家，Windows 平台覆蓋率接近 100%）。
+  - RapidOCR 模型會增加 EXE 體積；Windows OCR fallback 僅限 Windows 作業系統。

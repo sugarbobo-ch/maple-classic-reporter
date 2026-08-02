@@ -14,9 +14,11 @@
 2. **Gemini Vision API 手動複核**：
    - AI 僅在使用者於預覽視窗主動要求複核時執行，且每次只分析一張影格。預設流程不會掃描整段影片的所有影格，避免網路延遲阻塞確認作業。
 3. **優雅降級 (Graceful Fallback)**：
-   - 若未設定 `gemini_api_key` 或網路離線，自動無縫降級為 RapidOCR 本機引擎，確保 100% 可用性。
+   - Gemini 是使用者主動觸發的複核功能；未設定 `gemini_api_key` 或網路離線時，預設流程仍使用 RapidOCR 本機引擎。若 RapidOCR 初始化失敗，再退回 Windows OCR 掃描。
 4. **預覽視窗 ID 放大圖對照 (ID Magnified Crop Preview)**：
    - 在 `ReportPreviewModal` 彈窗中顯示 ID 畫面的 4x 放大切片圖，供玩家視覺化秒級比對與確權。
+5. **獨立發行封裝**：
+   - PyInstaller spec 會將 RapidOCR 的 `config.yaml` 與三個 ONNX 模型一起封裝；下載版不依賴 Python、uv 或額外 Chrome。
 
 ## Consequences
 

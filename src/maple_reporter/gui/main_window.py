@@ -19,31 +19,37 @@ from maple_reporter.recorder.window_recorder import (
 )
 from maple_reporter.gdrive.drive_service import GoogleDriveManager
 from maple_reporter.automation.form_filler import submit_gamania_report
+from maple_reporter.automation.playwright_runtime import PlaywrightBrowserError
 from maple_reporter.gui.overlay import ScreenSnipperOverlay
 from maple_reporter.gui.preview_modal import ReportPreviewModal
+from maple_reporter.gui.playwright_error_dialog import show_playwright_error_dialog
 
 class SubmitThread(QThread):
-    finished_signal = Signal(bool, str)
+    finished_signal = Signal(bool, str, object)
 
     def __init__(self, data: dict):
         super().__init__()
         self.data = data
 
     def run(self):
-        success, msg = submit_gamania_report(
-            suspect_id=self.data["suspect_id"],
-            server_name=self.data["server_name"],
-            map_name=self.data["map_name"],
-            note=self.data["note"],
-            evidence_url=self.data.get("evidence_url", ""),
-            headless=False
-        )
-        self.finished_signal.emit(success, msg)
+        try:
+            success, msg = submit_gamania_report(
+                suspect_id=self.data["suspect_id"],
+                server_name=self.data["server_name"],
+                map_name=self.data["map_name"],
+                note=self.data["note"],
+                evidence_url=self.data.get("evidence_url", ""),
+                headless=False
+            )
+        except PlaywrightBrowserError as error:
+            self.finished_signal.emit(False, error.details.summary, error)
+            return
+        self.finished_signal.emit(success, msg, None)
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("新楓之谷：經典版《自動外掛檢舉工具》 v0.1.1")
+        self.setWindowTitle("新楓之谷：經典版《自動外掛檢舉工具》 v0.1.2")
         self.resize(900, 650)
 
         self.cfg = load_config()
@@ -618,7 +624,9 @@ class MainWindow(QMainWindow):
         self.cfg["whitelist"] = wl_list
         save_config(self.cfg)
         self.submit_thread = SubmitThread(confirmed_data)
-        self.submit_thread.finished_signal.connect(lambda ok, msg: self.on_submission_finished(ok, msg, confirmed_data))
+        self.submit_thread.finished_signal.connect(
+            lambda ok, msg, error: self.on_submission_finished(ok, msg, confirmed_data, error)
+        )
         self.submit_thread.start()
 
     def closeEvent(self, event):
@@ -626,7 +634,7 @@ class MainWindow(QMainWindow):
         self.save_settings()
         event.accept()
 
-    def on_submission_finished(self, ok: bool, msg: str, data: dict):
+    def on_submission_finished(self, ok: bool, msg: str, data: dict, error=None):
         status_str = "成功" if ok else "失敗"
         entry = {
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -641,6 +649,8 @@ class MainWindow(QMainWindow):
 
         if ok:
             QMessageBox.information(self, "成功", msg)
+        elif isinstance(error, PlaywrightBrowserError):
+            show_playwright_error_dialog(self, error)
         else:
             QMessageBox.critical(self, "失敗", msg)
 

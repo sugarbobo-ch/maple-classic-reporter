@@ -1,4 +1,12 @@
 # Maple Classic Auto Reporter - Domain Context
+
+## Current Release
+
+- **Version**: `0.1.2`
+- **Windows release**: `MapleClassicReporter-v0.1.2-windows-x64.zip`
+- **Distribution**: ZIP contains only `MapleClassicReporter.exe`; Playwright Chromium, its driver, and RapidOCR ONNX models are bundled inside the executable.
+- **Runtime fallback**: The application checks bundled Playwright Chromium first, uses a local Playwright cache as fallback, and shows a copy-friendly error dialog with the official download URL when both are unavailable.
+
 ## Glossary & Ubiquitous Language
 
 - **Auto Reporter (自動檢舉器)**: 專為《新楓之谷：經典版》打造之外掛自動化檢舉桌面工具。
@@ -19,5 +27,7 @@
 - **Evidence URL (事證連結)**: 上傳成功後由目的地回傳的公開連結。它是唯讀欄位，程式會自動帶入 SurveyCake 表單，不由使用者手動輸入。
 - **Google OAuth Credentials (Google OAuth 憑證)**: `data/config/client_secrets.json` 是桌面 OAuth 用戶端設定；`data/config/token.json` 保存授權完成後的 refresh token。兩者均不可提交到 Git。
 - **Discord Webhook URL**: Discord 頻道的寫入憑證，僅保存於本機設定且 UI 必須遮蔽顯示。
+- **Bundled Browser Runtime (內嵌瀏覽器執行環境)**: 發行版將 Playwright driver、Chromium 與 RapidOCR 模型封裝於單一 EXE；使用者不需要另外安裝 Chrome、Python 或 uv。
+- **Release Secret Boundary (發行敏感資料邊界)**: `data/`、`.env`、OAuth 憑證、refresh token、Gemini API Key、Discord Webhook URL 與錄影事證只屬於使用者本機資料，不得加入 Git 或發行 ZIP。
 - **Violation Template (違規範本)**: 可新增、編輯或刪除的「名稱＋違規說明」預設內容。
 - **Report Form (外掛回報表單)**: 遊戲橘子官方線上 SurveyCake 結構表單 (`https://forms.gamania.com/s/eLGg4`)。

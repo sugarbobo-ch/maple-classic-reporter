@@ -1,9 +1,18 @@
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+
+def get_base_dir() -> Path:
+    """Use the executable folder for frozen builds so data survives restarts."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent.parent.parent
+
+
+BASE_DIR = get_base_dir()
 DATA_DIR = BASE_DIR / "data"
 CONFIG_DIR = DATA_DIR / "config"
 RECORDINGS_DIR = DATA_DIR / "recordings"

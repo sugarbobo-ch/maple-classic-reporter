@@ -2,9 +2,17 @@ import sys
 import subprocess
 from pathlib import Path
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+from PySide6.QtWidgets import QApplication, QProgressDialog
 from PySide6.QtCore import Qt
+from maple_reporter.automation.playwright_runtime import (
+    PlaywrightBrowserError,
+    get_bundled_driver_path,
+    get_frozen_root,
+    is_frozen,
+    resolve_chromium_executable,
+)
 from maple_reporter.gui.main_window import MainWindow
+from maple_reporter.gui.playwright_error_dialog import show_playwright_error_dialog
 
 
 def get_application_icon_path() -> Path:
@@ -14,62 +22,110 @@ def get_application_icon_path() -> Path:
     return Path(__file__).resolve().parents[2] / "assets" / "icon.png"
 
 
-def _ensure_playwright_chromium(app: QApplication) -> None:
-    """
-    Check whether Playwright's Chromium browser is available.
-    If not (common in PyInstaller builds), run ``playwright install chromium``
-    automatically so the form-filler works on first launch.
+def _playwright_install_command() -> list[str]:
+    if is_frozen():
+        frozen_root = get_frozen_root()
+        node_exe = get_bundled_driver_path()
+        cli_js = frozen_root / "playwright" / "driver" / "package" / "cli.js" if frozen_root else None
+        if not node_exe or not cli_js or not node_exe.is_file() or not cli_js.is_file():
+            missing = ", ".join(str(path) for path in (node_exe, cli_js) if path)
+            raise PlaywrightBrowserError(
+                "找不到內建的 Playwright driver。",
+                technical_error=f"必要檔案不存在：{missing or '未找到 driver 路徑'}",
+                driver_path=node_exe,
+            )
+        return [str(node_exe), str(cli_js), "install", "chromium"]
+    return [sys.executable, "-m", "playwright", "install", "chromium"]
 
-    In frozen (EXE) builds, the playwright ``driver/`` directory (node.exe +
-    cli.js) is bundled inside ``_MEIPASS``. We use that driver to install the
-    Chromium binary into the user's AppData on first run.
-    """
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            exe = p.chromium.executable_path
-            if Path(exe).exists():
-                return  # Already installed, nothing to do.
-    except Exception:
-        pass  # Not installed or path lookup failed — fall through to install.
 
-    # Show a modal progress dialog while downloading.
-    dlg = QProgressDialog(
-        "首次啟動：正在安裝 Playwright 瀏覽器模組（約 150~400 MB）\n"
-        "下載完成後視窗會自動關閉，請稍後…",
-        None, 0, 0,
+def _install_playwright_chromium(app: QApplication, previous_error: PlaywrightBrowserError) -> bool:
+    """Try a user-cache install only when the bundled/cache browser is missing."""
+    dialog = QProgressDialog(
+        "找不到可用的 Chrome，正在嘗試下載 Playwright Chromium（約 400 MB）。\n"
+        "下載完成後會自動重新檢查，請稍候…",
+        None,
+        0,
+        0,
     )
-    dlg.setWindowTitle("初始化")
-    dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
-    dlg.setCancelButton(None)
-    dlg.setMinimumWidth(480)
-    dlg.show()
+    dialog.setWindowTitle("初始化 Playwright Chrome")
+    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+    dialog.setCancelButton(None)
+    dialog.setMinimumWidth(520)
+    dialog.show()
     app.processEvents()
 
     try:
-        if getattr(sys, "frozen", False):
-            # In a PyInstaller build, use the bundled node.exe + cli.js.
-            meipass = Path(sys._MEIPASS)
-            node_exe = meipass / "playwright" / "driver" / "node.exe"
-            cli_js = meipass / "playwright" / "driver" / "package" / "cli.js"
-            cmd = [str(node_exe), str(cli_js), "install", "chromium"]
-        else:
-            # In development, delegate to the Python package entry-point.
-            cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
-
-        subprocess.run(cmd, check=True, capture_output=True)
-    except Exception as exc:
-        dlg.close()
-        QMessageBox.warning(
-            None,
-            "Playwright 安裝失敗",
-            f"無法自動安裝 Playwright 瀏覽器模組：\n{exc}\n\n"
-            "請手動執行：playwright install chromium\n"
-            "自動填表功能將無法使用，其他功能不受影響。",
+        command = _playwright_install_command()
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=900,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        return
+        output = "\n".join(
+            value.strip()
+            for value in (completed.stdout, completed.stderr)
+            if value and value.strip()
+        )
+        if completed.returncode != 0:
+            raise PlaywrightBrowserError(
+                "Playwright Chromium 下載失敗。",
+                technical_error=(
+                    f"首次檢查：\n{previous_error.details.as_text()}\n\n"
+                    f"下載程式回傳碼：{completed.returncode}\n"
+                    f"下載輸出：\n{output or '（沒有輸出）'}"
+                ),
+                executable_path=previous_error.details.executable_path,
+                bundled_browser_dir=previous_error.details.bundled_browser_dir,
+                driver_path=previous_error.details.driver_path,
+            )
+        resolve_chromium_executable()
+        return True
+    except PlaywrightBrowserError as error:
+        dialog.close()
+        show_playwright_error_dialog(None, error)
+        return False
+    except subprocess.TimeoutExpired as error:
+        timeout_error = PlaywrightBrowserError.from_exception(
+            "Playwright Chromium 下載逾時。",
+            error,
+            executable_path=previous_error.details.executable_path,
+            bundled_browser_dir=previous_error.details.bundled_browser_dir,
+            driver_path=previous_error.details.driver_path,
+            extra_details=f"首次檢查：\n{previous_error.details.as_text()}",
+        )
+        dialog.close()
+        show_playwright_error_dialog(None, timeout_error)
+        return False
+    except Exception as error:
+        install_error = PlaywrightBrowserError.from_exception(
+            "Playwright Chromium 初始化失敗。",
+            error,
+            executable_path=previous_error.details.executable_path,
+            bundled_browser_dir=previous_error.details.bundled_browser_dir,
+            driver_path=previous_error.details.driver_path,
+            extra_details=f"首次檢查：\n{previous_error.details.as_text()}",
+        )
+        dialog.close()
+        show_playwright_error_dialog(None, install_error)
+        return False
+    finally:
+        dialog.close()
 
-    dlg.close()
+
+def _ensure_playwright_chromium(app: QApplication) -> bool:
+    """
+    Check the bundled/cache browser and use a user-cache install as fallback.
+    """
+    try:
+        resolve_chromium_executable()
+        return True
+    except PlaywrightBrowserError as error:
+        return _install_playwright_chromium(app, error)
 
 
 def main():
@@ -78,7 +134,8 @@ def main():
     icon = QIcon(str(get_application_icon_path()))
     app.setWindowIcon(icon)
 
-    # Ensure Playwright Chromium is installed (auto-downloads on first run).
+    # The normal frozen path uses the Chromium bundled into the executable.
+    # A cache install is only a fallback for an incomplete/corrupt package.
     _ensure_playwright_chromium(app)
 
     window = MainWindow()
