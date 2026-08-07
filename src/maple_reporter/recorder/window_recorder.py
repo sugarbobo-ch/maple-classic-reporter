@@ -249,6 +249,7 @@ def merge_audio_into_mp4(video_path: str, audio_data: np.ndarray, sample_rate: i
             for frame in packet.decode():
                 if frame.format.name != "yuv420p":
                     frame = frame.reformat(format="yuv420p")
+                frame.pts = None
                 for p in out_v.encode(frame):
                     out_c.mux(p)
 
@@ -282,7 +283,10 @@ def merge_audio_into_mp4(video_path: str, audio_data: np.ndarray, sample_rate: i
         if os.path.exists(temp_out_path) and os.path.getsize(temp_out_path) > 0:
             os.replace(temp_out_path, video_path)
             return True
-    except Exception:
+    except Exception as e:
+        print(f"[ERROR] merge_audio_into_mp4 failed: {e}")
+        import traceback
+        traceback.print_exc()
         if os.path.exists(temp_out_path):
             try:
                 os.remove(temp_out_path)
