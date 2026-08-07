@@ -156,7 +156,13 @@ def git_commit_tag_push(new_version: str):
         ".github/"
     ]
     subprocess.run(["git", "add"] + files_to_stage, cwd=ROOT_DIR, check=True)
-    subprocess.run(["git", "commit", "-m", f"release: {tag_name}"], cwd=ROOT_DIR, check=True)
+
+    # Check if there are staged changes to commit
+    diff_res = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT_DIR)
+    if diff_res.returncode != 0:
+        subprocess.run(["git", "commit", "-m", f"release: {tag_name}"], cwd=ROOT_DIR, check=True)
+    else:
+        print("  [NOTICE] No staged changes to commit.")
 
     # Remove tag if exists locally
     subprocess.run(["git", "tag", "-d", tag_name], cwd=ROOT_DIR, capture_output=True)
