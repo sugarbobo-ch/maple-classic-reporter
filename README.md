@@ -2,9 +2,10 @@
 
 開源桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，快速舉報違規外掛。
 
-## 示範影片
+## 示範影片與詳細教學
 
-**新楓之谷：經典版 《自動外掛檢舉工具》 示範影片**：[在 YouTube 觀看](https://youtu.be/mF-QPrEjkdE)
+- **巴哈姆特詳細教學**：[【攻略】【工具分享】新楓之谷：經典版《自動外掛檢舉工具》附教學](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)
+- **YouTube 示範影片**：[在 YouTube 觀看功能示範影片](https://youtu.be/mF-QPrEjkdE)
 
 ## 功能
 
