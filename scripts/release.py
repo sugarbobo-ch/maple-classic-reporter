@@ -170,7 +170,7 @@ def git_commit_tag_push(new_version: str):
 
     print("  Pushing commits and tags to GitHub...")
     subprocess.run(["git", "push", "origin", "main"], cwd=ROOT_DIR, check=True)
-    subprocess.run(["git", "push", "origin", tag_name], cwd=ROOT_DIR, check=True)
+    subprocess.run(["git", "push", "origin", tag_name, "--force"], cwd=ROOT_DIR, check=True)
     print("  [OK] Git commit, tag, and push completed!")
 
 
