@@ -212,6 +212,8 @@ def main():
         new_version = args.version.lstrip("v")
     elif args.type:
         new_version = calculate_next_version(current_version, args.type)
+    elif args.yes:
+        new_version = calculate_next_version(current_version, "minor")
     else:
         print("\nSelect release bump type:")
         print(f"  1) Major (重大破壞性更新: v{current_version} -> v{calculate_next_version(current_version, 'major')})")
