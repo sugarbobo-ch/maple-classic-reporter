@@ -1,4 +1,4 @@
-# 新楓之谷：經典版《自動外掛檢舉工具》 v0.1.2 (MapleStory Classic Auto Reporter)
+# 新楓之谷：經典版《自動外掛檢舉工具》 v1.0.0 (MapleStory Classic Auto Reporter)
 
 開源桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，快速舉報違規外掛。
 
@@ -55,23 +55,23 @@ powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 ```powershell
 Compress-Archive `
   -LiteralPath .\dist\MapleClassicReporter.exe `
-  -DestinationPath .\dist\MapleClassicReporter-v0.1.2-windows-x64.zip `
+  -DestinationPath .\dist\MapleClassicReporter-v1.0.0-windows-x64.zip `
   -CompressionLevel Optimal -Force
 ```
 
-`v0.1.2` Release ZIP 只包含 `MapleClassicReporter.exe`，解壓後直接執行即可。
+`v1.0.0` Release ZIP 只包含 `MapleClassicReporter.exe`，解壓後直接執行即可。
 
 若只要清掉 PyInstaller 中間檔與本機測試資料、保留 exe，可執行 `powershell -ExecutionPolicy Bypass -File scripts/clean_release.ps1`。
 
-### v0.1.2 Release 檔案
+### v1.0.0 Release 檔案
 
-- 發行檔：`MapleClassicReporter-v0.1.2-windows-x64.zip`
+- 發行檔：`MapleClassicReporter-v1.0.0-windows-x64.zip`
 - ZIP 內容：`MapleClassicReporter.exe`
 - SHA-256：`4CB0B43ECF7B2C79F0B96F3C6BB49B2E3067B5F1410BBEB2736E19CF5F55EE24`
 
 ## 下載 EXE 版的安裝與資料夾說明
 
-下載版不需要安裝 Python、uv 或 Chrome。建議下載 `MapleClassicReporter-v0.1.2-windows-x64.zip` 後解壓縮，再執行其中的 `MapleClassicReporter.exe`；也可以直接下載 EXE。首次啟動會使用 exe 內的 Playwright Chromium；若瀏覽器檔案損壞或遺失，程式會顯示完整可複製的錯誤欄位與官方下載說明網址。
+下載版不需要安裝 Python、uv 或 Chrome。建議下載 `MapleClassicReporter-v1.0.0-windows-x64.zip` 後解壓縮，再執行其中的 `MapleClassicReporter.exe`；也可以直接下載 EXE。首次啟動會使用 exe 內的 Playwright Chromium；若瀏覽器檔案損壞或遺失，程式會顯示完整可複製的錯誤欄位與官方下載說明網址。
 
 建議將整個資料夾解壓縮到你有寫入權限的位置，例如 `D:\Apps\MapleClassicReporter\`；不要放在 `Program Files`，以免 Windows 阻擋設定與錄影檔寫入。
 

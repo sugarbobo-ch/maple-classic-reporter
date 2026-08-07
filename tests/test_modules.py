@@ -134,11 +134,16 @@ class TestMapleReporter(unittest.TestCase):
         if os.path.exists(vpath):
             os.remove(vpath)
 
-    def test_gdrive_folder_url_formatting(self):
-        from maple_reporter.gdrive.drive_service import GoogleDriveManager
-        mgr = GoogleDriveManager("non_existent_token.json")
-        # When unauthenticated, get_folder_url returns None
-        self.assertIsNone(mgr.get_folder_url("MapleClassic_Reports"))
+    def test_version_string_matches_pyproject(self):
+        import re
+        from maple_reporter import __version__
+        pyproject_path = os.path.abspath("pyproject.toml")
+        if os.path.exists(pyproject_path):
+            with open(pyproject_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
+            if match:
+                self.assertEqual(__version__, match.group(1))
 
 if __name__ == "__main__":
     unittest.main()

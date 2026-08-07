@@ -49,7 +49,7 @@ class SubmitThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("新楓之谷：經典版《自動外掛檢舉工具》 v0.1.2")
+        self.setWindowTitle(f"新楓之谷：經典版《自動外掛檢舉工具》 v{__version__}")
         self.resize(900, 650)
 
         self.cfg = load_config()

@@ -466,7 +466,7 @@ wheels = [
 
 [[package]]
 name = "maple-classic-reporter"
-version = "0.1.2"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "google-api-python-client" },

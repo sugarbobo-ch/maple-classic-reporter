@@ -9,10 +9,7 @@ build/
 
 # Local application data and evidence
 data/recordings/
-data/config/config.json
-data/config/history.json
-data/config/token.json
-data/config/client_secrets.json
+data/config/
 
 # OAuth credentials from older project layouts
 client_secrets.json
