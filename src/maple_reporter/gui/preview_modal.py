@@ -165,11 +165,30 @@ class ReportPreviewModal(QDialog):
 
         destination_name = "Google Drive" if self.upload_destination == "gdrive" else "Discord"
         layout.addWidget(QLabel(f"5. 上傳後自動產生的事證連結（{destination_name}）："))
+        url_box = QHBoxLayout()
         self.url_input = QLineEdit(data.get("evidence_url", ""))
         self.url_input.setReadOnly(True)
         self.url_input.setPlaceholderText(f"完成上傳後會自動產生，並填入外部檢舉表單")
         self.url_input.setToolTip("此連結由上傳流程自動產生，不能手動修改。")
-        layout.addWidget(self.url_input)
+
+        self.btn_open_evidence_url = QPushButton("點擊前往查看")
+        self.btn_open_evidence_url.setEnabled(bool(data.get("evidence_url", "")))
+        self.btn_open_evidence_url.setStyleSheet("""
+            QPushButton {
+                background-color: #0288d1;
+                color: white;
+                font-weight: bold;
+                padding: 4px 10px;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #0277bd; }
+        """)
+        self.btn_open_evidence_url.clicked.connect(self.open_evidence_url)
+
+        url_box.addWidget(self.url_input, 1)
+        url_box.addWidget(self.btn_open_evidence_url)
+        layout.addLayout(url_box)
+
         self.lbl_upload_status = QLabel("")
         self.lbl_upload_status.setObjectName("hint")
         layout.addWidget(self.lbl_upload_status)
@@ -323,6 +342,12 @@ class ReportPreviewModal(QDialog):
         self.upload_thread.finished_signal.connect(self.on_upload_finished)
         self.upload_thread.start()
 
+    def open_evidence_url(self):
+        url = self.url_input.text().strip()
+        if url.startswith("http"):
+            import webbrowser
+            webbrowser.open(url)
+
     def on_upload_finished(self, ok: bool, evidence_url: str):
         destination_name = "Google Drive" if self.upload_destination == "gdrive" else "Discord"
         self.btn_submit.setEnabled(True)
@@ -333,6 +358,8 @@ class ReportPreviewModal(QDialog):
             QMessageBox.warning(self, "上傳失敗", f"{evidence_url}\n表單尚未送出。")
             return
         self.url_input.setText(evidence_url)
+        if evidence_url.startswith("http"):
+            self.btn_open_evidence_url.setEnabled(True)
         self.btn_submit.setText("已完成上傳，正在送出表單…")
         self.lbl_upload_status.setText(f"已完成上傳至 {destination_name}，正在帶入連結並送出表單。")
         self.pending_data["evidence_url"] = evidence_url

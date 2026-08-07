@@ -94,7 +94,20 @@ class MainWindow(QMainWindow):
         row_folder.addWidget(QLabel("雲端儲存資料夾名稱:"))
         self.txt_gdrive_folder = QLineEdit("MapleClassic_Reports")
         self.txt_gdrive_folder.setPlaceholderText("例如: MapleClassic_Reports 或 新楓之谷檢舉事證")
+        self.btn_open_gdrive_folder = QPushButton("前往雲端資料夾")
+        self.btn_open_gdrive_folder.setStyleSheet("""
+            QPushButton {
+                background-color: #0288d1;
+                color: white;
+                font-weight: bold;
+                padding: 4px 10px;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #0277bd; }
+        """)
+        self.btn_open_gdrive_folder.clicked.connect(self.open_gdrive_folder)
         row_folder.addWidget(self.txt_gdrive_folder, 1)
+        row_folder.addWidget(self.btn_open_gdrive_folder)
         g1_layout.addLayout(row_folder)
 
         row_destination = QHBoxLayout()
@@ -151,6 +164,28 @@ class MainWindow(QMainWindow):
 
         row_rec.addStretch()
         g2_layout.addLayout(row_rec)
+
+        row_opts = QHBoxLayout()
+        self.chk_record_audio = QCheckBox("同步錄製系統聲音 (Audio)")
+        self.chk_auto_delete = QCheckBox("上傳成功後自動刪除本機事證檔案")
+        self.btn_clear_recordings = QPushButton("一鍵清理所有錄製檔案")
+        self.btn_clear_recordings.setStyleSheet("""
+            QPushButton {
+                background-color: #d32f2f;
+                color: white;
+                font-weight: bold;
+                padding: 4px 10px;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #c62828; }
+        """)
+        self.btn_clear_recordings.clicked.connect(self.clear_all_recordings)
+        row_opts.addWidget(self.chk_record_audio)
+        row_opts.addWidget(self.chk_auto_delete)
+        row_opts.addStretch()
+        row_opts.addWidget(self.btn_clear_recordings)
+        g2_layout.addLayout(row_opts)
+
         hint = QLabel("較長錄影可取得更多 OCR 影格；同時會增加檔案大小與上傳時間。")
         hint.setObjectName("hint")
         g2_layout.addWidget(hint)
@@ -282,12 +317,31 @@ class MainWindow(QMainWindow):
             "時間", "外掛 ID", "伺服器", "地圖", "GDrive 網址", "狀態"
         ])
         self.table_history.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table_history.cellClicked.connect(self.on_history_cell_clicked)
+        self.table_history.cellDoubleClicked.connect(self.on_history_cell_clicked)
         history_layout.addWidget(self.table_history)
 
         self.tabs.addTab(tab_history, "歷史紀錄")
 
         # Update GDrive UI Status
         self.update_gdrive_ui()
+
+    def open_gdrive_folder(self):
+        import webbrowser
+        folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
+        if self.drive_mgr.is_authenticated():
+            url = self.drive_mgr.get_folder_url(folder_name)
+            if url:
+                webbrowser.open(url)
+                return
+        webbrowser.open("https://drive.google.com/drive/my-drive")
+
+    def on_history_cell_clicked(self, row: int, column: int):
+        if column == 4:
+            item = self.table_history.item(row, column)
+            if item and item.text().strip().startswith("http"):
+                import webbrowser
+                webbrowser.open(item.text().strip())
 
     def update_gdrive_ui(self):
         if self.drive_mgr.is_authenticated():
@@ -368,6 +422,8 @@ class MainWindow(QMainWindow):
         self.combo_upload_destination.setCurrentIndex(max(0, destination_index))
         wl = self.cfg.get("whitelist", [])
         self.txt_whitelist.setText(", ".join(wl) if isinstance(wl, list) else str(wl))
+        self.chk_auto_delete.setChecked(self.cfg.get("auto_delete_after_upload", False))
+        self.chk_record_audio.setChecked(self.cfg.get("record_audio", True))
 
     def load_templates(self):
         templates = self.cfg.get("violation_templates", [])
@@ -481,13 +537,17 @@ class MainWindow(QMainWindow):
         # Countdown phase
         if countdown > 0:
             from PySide6.QtCore import QCoreApplication
-            progress_cd = QProgressDialog(f"準備錄影中，倒數 {countdown} 秒", None, 0, countdown, self)
+            progress_cd = QProgressDialog(f"準備錄影中，倒數 {countdown} 秒", "取消", 0, countdown, self)
             progress_cd.setWindowTitle("錄影倒數計時")
-            progress_cd.setCancelButton(None)
             progress_cd.setWindowModality(Qt.WindowModality.WindowModal)
+            progress_cd.setAutoReset(False)
+            progress_cd.setAutoClose(False)
             progress_cd.show()
 
             for i in range(countdown, 0, -1):
+                if progress_cd.wasCanceled():
+                    progress_cd.close()
+                    return
                 progress_cd.setLabelText(f"倒數 {i} 秒後開始錄製遊戲視窗")
                 progress_cd.setValue(countdown - i)
                 QCoreApplication.processEvents()
@@ -500,14 +560,30 @@ class MainWindow(QMainWindow):
         progress = QProgressDialog(f"正在錄製遊戲視窗（{duration} 秒 @ {fps} FPS）", "取消", 0, 100, self)
         progress.setWindowTitle("錄影中")
         progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setAutoReset(False)
+        progress.setAutoClose(False)
         progress.show()
 
         def update_progress(val):
             progress.setValue(int(val * 100))
+            from PySide6.QtCore import QCoreApplication
+            QCoreApplication.processEvents()
 
         # Record video and extract keyframes
-        file_path, keyframes = record_short_video(win_title, duration_sec=duration, fps=fps, progress_callback=update_progress)
+        file_path, keyframes = record_short_video(
+            win_title,
+            duration_sec=duration,
+            fps=fps,
+            progress_callback=update_progress,
+            cancel_checker=lambda: progress.wasCanceled(),
+            record_audio=self.chk_record_audio.isChecked()
+        )
+
+        user_canceled = progress.wasCanceled()
         progress.close()
+
+        if user_canceled or not file_path:
+            return
 
         # Open the preview immediately; the background worker runs local OCR only.
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
@@ -602,6 +678,8 @@ class MainWindow(QMainWindow):
         self.cfg["upload_destination"] = self.combo_upload_destination.currentData()
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
         self.cfg["whitelist"] = wl_list
+        self.cfg["auto_delete_after_upload"] = self.chk_auto_delete.isChecked()
+        self.cfg["record_audio"] = self.chk_record_audio.isChecked()
         save_config(self.cfg)
         self.btn_save_settings.setText("已儲存")
         from PySide6.QtCore import QTimer
@@ -622,12 +700,37 @@ class MainWindow(QMainWindow):
         self.cfg["upload_destination"] = self.combo_upload_destination.currentData()
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
         self.cfg["whitelist"] = wl_list
+        self.cfg["auto_delete_after_upload"] = self.chk_auto_delete.isChecked()
         save_config(self.cfg)
         self.submit_thread = SubmitThread(confirmed_data)
         self.submit_thread.finished_signal.connect(
             lambda ok, msg, error: self.on_submission_finished(ok, msg, confirmed_data, error)
         )
         self.submit_thread.start()
+
+    def clear_all_recordings(self):
+        from maple_reporter.utils.config import get_recordings_dir
+        rec_dir = get_recordings_dir()
+        files = [f for f in rec_dir.iterdir() if f.is_file()]
+        if not files:
+            QMessageBox.information(self, "清理檔案", "本機錄影資料夾中目前沒有任何檔案。")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "確認清理檔案",
+            f"確定要刪除錄影資料夾中的 {len(files)} 個檔案嗎？此操作無法復原。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            deleted = 0
+            for f in files:
+                try:
+                    f.unlink()
+                    deleted += 1
+                except Exception:
+                    pass
+            QMessageBox.information(self, "清理完成", f"已成功刪除 {deleted} 個檔案！")
 
     def closeEvent(self, event):
         """Persist local settings, including the masked Gemini key, on exit."""
@@ -648,6 +751,13 @@ class MainWindow(QMainWindow):
         self.refresh_history_table()
 
         if ok:
+            if self.chk_auto_delete.isChecked():
+                file_path = data.get("file_path")
+                if file_path and os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception:
+                        pass
             QMessageBox.information(self, "成功", msg)
         elif isinstance(error, PlaywrightBrowserError):
             show_playwright_error_dialog(self, error)
@@ -662,5 +772,14 @@ class MainWindow(QMainWindow):
             self.table_history.setItem(row, 1, QTableWidgetItem(item.get("suspect_id", "")))
             self.table_history.setItem(row, 2, QTableWidgetItem(item.get("server", "")))
             self.table_history.setItem(row, 3, QTableWidgetItem(item.get("map", "")))
-            self.table_history.setItem(row, 4, QTableWidgetItem(item.get("url", "")))
+
+            url_text = item.get("url", "")
+            url_item = QTableWidgetItem(url_text)
+            if url_text.startswith("http"):
+                url_item.setForeground(Qt.GlobalColor.blue)
+                font = url_item.font()
+                font.setUnderline(True)
+                url_item.setFont(font)
+                url_item.setToolTip("點擊前往開啟雲端事證網址")
+            self.table_history.setItem(row, 4, url_item)
             self.table_history.setItem(row, 5, QTableWidgetItem(item.get("status", "")))

@@ -105,6 +105,16 @@ class GoogleDriveManager:
         folder = self.service.files().create(body=folder_metadata, fields="id").execute()
         return folder.get("id")
 
+    def get_folder_url(self, folder_name: str = "MapleClassic_Reports") -> Optional[str]:
+        """Return the web URL to open the target report folder in Google Drive."""
+        if not self.is_authenticated():
+            return None
+        try:
+            folder_id = self.get_or_create_folder(folder_name)
+            return f"https://drive.google.com/drive/folders/{folder_id}"
+        except Exception:
+            return None
+
     def upload_file_and_make_public(self, file_path: str, folder_name: str = "MapleClassic_Reports") -> Tuple[bool, str]:
         """
         Upload file to Google Drive, set permission to 'anyone:reader',

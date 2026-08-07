@@ -37,6 +37,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "onboarding_completed": False,
     "whitelist": [],
     "auto_submit_without_preview": False,
+    "auto_delete_after_upload": False,
+    "record_audio": True,
 }
 
 def ensure_config_dir() -> Path:
