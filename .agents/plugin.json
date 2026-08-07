@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "maple-classic-reporter-plugin",
+  "version": "1.0.0",
+  "description": "Agent plugin for Maple Classic Auto Reporter providing release automation and project management skills.",
+  "author": {
+    "name": "Sugarbobo"
+  },
+  "repository": "https://github.com/sugarbobo-ch/maple-classic-reporter",
+  "license": "MIT",
+  "keywords": [
+    "maple-story",
+    "auto-reporter",
+    "release-automation",
+    "pyinstaller",
+    "agent-skills"
+  ]
+}
