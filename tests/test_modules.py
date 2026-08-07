@@ -116,12 +116,23 @@ class TestMapleReporter(unittest.TestCase):
         rec_dir = get_recordings_dir()
         vpath = str(rec_dir / f"test_v_merge_{int(time.time())}.mp4")
 
-        # Create 1 second video
-        out = cv2.VideoWriter(vpath, cv2.VideoWriter_fourcc(*'mp4v'), 20, (320, 240))
+        # Create 1 second video using PyAV for cross-platform CI compatibility
+        import av
+        container = av.open(vpath, mode='w')
+        stream = container.add_stream('h264', rate=20)
+        stream.width = 320
+        stream.height = 240
+        stream.pix_fmt = 'yuv420p'
+
         for i in range(20):
             img = np.full((240, 320, 3), (i * 10) % 255, dtype=np.uint8)
-            out.write(img)
-        out.release()
+            frame = av.VideoFrame.from_ndarray(img, format='bgr24')
+            frame = frame.reformat(format='yuv420p')
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+        container.close()
 
         sr = 44100
         t = np.linspace(0, 1, sr)
