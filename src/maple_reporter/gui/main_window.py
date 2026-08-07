@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QProgressDialog, QDialog, QDialogButtonBox, QInputDialog
 )
 
+from maple_reporter import __version__
 from maple_reporter.utils.config import load_config, save_config, load_history, add_history_entry
 from maple_reporter.ocr.win_ocr import recognize_text_from_image, recognize_candidates_from_image_list
 from maple_reporter.recorder.window_recorder import (
