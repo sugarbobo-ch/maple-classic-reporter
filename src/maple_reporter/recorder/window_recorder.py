@@ -247,6 +247,8 @@ def merge_audio_into_mp4(video_path: str, audio_data: np.ndarray, sample_rate: i
         # Decode & re-encode video frames to align timestamps
         for packet in in_c.demux(in_v):
             for frame in packet.decode():
+                if frame.format.name != "yuv420p":
+                    frame = frame.reformat(format="yuv420p")
                 for p in out_v.encode(frame):
                     out_c.mux(p)
 
