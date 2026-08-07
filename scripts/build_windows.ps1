@@ -4,15 +4,12 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot ".." -Resolve)).Path
 $buildRoot = Join-Path $projectRoot "build"
 $distRoot = Join-Path $projectRoot "dist"
 
-foreach ($target in @($buildRoot, $distRoot)) {
-    if (Test-Path -LiteralPath $target) {
-        $resolvedTarget = (Resolve-Path -LiteralPath $target).Path
-        $resolvedProject = (Resolve-Path -LiteralPath $projectRoot).Path
-        if (-not $resolvedTarget.StartsWith($resolvedProject + [IO.Path]::DirectorySeparatorChar)) {
-            throw "Refusing to delete a path outside the project: $resolvedTarget"
-        }
-        Remove-Item -LiteralPath $resolvedTarget -Recurse -Force
-    }
+if (Test-Path -LiteralPath $buildRoot) {
+    Remove-Item -LiteralPath $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+$targetExe = Join-Path $distRoot "MapleClassicReporter.exe"
+if (Test-Path -LiteralPath $targetExe) {
+    Remove-Item -LiteralPath $targetExe -Force -ErrorAction SilentlyContinue
 }
 
 Push-Location $projectRoot
