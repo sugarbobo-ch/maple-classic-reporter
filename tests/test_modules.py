@@ -2,6 +2,7 @@ import unittest
 import os
 import sys
 import time
+from unittest.mock import patch
 from PIL import Image
 
 sys.path.insert(0, os.path.abspath("src"))
@@ -25,6 +26,15 @@ class TestMapleReporter(unittest.TestCase):
         img = Image.new("RGB", (100, 30), color="white")
         res = recognize_text_from_image(img)
         self.assertIsInstance(res, str)
+
+    def test_ocr_worker_releases_large_keyframes_after_use(self):
+        from maple_reporter.ocr.ocr_worker import OcrWorkerThread
+
+        frames = [Image.new("RGB", (320, 240), color="white") for _ in range(10)]
+        worker = OcrWorkerThread(frames)
+        self.assertEqual(len(worker.keyframes), 10)
+        worker.release_keyframes()
+        self.assertEqual(worker.keyframes, [])
 
     def test_map_name_catalog_normalizes_roman_numerals(self):
         self.assertEqual(normalize_map_name("海岸草叢Ⅰ"), normalize_map_name("海岸草叢I"))
@@ -69,12 +79,16 @@ class TestMapleReporter(unittest.TestCase):
         target_duration = 2
         fps = 15
         start = time.time()
-        file_path, keyframes = record_short_video(
-            "non_existent_window_1234567",
-            duration_sec=target_duration,
-            fps=fps,
-            record_audio=False
-        )
+        with patch(
+            "maple_reporter.recorder.window_recorder.find_window_bounds",
+            return_value=(0, 0, 320, 240),
+        ):
+            file_path, keyframes = record_short_video(
+                "test-window",
+                duration_sec=target_duration,
+                fps=fps,
+                record_audio=False,
+            )
         elapsed = time.time() - start
         self.assertIsNotNone(file_path)
         self.assertTrue(os.path.exists(file_path))

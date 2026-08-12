@@ -78,20 +78,31 @@ Compress-Archive `
 
 ```text
 MapleClassicReporter.exe          # 唯一需要下載的檔案
-data/                              # 第一次啟動後自動建立的本機資料
-   ├─ config/
-   │  ├─ config.json              # 一般設定、範本、白名單與 Webhook
-   │  ├─ client_secrets.json      # 使用者自行放入的 Google OAuth 憑證
-   │  ├─ token.json               # Google 授權權杖
-   │  └─ history.json             # 本機回報歷史
-   └─ recordings/                 # 錄製的影片與擷取圖片
 ```
 
-`data/config/config.json` 可能含有 Gemini API Key 與 Discord Webhook URL；`client_secrets.json` 與 `token.json` 則是 Google 憑證。這些檔案和 `data/recordings/` 都是私密本機資料，不要寄給他人、上傳 GitHub 或隨發行 ZIP 一起散布。
+錄影、一般設定與回報歷史都會寫入使用者專屬目錄 `%LOCALAPPDATA%\MapleClassicReporter\`；舊版 `data/config/` 的一般設定會在啟動時自動遷移。Gemini API Key 與 Discord Webhook 不再寫入 JSON，而是分別以 Windows DPAPI 保護於：
 
-`.gitignore` 已排除 `data/config/` 的設定、OAuth 憑證與權杖，以及 `data/recordings/`。提交或推送前仍應檢查 `git status`，確認沒有把本機 `data/`、`.env`、憑證、Webhook URL 或 API Key 加入版本庫。
+```text
+%LOCALAPPDATA%\MapleClassicReporter\gemini_api_key.dpapi
+%LOCALAPPDATA%\MapleClassicReporter\discord_webhook_url.dpapi
+%LOCALAPPDATA%\MapleClassicReporter\recordings\
+```
 
-若要搬移電腦，複製整個程式資料夾即可；若不想轉移帳號授權，刪除新電腦上的 `data/config/token.json` 後重新連結 Google 帳號。
+正式 EXE 內嵌的是應用程式共用的 OAuth Desktop client 設定；它只是用來識別 Maple Classic Reporter，不包含任何使用者授權。每位使用者首次登入後取得的 refresh token 會以 Windows DPAPI 保護，寫入自己的使用者資料夾：
+
+```text
+%LOCALAPPDATA%\MapleClassicReporter\oauth_token.dpapi
+```
+
+舊版的 `data/config/token.json` 會在成功登入後自動遷移到上述受保護檔案，並刪除明文檔案。
+
+`%LOCALAPPDATA%\MapleClassicReporter\` 都是私密本機資料，不要寄給他人、上傳 GitHub 或隨發行 ZIP 一起散布。DPAPI 檔案即使被複製，也只能由同一 Windows 使用者解密。
+
+`.gitignore` 已排除舊版 `data/config/`、OAuth 憑證與 `data/recordings/`；目前的使用者資料位於 `%LOCALAPPDATA%`。提交或推送前仍應檢查 `git status`，確認沒有把本機 `data/`、`.env`、憑證、Webhook URL 或 API Key 加入版本庫。
+
+若要搬移電腦，請重新執行程式並重新連結 Google 帳號；程式資料夾不包含使用者設定或授權。若要保留設定，需在同一 Windows 使用者下搬移 `%LOCALAPPDATA%\MapleClassicReporter\`，若不想轉移帳號授權則只不要搬移 `oauth_token.dpapi`。
+
+Windows DPAPI 可防止其他 Windows 使用者或單純外洩檔案直接讀出 refresh token，但無法防禦已在同一 Windows 使用者權限下執行的惡意程式。OAuth client JSON 內嵌於 EXE 也屬 Installed App 的公開識別設定，不應把它當成可保密的 server secret。
 
 ## 使用與設定步驟
 
@@ -116,20 +127,31 @@ data/                              # 第一次啟動後自動建立的本機資�
 3. 按「確認內容並上傳事證」。程式會顯示上傳中狀態；成功後自動取得網址（亦可按 **「點擊前往查看」** 或於歷史紀錄雙擊網址開啟檢視），並自動填入官方表單的事證欄位完成送出。
 4. 若上傳失敗，表單不會送出。修正設定或改用另一個目的地後再試即可。
 
-## Google Drive API 設定
+## Google Drive 連結與 OAuth
 
-1. 前往 [Google Cloud Console](https://console.cloud.google.com/)，建立或選擇專案。
-2. 使用英文介面時，開啟 **APIs & Services > Enabled APIs & services**，搜尋並啟用 **Google Drive API**。
-3. 開啟 **Google Auth Platform**：設定應用程式名稱與支援電子郵件；在 **Audience** 選擇 **External / Testing**。
-4. 在 **Audience > Test users** 加入你自己的 Google 帳號電子郵件；未發布的 External 應用程式只有測試使用者可授權。
-5. 在 **Data Access** 加入本程式使用的 scope：`https://www.googleapis.com/auth/drive.file`。
-6. 建立桌面 OAuth 用戶端時，依序點選 **APIs & Services > Credentials > Create credentials > OAuth client ID**，應用程式類型選 **Desktop app**，下載 JSON。
-7. 將下載檔命名為 `client_secrets.json`，放到 `data/config/client_secrets.json`。
-8. 啟動程式後選擇 Google Drive，按「連結 Google 帳號」完成瀏覽器授權。
+### 下載版使用者
 
-首次授權成功後，refresh token 會儲存在 `data/config/token.json`；之後不需再次登入，除非你撤銷 Google 授權、刪除 token，或 OAuth 測試授權到期。測試模式的 External 應用程式有最多 100 位測試使用者，且授權通常會在 7 天後到期。
+一般使用者不需要建立 Google Cloud project、加入測試使用者或下載 `client_secrets.json`。下載並啟動正式 EXE 後：
 
-`data/config/` 內含 OAuth token、Webhook 與本機設定，不應提交到 Git。
+1. 選擇 **Google Drive** 作為事證目的地。
+2. 按 **「連結 Google 帳號」**。
+3. 在系統瀏覽器登入自己的 Google 帳號，並同意 `drive.file` 權限。
+
+程式使用專案維護者正式發布的 OAuth Desktop client；每位使用者的授權仍只會連到自己的 Google Drive。首次授權成功後，refresh token 會以 Windows DPAPI 保護在 `%LOCALAPPDATA%\MapleClassicReporter\oauth_token.dpapi`；之後不需再次登入，除非使用者撤銷授權或刪除該檔案。
+
+### 開發者建置
+
+正式 release build 需要一份由專案維護者管理、但不提交 Git 的 OAuth Desktop client JSON：
+
+```text
+build_secrets/google_oauth_client.json
+```
+
+`scripts/build_windows.ps1` 與 `MapleClassicReporter.spec` 會在建置前檢查這個檔案，缺少時直接失敗；建置成功後它會被放入 PyInstaller 的 EXE 內部，不會以獨立 JSON 出現在 EXE 旁。OAuth client 設定不會複製到使用者設定目錄，而使用者的 DPAPI token 也不在 PyInstaller 資源中。
+
+原始碼開發可用環境變數 `MAPLE_REPORTER_GOOGLE_OAUTH_CONFIG` 指向測試用 OAuth JSON；舊的 `data/config/client_secrets.json` 僅保留作為進階開發者 fallback。若 fork 本專案，請建立並使用自己的 OAuth project，不要重用維護者的 client 或 token。
+
+目前正式 OAuth 設定使用 External / Production，且只要求 `https://www.googleapis.com/auth/drive.file`；不使用 service account 或完整的 `drive` scope。Webhook、Gemini key 與 DPAPI token 都位於使用者的 `%LOCALAPPDATA%`，不應提交到 Git。
 
 ## Discord 上傳
 

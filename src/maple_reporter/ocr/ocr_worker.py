@@ -52,6 +52,10 @@ class OcrWorkerThread(QThread):
         else:
             self.status_changed.emit("辨識完成，沒有自動偵測到 ID，可手動輸入。")
 
+    def release_keyframes(self):
+        """Drop large PIL frame references after OCR consumers have their result."""
+        self.keyframes.clear()
+
 
 class AiReviewWorkerThread(QThread):
     """A single user-triggered Gemini review of one representative frame."""

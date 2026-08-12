@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-"""One-file Windows build with Playwright's driver and Chromium included."""
+"""One-file Windows build with Playwright, Chromium, and OAuth client included."""
 
+import json
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
@@ -10,6 +11,26 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 PROJECT_ROOT = Path(SPECPATH).resolve()
 PLAYWRIGHT_PACKAGE = Path(__import__("playwright").__file__).resolve().parent
 PLAYWRIGHT_DRIVER = PLAYWRIGHT_PACKAGE / "driver"
+OAUTH_CLIENT_CONFIG = PROJECT_ROOT / "build_secrets" / "google_oauth_client.json"
+
+if not OAUTH_CLIENT_CONFIG.is_file():
+    raise SystemExit(
+        "Release build requires build_secrets/google_oauth_client.json. "
+        "The OAuth client resource is intentionally not committed to Git."
+    )
+
+try:
+    with OAUTH_CLIENT_CONFIG.open("r", encoding="utf-8") as oauth_file:
+        oauth_config = json.load(oauth_file)
+except (OSError, ValueError) as error:
+    raise SystemExit(
+        "build_secrets/google_oauth_client.json is not valid JSON."
+    ) from error
+
+if not isinstance(oauth_config, dict) or not isinstance(oauth_config.get("installed"), dict):
+    raise SystemExit(
+        "build_secrets/google_oauth_client.json must contain an installed OAuth client."
+    )
 
 from playwright.sync_api import sync_playwright
 
@@ -30,6 +51,7 @@ if not CHROMIUM_DIRECTORY.name.startswith("chromium-"):
 datas = [
     (str(PROJECT_ROOT / "assets" / "icon.png"), "assets"),
     (str(PROJECT_ROOT / "src" / "maple_reporter" / "ocr" / "data"), "maple_reporter/ocr/data"),
+    (str(OAUTH_CLIENT_CONFIG), "."),
     (str(PLAYWRIGHT_DRIVER / "package"), "playwright/driver/package"),
     (str(PLAYWRIGHT_DRIVER / "node.exe"), "playwright/driver"),
     (str(CHROMIUM_DIRECTORY), f"ms-playwright/{CHROMIUM_DIRECTORY.name}"),

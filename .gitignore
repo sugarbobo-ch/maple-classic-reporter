@@ -10,6 +10,11 @@ build/
 # Local application data and evidence
 data/recordings/
 data/config/
+*.dpapi
 
 # OAuth credentials from older project layouts
 client_secrets.json
+
+# Release-only OAuth client resource (embedded into the EXE, never committed)
+build_secrets/
+google_oauth_client.json

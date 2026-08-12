@@ -1,8 +1,6 @@
 import os
 import time
-import tempfile
-import threading
-import warnings
+import logging
 from typing import List, Optional, Tuple, Callable
 import cv2
 import numpy as np
@@ -13,15 +11,28 @@ from PIL import Image
 import ctypes
 from ctypes import wintypes
 
+from maple_reporter.recorder.audio_capture import (
+    DEFAULT_SAMPLE_RATE,
+    LoopbackAudioRecorder,
+    merge_audio_into_mp4,
+)
+
+
+LOGGER = logging.getLogger(__name__)
+
 # Enable Per-Monitor DPI Awareness safely if not already set by Qt
 try:
     # 0 = Unaware, 1 = System Aware, 2 = Per Monitor Aware
     res = ctypes.windll.shcore.GetProcessDpiAwareness(0, ctypes.byref(ctypes.c_int()))
-except Exception:
+except Exception as error:
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
-    except Exception:
-        pass
+    except Exception as setup_error:
+        LOGGER.debug(
+            "無法設定 Windows DPI awareness (%s, %s)",
+            type(error).__name__,
+            type(setup_error).__name__,
+        )
 
 def get_accurate_window_bounds(hwnd) -> Optional[Tuple[int, int, int, int]]:
     """Get exact window bounds excluding DWM drop shadow padding."""
@@ -36,13 +47,14 @@ def get_accurate_window_bounds(hwnd) -> Optional[Tuple[int, int, int, int]]:
         )
         if res == 0:
             return (rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
-    except Exception:
-        pass
+    except Exception as error:
+        LOGGER.debug("讀取 DWM 視窗邊界失敗 (%s)", type(error).__name__)
 
     try:
         ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
         return (rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
-    except Exception:
+    except Exception as error:
+        LOGGER.debug("讀取 Windows 視窗矩形失敗 (%s)", type(error).__name__)
         return None
 
 def get_client_area_bounds(hwnd) -> Optional[Tuple[int, int, int, int]]:
@@ -57,8 +69,8 @@ def get_client_area_bounds(hwnd) -> Optional[Tuple[int, int, int, int]]:
         res2 = ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(pt))
         if res1 and res2 and rect.right > 50 and rect.bottom > 50:
             return (pt.x, pt.y, rect.right, rect.bottom)
-    except Exception:
-        pass
+    except Exception as error:
+        LOGGER.debug("讀取 Windows client area 失敗 (%s)", type(error).__name__)
     return get_accurate_window_bounds(hwnd)
 
 def get_active_window_titles() -> List[str]:
@@ -102,13 +114,13 @@ def focus_window(window_title_keyword: str) -> bool:
                 ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
                 return True
-            except Exception:
-                pass
+            except Exception as error:
+                LOGGER.debug("設定目標視窗為前景失敗 (%s)", type(error).__name__)
         try:
             target_window.activate()
             return True
-        except Exception:
-            pass
+        except Exception as error:
+            LOGGER.debug("啟用目標視窗失敗 (%s)", type(error).__name__)
     return False
 
 def find_window_bounds(window_title_keyword: str) -> Optional[Tuple[int, int, int, int]]:
@@ -162,15 +174,16 @@ from maple_reporter.utils.config import get_recordings_dir
 
 def capture_screenshot(region: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Image.Image, str]:
     """
-    Capture screenshot of a region (left, top, width, height) or full screen.
+    Capture screenshot of an explicit region (left, top, width, height).
     Returns (PIL Image, filepath to saved png inside recordings folder).
     """
-    with mss.mss() as sct:
-        if region:
-            left, top, width, height = region
-            monitor = {"left": left, "top": top, "width": width, "height": height}
-        else:
-            monitor = sct.monitors[0]
+    if region is None:
+        raise ValueError("An explicit capture region is required.")
+    with mss.MSS() as sct:
+        left, top, width, height = region
+        if width <= 0 or height <= 0:
+            raise ValueError("Capture region dimensions must be positive.")
+        monitor = {"left": left, "top": top, "width": width, "height": height}
 
         sct_img = sct.grab(monitor)
         img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
@@ -181,118 +194,25 @@ def capture_screenshot(region: Optional[Tuple[int, int, int, int]] = None) -> Tu
         return img, file_path
 
 
-class AudioRecorderThread(threading.Thread):
-    """Background thread to capture WASAPI system loopback audio samples."""
-    def __init__(self, sample_rate: int = 44100):
-        super().__init__(daemon=True)
-        self.sample_rate = sample_rate
-        self.chunks = []
-        self.stop_event = threading.Event()
+class AudioRecorderThread(LoopbackAudioRecorder):
+    """Compatibility wrapper for short recordings using the shared capture."""
 
-    def run(self):
-        try:
-            import soundcard as sc
-            warnings.filterwarnings("ignore", category=getattr(sc, "SoundcardRuntimeWarning", Warning))
-            spk = sc.default_speaker()
-            mic = sc.get_microphone(spk.id, include_loopback=True)
-            with mic.recorder(samplerate=self.sample_rate) as recorder:
-                while not self.stop_event.is_set():
-                    data = recorder.record(numframes=int(self.sample_rate * 0.1))
-                    if len(data) > 0:
-                        self.chunks.append(data)
-        except Exception:
-            pass
+    def __init__(
+        self,
+        sample_rate: int = DEFAULT_SAMPLE_RATE,
+        device_id: Optional[str] = None,
+    ):
+        # Short recordings do not need the full replay window, but keeping a
+        # small margin covers the audio recorder opening slightly before video.
+        super().__init__(
+            buffer_seconds=3_600,
+            sample_rate=sample_rate,
+            device_id=device_id,
+            error_callback=self._on_capture_error,
+        )
 
-    def stop_and_get_data(self) -> Optional[np.ndarray]:
-        self.stop_event.set()
-        self.join(timeout=1.5)
-        if self.chunks:
-            try:
-                return np.vstack(self.chunks)
-            except Exception:
-                return None
-        return None
-
-
-def merge_audio_into_mp4(video_path: str, audio_data: np.ndarray, sample_rate: int = 44100) -> bool:
-    """
-    Merge numpy float32 PCM audio data into an existing MP4 video file using PyAV (av).
-    Encodes video frames as H.264 and audio frames as AAC.
-    """
-    if audio_data is None or len(audio_data) == 0 or not os.path.exists(video_path):
-        return False
-
-    temp_out_path = video_path.replace(".mp4", "_audio_temp.mp4")
-    try:
-        import av
-        in_c = av.open(video_path)
-        if not in_c.streams.video:
-            in_c.close()
-            return False
-
-        in_v = in_c.streams.video[0]
-        out_c = av.open(temp_out_path, mode="w")
-
-        fps_val = int(round(float(in_v.average_rate or in_v.rate or 20)))
-        out_v = out_c.add_stream("h264", rate=fps_val)
-        out_v.width = in_v.width
-        out_v.height = in_v.height
-        out_v.pix_fmt = "yuv420p"
-
-        channels = audio_data.shape[1] if audio_data.ndim > 1 else 1
-        layout = "stereo" if channels == 2 else "mono"
-        out_a = out_c.add_stream("aac", rate=sample_rate)
-        out_a.layout = layout
-
-        # Decode & re-encode video frames to align timestamps
-        for packet in in_c.demux(in_v):
-            for frame in packet.decode():
-                if frame.format.name != "yuv420p":
-                    frame = frame.reformat(format="yuv420p")
-                frame.pts = None
-                for p in out_v.encode(frame):
-                    out_c.mux(p)
-
-        for p in out_v.encode():
-            out_c.mux(p)
-        in_c.close()
-
-        # Encode AAC audio frames (1024 samples per frame)
-        arr = np.ascontiguousarray(audio_data.T, dtype=np.float32)
-        samples_per_frame = 1024
-        total_samples = arr.shape[1]
-        pts = 0
-
-        for i in range(0, total_samples, samples_per_frame):
-            chunk = arr[:, i:i + samples_per_frame]
-            if chunk.shape[1] < samples_per_frame:
-                pad = np.zeros((channels, samples_per_frame - chunk.shape[1]), dtype=np.float32)
-                chunk = np.hstack([chunk, pad])
-            frame = av.AudioFrame.from_ndarray(chunk, format="fltp", layout=layout)
-            frame.rate = sample_rate
-            frame.pts = pts
-            pts += samples_per_frame
-            for pkt in out_a.encode(frame):
-                out_c.mux(pkt)
-
-        for pkt in out_a.encode():
-            out_c.mux(pkt)
-
-        out_c.close()
-
-        if os.path.exists(temp_out_path) and os.path.getsize(temp_out_path) > 0:
-            os.replace(temp_out_path, video_path)
-            return True
-    except Exception as e:
-        print(f"[ERROR] merge_audio_into_mp4 failed: {e}")
-        import traceback
-        traceback.print_exc()
-        if os.path.exists(temp_out_path):
-            try:
-                os.remove(temp_out_path)
-            except Exception:
-                pass
-    return False
+    def _on_capture_error(self, message: str) -> None:
+        LOGGER.warning("短片音訊擷取失敗：%s", message)
 
 
 def record_short_video(
@@ -301,7 +221,8 @@ def record_short_video(
     fps: int = 20,
     progress_callback=None,
     cancel_checker: Optional[Callable[[], bool]] = None,
-    record_audio: bool = True
+    record_audio: bool = True,
+    audio_device_id: Optional[str] = None,
 ) -> Tuple[Optional[str], List[Image.Image]]:
     """
     Record a short MP4 video of the target window for `duration_sec` seconds with specified `fps`.
@@ -311,90 +232,116 @@ def record_short_video(
     bounds = find_window_bounds(window_title_keyword)
     keyframes: List[Image.Image] = []
 
-    audio_thread = None
+    # Never fall back to recording the whole desktop. A stale/closed window
+    # title must fail closed because the resulting evidence may be uploaded.
+    if not bounds:
+        return None, []
+
+    left, top, width, height = bounds
+    width = width if width % 2 == 0 else width - 1
+    height = height if height % 2 == 0 else height - 1
+    if width < 2 or height < 2:
+        return None, []
+
+    audio_thread: Optional[AudioRecorderThread] = None
     if record_audio:
         try:
-            audio_thread = AudioRecorderThread(sample_rate=44100)
+            audio_thread = AudioRecorderThread(
+                sample_rate=DEFAULT_SAMPLE_RATE, device_id=audio_device_id
+            )
             audio_thread.start()
-        except Exception:
+        except Exception as error:
+            LOGGER.warning("無法啟動短片音訊擷取 (%s)", type(error).__name__)
             audio_thread = None
 
-    with mss.mss() as sct:
-        if bounds:
-            left, top, width, height = bounds
-            # Make sure width and height are even numbers for H264/XVID encoding
-            width = width if width % 2 == 0 else width - 1
-            height = height if height % 2 == 0 else height - 1
-            monitor = {"left": left, "top": top, "width": width, "height": height}
-        else:
-            mon = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
-            width, height = mon["width"], mon["height"]
-            width = width if width % 2 == 0 else width - 1
-            height = height if height % 2 == 0 else height - 1
-            monitor = {"left": mon["left"], "top": mon["top"], "width": width, "height": height}
+    monitor = {"left": left, "top": top, "width": width, "height": height}
+    rec_dir = str(get_recordings_dir())
+    file_path = os.path.join(
+        rec_dir, f"maple_evidence_{time.time_ns() // 1_000_000}.mp4"
+    )
+    capture_start = time.monotonic()
+    out = None
+    cancelled = False
 
-        rec_dir = str(get_recordings_dir())
-        file_path = os.path.join(rec_dir, f"maple_evidence_{int(time.time())}.mp4")
+    try:
+        with mss.MSS() as screen:
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            out = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
+            if not out.isOpened():
+                raise RuntimeError("無法建立 MP4 影片檔案。")
 
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
+            last_keyframe_time = -2.0
+            written_frames = 0
+            while True:
+                elapsed = time.monotonic() - capture_start
+                if elapsed >= duration_sec:
+                    break
 
-        start_time = time.time()
-        frame_delay = 1.0 / fps
-        last_keyframe_time = 0.0
-        written_frames = 0
+                if cancel_checker and cancel_checker():
+                    cancelled = True
+                    break
 
-        while True:
-            current_time = time.time()
-            elapsed = current_time - start_time
-            if elapsed >= duration_sec:
-                break
+                try:
+                    sct_img = screen.grab(monitor)
+                    frame = np.asarray(sct_img)
+                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                except Exception as error:
+                    LOGGER.debug("螢幕影格擷取失敗，使用黑畫面 (%s)", type(error).__name__)
+                    frame_bgr = np.zeros((height, width, 3), dtype=np.uint8)
 
-            if cancel_checker and cancel_checker():
-                if audio_thread:
-                    audio_thread.stop_and_get_data()
-                out.release()
-                if os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                    except Exception:
-                        pass
-                return None, []
+                if frame_bgr.shape[:2] != (height, width):
+                    frame_bgr = cv2.resize(
+                        frame_bgr, (width, height), interpolation=cv2.INTER_AREA
+                    )
 
-            try:
-                sct_img = sct.grab(monitor)
-                frame = np.array(sct_img)
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-            except Exception:
-                frame_bgr = np.zeros((height, width, 3), dtype=np.uint8)
+                target_frame_count = int(elapsed * fps) + 1
+                frames_to_write = max(1, target_frame_count - written_frames)
+                for _ in range(frames_to_write):
+                    out.write(frame_bgr)
+                written_frames += frames_to_write
 
-            # Calculate target number of video frames corresponding to elapsed time
-            target_frame_count = int(elapsed * fps) + 1
-            frames_to_write = max(1, target_frame_count - written_frames)
-            for _ in range(frames_to_write):
-                out.write(frame_bgr)
-            written_frames += frames_to_write
+                if elapsed - last_keyframe_time >= 2.0:
+                    last_keyframe_time = elapsed
+                    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                    keyframes.append(Image.fromarray(frame_rgb))
 
-            # Grab keyframe every 2 seconds
-            if elapsed - last_keyframe_time >= 2.0 or last_keyframe_time == 0.0:
-                last_keyframe_time = elapsed
-                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                keyframes.append(Image.fromarray(frame_rgb))
+                if progress_callback:
+                    progress_callback(min(1.0, elapsed / max(1, duration_sec)))
 
-            if progress_callback:
-                progress_callback(min(1.0, elapsed / duration_sec))
-
-            # Sleep to match next frame interval target time
-            next_target_time = start_time + (written_frames / fps)
-            sleep_time = max(0, next_target_time - time.time())
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-
-        out.release()
-
+                next_target_time = capture_start + (written_frames / fps)
+                sleep_time = max(0.0, next_target_time - time.monotonic())
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+    except Exception as error:
+        LOGGER.warning("短片錄製失敗 (%s)", type(error).__name__)
         if audio_thread:
-            audio_data = audio_thread.stop_and_get_data()
-            if audio_data is not None and len(audio_data) > 0:
-                merge_audio_into_mp4(file_path, audio_data, sample_rate=44100)
+            audio_thread.stop_and_get_data()
+        try:
+            os.remove(file_path)
+        except OSError as error:
+            LOGGER.debug("清理錄影取消檔案失敗 (%s)", type(error).__name__)
+        return None, []
+    finally:
+        if out is not None:
+            out.release()
 
-        return file_path, keyframes
+    if cancelled:
+        try:
+            os.remove(file_path)
+        except OSError as error:
+            LOGGER.debug("清理取消的短片失敗 (%s)", type(error).__name__)
+        if audio_thread:
+            audio_thread.stop_and_get_data()
+        return None, []
+
+    if audio_thread:
+        audio_data = audio_thread.stop_and_get_data(
+            start_time=capture_start, end_time=time.monotonic()
+        )
+        if audio_data is not None and len(audio_data) > 0:
+            if not merge_audio_into_mp4(
+                file_path, audio_data, sample_rate=DEFAULT_SAMPLE_RATE
+            ):
+                LOGGER.warning("短片已儲存，但 AAC 音訊軌合併失敗")
+
+    return file_path, keyframes

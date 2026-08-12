@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 from maple_reporter.discord.webhook_service import upload_evidence_to_discord
 from maple_reporter.ocr.ocr_worker import AiReviewWorkerThread
+from maple_reporter.utils.urls import is_safe_https_url
 
 
 class EvidenceUploadThread(QThread):
@@ -39,11 +40,24 @@ class ReportPreviewModal(QDialog):
         self.folder_name = folder_name
         self.file_path = data.get("file_path", "")
         self.ocr_thread = ocr_thread
+        self.ai_review_image = (
+            ocr_thread.keyframes[0]
+            if ocr_thread and ocr_thread.keyframes
+            else None
+        )
+        self.ai_review_api_key = ocr_thread.api_key if ocr_thread else ""
+        self.ai_review_whitelist = list(ocr_thread.whitelist) if ocr_thread else []
         self.discord_webhook_url = discord_webhook_url.strip()
         self.upload_destination = upload_destination
+        self.default_map_name = (
+            str(data.get("default_map_name") or "維多利亞島").strip()
+            or "維多利亞島"
+        )
+        self._map_name_user_edited = False
         self.ai_review_thread = None
         self.upload_thread = None
         self.pending_data = None
+        self._dispose_requested = False
 
         layout = QVBoxLayout(self)
 
@@ -130,7 +144,9 @@ class ReportPreviewModal(QDialog):
 
         self.btn_ai_review = QPushButton("AI 複核目前畫面")
         self.btn_ai_review.setToolTip("只傳送一張影格給 Gemini，不會掃描整段影片")
-        self.btn_ai_review.setEnabled(bool(self.ocr_thread and self.ocr_thread.api_key and self.ocr_thread.keyframes))
+        self.btn_ai_review.setEnabled(
+            bool(self.ai_review_api_key and self.ai_review_image)
+        )
         self.btn_ai_review.clicked.connect(self.request_ai_review)
         layout.addWidget(self.btn_ai_review)
 
@@ -154,9 +170,31 @@ class ReportPreviewModal(QDialog):
         layout.addLayout(server_layout)
 
         # 3. Map Name
-        layout.addWidget(QLabel("3. 所在地圖名稱:"))
-        self.map_input = QLineEdit(data.get("map_name", "維多利亞島"))
-        layout.addWidget(self.map_input)
+        map_label = QLabel("3. 所在地圖名稱:")
+        map_box = QHBoxLayout()
+        self.map_input = QLineEdit(str(data.get("map_name") or ""))
+        map_label.setBuddy(self.map_input)
+        self.map_input.setAccessibleName("所在地圖名稱")
+        self.map_input.setAccessibleDescription(
+            "可填入 OCR 辨識的地圖名稱，也可以使用預設地圖名稱"
+        )
+        self.map_input.setPlaceholderText("等待 OCR 辨識結果，或手動輸入")
+        self.map_input.textEdited.connect(self._on_map_name_edited)
+
+        self.btn_use_default_map = QPushButton("使用預設地圖名稱")
+        self.btn_use_default_map.setToolTip("將預設地圖名稱帶入所在地圖名稱")
+        self.btn_use_default_map.clicked.connect(self.use_default_map_name)
+
+        self.lbl_default_map_name = QLabel(
+            f"預設地圖名稱：{self.default_map_name}"
+        )
+        self.lbl_default_map_name.setObjectName("hint")
+
+        map_box.addWidget(self.map_input, 1)
+        map_box.addWidget(self.btn_use_default_map)
+        map_box.addWidget(self.lbl_default_map_name)
+        layout.addWidget(map_label)
+        layout.addLayout(map_box)
 
         # 4. Note
         layout.addWidget(QLabel("4. 備註 / 外掛違規說明:"))
@@ -252,27 +290,59 @@ class ReportPreviewModal(QDialog):
         if not detected_map:
             return
 
-        # Directly overwrite the map field with the OCR result.
-        # Showing a QMessageBox from a background-thread Signal is not safe and
-        # silently fails in packaged builds. The user can still edit the field
-        # manually inside the preview modal before confirming.
-        self.map_input.setText(detected_map)
+        # Fill the empty field with OCR results, but preserve any explicit user
+        # edit or selection made through the default-name button.
+        if not self._map_name_user_edited:
+            self.map_input.setText(detected_map)
+
+    def _on_map_name_edited(self, _text: str):
+        self._map_name_user_edited = True
+
+    def use_default_map_name(self):
+        self._map_name_user_edited = True
+        self.map_input.setText(self.default_map_name)
+        self.map_input.setFocus()
+        self.map_input.selectAll()
 
     def request_ai_review(self):
-        if not self.ocr_thread or not self.ocr_thread.api_key or not self.ocr_thread.keyframes:
+        if not self.ai_review_api_key or self.ai_review_image is None:
             return
         self.btn_ai_review.setEnabled(False)
         self.ai_review_thread = AiReviewWorkerThread(
-            self.ocr_thread.keyframes[0],
-            self.ocr_thread.api_key,
-            self.ocr_thread.whitelist,
+            self.ai_review_image,
+            self.ai_review_api_key,
+            self.ai_review_whitelist,
             parent=self,
         )
         self.ai_review_thread.candidates_found.connect(self.on_live_candidates_found)
         self.ai_review_thread.map_name_found.connect(self.on_live_map_name_found)
         self.ai_review_thread.status_changed.connect(self.on_ocr_status_changed)
-        self.ai_review_thread.finished.connect(lambda: self.btn_ai_review.setEnabled(True))
+        self.ai_review_thread.finished.connect(self.on_ai_review_finished)
         self.ai_review_thread.start()
+
+    def on_ai_review_finished(self):
+        thread = self.ai_review_thread
+        self.ai_review_thread = None
+        self.btn_ai_review.setEnabled(True)
+        if thread:
+            thread.image = None
+            thread.deleteLater()
+        self._dispose_if_idle()
+
+    def dispose_when_idle(self):
+        """Delete the closed modal after its child worker threads have exited."""
+        self._dispose_requested = True
+        self._dispose_if_idle()
+
+    def _dispose_if_idle(self):
+        if not self._dispose_requested:
+            return
+        active_threads = [self.ai_review_thread, self.upload_thread]
+        if any(thread and thread.isRunning() for thread in active_threads):
+            return
+        self.ai_review_image = None
+        self.ocr_thread = None
+        self.deleteLater()
 
     def add_current_id_to_whitelist(self):
         target_id = self.id_combo.currentText().strip()
@@ -308,7 +378,15 @@ class ReportPreviewModal(QDialog):
             return
 
         server_name = "雪吉拉" if self.radio_server1.isChecked() else "菇菇寶貝"
-        map_name = self.map_input.text().strip() or "維多利亞島"
+        map_name = self.map_input.text().strip()
+        if not map_name:
+            QMessageBox.warning(
+                self,
+                "無法送出",
+                "請確認所在地圖名稱，或按「使用預設地圖名稱」。",
+            )
+            self.map_input.setFocus()
+            return
         note = self.note_input.text().strip() or "自動打怪/外掛行為"
         if not self.file_path or not os.path.isfile(self.file_path):
             QMessageBox.warning(self, "無法送出", "找不到本次事證檔案；必須先成功上傳事證。")
@@ -328,7 +406,9 @@ class ReportPreviewModal(QDialog):
             "map_name": map_name,
             "note": note,
             "evidence_url": "",
-            "file_path": self.file_path
+            "file_path": self.file_path,
+            "upload_confirmed": False,
+            "form_confirmed": False,
         }
         self.btn_submit.setEnabled(False)
         self.btn_cancel.setEnabled(False)
@@ -340,11 +420,17 @@ class ReportPreviewModal(QDialog):
             self.discord_webhook_url, description, parent=self,
         )
         self.upload_thread.finished_signal.connect(self.on_upload_finished)
+        self.upload_thread.finished.connect(self.upload_thread.deleteLater)
+        self.upload_thread.finished.connect(self.on_upload_thread_finished)
         self.upload_thread.start()
+
+    def on_upload_thread_finished(self):
+        self.upload_thread = None
+        self._dispose_if_idle()
 
     def open_evidence_url(self):
         url = self.url_input.text().strip()
-        if url.startswith("http"):
+        if is_safe_https_url(url):
             import webbrowser
             webbrowser.open(url)
 
@@ -358,10 +444,11 @@ class ReportPreviewModal(QDialog):
             QMessageBox.warning(self, "上傳失敗", f"{evidence_url}\n表單尚未送出。")
             return
         self.url_input.setText(evidence_url)
-        if evidence_url.startswith("http"):
+        if is_safe_https_url(evidence_url):
             self.btn_open_evidence_url.setEnabled(True)
         self.btn_submit.setText("已完成上傳，正在送出表單…")
         self.lbl_upload_status.setText(f"已完成上傳至 {destination_name}，正在帶入連結並送出表單。")
         self.pending_data["evidence_url"] = evidence_url
+        self.pending_data["upload_confirmed"] = True
         self.report_confirmed.emit(self.pending_data)
         self.accept()

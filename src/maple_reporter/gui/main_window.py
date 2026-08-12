@@ -1,51 +1,37 @@
 import os
-import sys
 import time
-import threading
-import cv2
-from PIL import Image
-from PySide6.QtCore import Qt, QThread, Signal
+import logging
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QLabel, QLineEdit, QComboBox, QSpinBox, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QTabWidget, QCheckBox,
-    QProgressDialog, QDialog, QDialogButtonBox, QInputDialog
+    QProgressDialog, QDialog, QDialogButtonBox, QInputDialog, QScrollArea
 )
 
 from maple_reporter import __version__
-from maple_reporter.utils.config import load_config, save_config, load_history, add_history_entry
-from maple_reporter.ocr.win_ocr import recognize_text_from_image, recognize_candidates_from_image_list
+from maple_reporter.utils.config import get_recordings_dir, get_user_app_data_dir
 from maple_reporter.recorder.window_recorder import (
-    get_active_window_titles, capture_screenshot, record_short_video, focus_window
+    get_active_window_titles, focus_window
+)
+from maple_reporter.recorder.audio_capture import (
+    get_audio_output_devices,
+    get_default_audio_output_name,
 )
 from maple_reporter.gdrive.drive_service import GoogleDriveManager
-from maple_reporter.automation.form_filler import submit_gamania_report
 from maple_reporter.automation.playwright_runtime import PlaywrightBrowserError
 from maple_reporter.gui.overlay import ScreenSnipperOverlay
 from maple_reporter.gui.preview_modal import ReportPreviewModal
 from maple_reporter.gui.playwright_error_dialog import show_playwright_error_dialog
+from maple_reporter.gui.evidence_capture_controller import EvidenceCaptureController
+from maple_reporter.gui.history_controller import HistoryController
+from maple_reporter.gui.replay_controller import ReplayController
+from maple_reporter.gui.settings_controller import SettingsController
+from maple_reporter.gui.submission_controller import SubmissionController
 
-class SubmitThread(QThread):
-    finished_signal = Signal(bool, str, object)
 
-    def __init__(self, data: dict):
-        super().__init__()
-        self.data = data
-
-    def run(self):
-        try:
-            success, msg = submit_gamania_report(
-                suspect_id=self.data["suspect_id"],
-                server_name=self.data["server_name"],
-                map_name=self.data["map_name"],
-                note=self.data["note"],
-                evidence_url=self.data.get("evidence_url", ""),
-                headless=False
-            )
-        except PlaywrightBrowserError as error:
-            self.finished_signal.emit(False, error.details.summary, error)
-            return
-        self.finished_signal.emit(success, msg, None)
+LOGGER = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -53,8 +39,24 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"新楓之谷：經典版《自動外掛檢舉工具》 v{__version__}")
         self.resize(900, 650)
 
-        self.cfg = load_config()
-        self.drive_mgr = GoogleDriveManager(self.cfg.get("gdrive_token_file"))
+        self.settings_controller = SettingsController()
+        self.cfg = self.settings_controller.config
+        self.history_controller = HistoryController()
+        self.capture_controller = EvidenceCaptureController()
+        self.replay_controller = ReplayController(self)
+        self.submission_controller = SubmissionController(self)
+        self.drive_mgr = GoogleDriveManager()
+        # Keep the attribute name for integrations that access the recorder,
+        # while lifecycle ownership now belongs to ReplayController.
+        self.replay_recorder = self.replay_controller.recorder
+        self.replay_recorder.state_changed.connect(self.on_replay_state_changed)
+        self.replay_recorder.replay_saved.connect(self.on_replay_saved)
+        self.replay_recorder.error_occurred.connect(self.on_replay_error)
+        self.replay_recorder.warning_occurred.connect(self.on_replay_warning)
+        self.replay_recorder.audio_source_changed.connect(
+            self.on_replay_audio_source_changed
+        )
+        self.submission_controller.finished.connect(self.on_submission_finished)
         self.snipper_overlay = ScreenSnipperOverlay()
         self.snipper_overlay.snippet_captured.connect(self.on_snippet_captured)
 
@@ -110,6 +112,23 @@ class MainWindow(QMainWindow):
         row_folder.addWidget(self.txt_gdrive_folder, 1)
         row_folder.addWidget(self.btn_open_gdrive_folder)
         g1_layout.addLayout(row_folder)
+
+        row_local_folder = QHBoxLayout()
+        row_local_folder.addWidget(QLabel("本機專案資料夾："))
+        self.txt_app_data_dir = QLineEdit(str(get_user_app_data_dir()))
+        self.txt_app_data_dir.setReadOnly(True)
+        self.txt_app_data_dir.setToolTip(
+            "程式設定、歷史紀錄、錄影與受保護設定的本機位置"
+        )
+        self.btn_open_app_data_folder = QPushButton("開啟專案資料夾")
+        self.btn_open_app_data_folder.setToolTip(
+            f"在檔案總管開啟 {get_user_app_data_dir()}"
+        )
+        self.btn_open_app_data_folder.setAccessibleName("開啟專案本機資料夾")
+        self.btn_open_app_data_folder.clicked.connect(self.open_app_data_folder)
+        row_local_folder.addWidget(self.txt_app_data_dir, 1)
+        row_local_folder.addWidget(self.btn_open_app_data_folder)
+        g1_layout.addLayout(row_local_folder)
 
         row_destination = QHBoxLayout()
         row_destination.addWidget(QLabel("上傳目的地："))
@@ -187,9 +206,65 @@ class MainWindow(QMainWindow):
         row_opts.addWidget(self.btn_clear_recordings)
         g2_layout.addLayout(row_opts)
 
-        hint = QLabel("較長錄影可取得更多 OCR 影格；同時會增加檔案大小與上傳時間。")
+        row_audio = QHBoxLayout()
+        row_audio.addWidget(QLabel("系統聲音來源："))
+        self.combo_audio_output = QComboBox()
+        self.combo_audio_output.setAccessibleName("系統聲音錄製來源")
+        self.combo_audio_output.setToolTip("選擇目前實際播放遊戲聲音的 Windows 輸出裝置")
+        self.combo_audio_output.currentIndexChanged.connect(
+            self.on_audio_output_changed
+        )
+        self.btn_refresh_audio = QPushButton("重新整理音訊裝置")
+        self.btn_refresh_audio.clicked.connect(self.refresh_audio_devices)
+        row_audio.addWidget(self.combo_audio_output, 1)
+        row_audio.addWidget(self.btn_refresh_audio)
+        g2_layout.addLayout(row_audio)
+        self.chk_record_audio.toggled.connect(self.on_record_audio_toggled)
+
+        hint = QLabel("一般錄影會在按下後開始；下方的回放緩衝會持續保留最近一段畫面。")
         hint.setObjectName("hint")
         g2_layout.addWidget(hint)
+
+        replay_group = QGroupBox("回放緩衝設定")
+        replay_layout = QVBoxLayout(replay_group)
+        replay_layout.setSpacing(10)
+
+        replay_settings = QHBoxLayout()
+        replay_settings.addWidget(QLabel("保留最近："))
+        self.spin_replay_seconds = QSpinBox()
+        self.spin_replay_seconds.setRange(10, 60)
+        self.spin_replay_seconds.setValue(30)
+        self.spin_replay_seconds.setSuffix(" 秒")
+        self.spin_replay_seconds.setAccessibleName("回放緩衝秒數")
+        replay_settings.addWidget(self.spin_replay_seconds)
+        replay_settings.addSpacing(12)
+        replay_settings.addWidget(QLabel("快速選擇："))
+        self.combo_replay_seconds = QComboBox()
+        for seconds in (10, 15, 30, 45, 60):
+            self.combo_replay_seconds.addItem(f"{seconds} 秒", seconds)
+        self.combo_replay_seconds.addItem("自訂", None)
+        self.combo_replay_seconds.setCurrentIndex(
+            self.combo_replay_seconds.findData(30)
+        )
+        self.combo_replay_seconds.setAccessibleName("快速選擇回放緩衝秒數")
+        self.combo_replay_seconds.setToolTip("快速套用常用的回放緩衝長度")
+        replay_settings.addWidget(self.combo_replay_seconds)
+        replay_settings.addStretch()
+        replay_layout.addLayout(replay_settings)
+
+        self.lbl_replay_hint = QLabel(
+            "功能說明：啟動後會像滑動時間線一樣，持續保留最近一段畫面與聲音；"
+            "超過設定秒數的內容會自動淘汰。按下「儲存最近片段」只會保存當下時間窗，"
+            "不會停止或重設背景緩衝。"
+        )
+        self.lbl_replay_hint.setWordWrap(True)
+        self.lbl_replay_hint.setObjectName("hint")
+        replay_layout.addWidget(self.lbl_replay_hint)
+        self.spin_replay_seconds.valueChanged.connect(self.on_replay_seconds_changed)
+        self.combo_replay_seconds.currentIndexChanged.connect(
+            self.on_replay_preset_changed
+        )
+        g2_layout.addWidget(replay_group)
 
         control_layout.addWidget(g2)
 
@@ -258,7 +333,40 @@ class MainWindow(QMainWindow):
         control_layout.addLayout(row_save)
 
         g4 = QGroupBox("建立回報")
-        g4_layout = QHBoxLayout(g4)
+        g4_layout = QVBoxLayout(g4)
+
+        replay_status_row = QHBoxLayout()
+        self.lbl_replay_status = QLabel("● 未啟動")
+        self.lbl_replay_status.setAccessibleName("回放緩衝狀態")
+        self.lbl_replay_status.setStyleSheet("color: #616161; font-weight: bold;")
+        self.lbl_replay_time = QLabel("00:00 / 00:30")
+        self.lbl_replay_time.setAccessibleName("目前可儲存的回放長度")
+        replay_status_row.addWidget(QLabel("回放緩衝："))
+        replay_status_row.addWidget(self.lbl_replay_status)
+        replay_status_row.addStretch()
+        replay_status_row.addWidget(self.lbl_replay_time)
+        g4_layout.addLayout(replay_status_row)
+
+        self.lbl_replay_audio_source = QLabel("音訊來源：尚未選擇")
+        self.lbl_replay_audio_source.setObjectName("hint")
+        self.lbl_replay_audio_source.setAccessibleName("回放緩衝音訊來源")
+        g4_layout.addWidget(self.lbl_replay_audio_source)
+
+        replay_actions = QHBoxLayout()
+        self.btn_toggle_replay = QPushButton("啟動回放緩衝")
+        self.btn_toggle_replay.setMinimumHeight(44)
+        self.btn_toggle_replay.setToolTip("持續保留所選遊戲視窗最近的畫面與聲音")
+        self.btn_toggle_replay.clicked.connect(self.toggle_replay_buffer)
+        self.btn_save_replay = QPushButton("儲存最近片段")
+        self.btn_save_replay.setMinimumHeight(44)
+        self.btn_save_replay.setEnabled(False)
+        self.btn_save_replay.setToolTip("儲存目前時間窗；背景緩衝不會停止或重設")
+        self.btn_save_replay.clicked.connect(self.save_replay_segment)
+        replay_actions.addWidget(self.btn_toggle_replay)
+        replay_actions.addWidget(self.btn_save_replay, 1)
+        g4_layout.addLayout(replay_actions)
+
+        capture_actions = QHBoxLayout()
 
         self.btn_trigger_snip = QPushButton("擷取畫面並辨識")
         self.btn_trigger_snip.setStyleSheet("""
@@ -301,12 +409,17 @@ class MainWindow(QMainWindow):
         """)
         self.btn_select_file.clicked.connect(self.trigger_local_file_report)
 
-        g4_layout.addWidget(self.btn_trigger_snip)
-        g4_layout.addWidget(self.btn_trigger_video)
-        g4_layout.addWidget(self.btn_select_file)
+        capture_actions.addWidget(self.btn_trigger_snip)
+        capture_actions.addWidget(self.btn_trigger_video)
+        capture_actions.addWidget(self.btn_select_file)
+        g4_layout.addLayout(capture_actions)
         control_layout.addWidget(g4)
 
-        self.tabs.addTab(tab_control, "回報設定")
+        control_scroll = QScrollArea()
+        control_scroll.setWidgetResizable(True)
+        control_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        control_scroll.setWidget(tab_control)
+        self.tabs.addTab(control_scroll, "回報設定")
 
         # Tab 2: History
         tab_history = QWidget()
@@ -337,12 +450,22 @@ class MainWindow(QMainWindow):
                 return
         webbrowser.open("https://drive.google.com/drive/my-drive")
 
+    def open_app_data_folder(self):
+        folder = get_user_app_data_dir()
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder))):
+                raise OSError("Windows 檔案總管無法開啟資料夾")
+        except (OSError, RuntimeError) as error:
+            LOGGER.warning("開啟專案資料夾失敗 (%s)", type(error).__name__)
+            QMessageBox.warning(
+                self,
+                "無法開啟專案資料夾",
+                f"請手動開啟以下路徑：\n{folder}",
+            )
+
     def on_history_cell_clicked(self, row: int, column: int):
-        if column == 4:
-            item = self.table_history.item(row, column)
-            if item and item.text().strip().startswith("http"):
-                import webbrowser
-                webbrowser.open(item.text().strip())
+        self.history_controller.open_url_from_cell(self.table_history, row, column)
 
     def update_gdrive_ui(self):
         if self.drive_mgr.is_authenticated():
@@ -408,40 +531,13 @@ class MainWindow(QMainWindow):
             self.combo_windows.setCurrentIndex(0)
 
     def load_settings_to_ui(self):
-        self.refresh_window_list()
-        self.combo_server.setCurrentText(self.cfg.get("default_server", "雪吉拉"))
-        self.txt_map.setText(self.cfg.get("default_map", "維多利亞島"))
-        self.load_templates()
-        self.spin_duration.setValue(self.cfg.get("record_duration_sec", 8))
-        fps_index = self.combo_fps.findData(self.cfg.get("record_fps", 20))
-        self.combo_fps.setCurrentIndex(max(0, fps_index))
-        self.spin_countdown.setValue(self.cfg.get("record_countdown_sec", 3))
-        self.txt_gdrive_folder.setText(self.cfg.get("gdrive_folder_name", "MapleClassic_Reports"))
-        self.txt_gemini_key.setText(self.cfg.get("gemini_api_key", ""))
-        self.txt_discord_webhook.setText(self.cfg.get("discord_webhook_url", ""))
-        destination_index = self.combo_upload_destination.findData(self.cfg.get("upload_destination", "gdrive"))
-        self.combo_upload_destination.setCurrentIndex(max(0, destination_index))
-        wl = self.cfg.get("whitelist", [])
-        self.txt_whitelist.setText(", ".join(wl) if isinstance(wl, list) else str(wl))
-        self.chk_auto_delete.setChecked(self.cfg.get("auto_delete_after_upload", False))
-        self.chk_record_audio.setChecked(self.cfg.get("record_audio", True))
+        self.settings_controller.apply_to_window(self)
 
     def load_templates(self):
-        templates = self.cfg.get("violation_templates", [])
-        if not templates:
-            templates = [{"name": "自動打怪／外掛行為", "content": self.cfg.get("default_note", "自動打怪/外掛行為")}]
-            self.cfg["violation_templates"] = templates
-        self.combo_template.blockSignals(True)
-        self.combo_template.clear()
-        for item in templates:
-            self.combo_template.addItem(item.get("name", "未命名範本"), item.get("content", ""))
-        self.combo_template.blockSignals(False)
-        self.apply_selected_template()
+        self.settings_controller.load_templates(self)
 
     def apply_selected_template(self):
-        content = self.combo_template.currentData()
-        if content is not None:
-            self.txt_note.setText(str(content))
+        self.settings_controller.apply_selected_template(self)
 
     def manage_templates(self):
         action, ok = QInputDialog.getItem(self, "管理違規範本", "選擇操作：", ["新增", "編輯目前範本", "刪除目前範本"], 0, False)
@@ -483,8 +579,7 @@ class MainWindow(QMainWindow):
         buttons.accepted.connect(dialog.accept)
         layout.addWidget(buttons)
         dialog.exec()
-        self.cfg["onboarding_completed"] = True
-        save_config(self.cfg)
+        self.settings_controller.mark_onboarding_completed()
 
     def trigger_snipping(self):
         self.hide()
@@ -495,32 +590,241 @@ class MainWindow(QMainWindow):
         self.show()
         # Save the already-cropped PIL image from overlay directly (do NOT re-screenshot with mss,
         # as the main window would then be visible and obscure the game capture).
-        from maple_reporter.utils.config import get_recordings_dir
-        import time as _time
-        rec_dir = str(get_recordings_dir())
-        file_path = os.path.join(rec_dir, f"maple_evidence_{int(_time.time())}.png")
-        pil_img.convert("RGB").save(file_path)
+        file_path = self.capture_controller.save_snippet(pil_img)
 
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
         api_key = self.txt_gemini_key.text().strip()
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
         ocr_thread = OcrWorkerThread([pil_img], api_key=api_key, whitelist=wl_list, parent=self)
+        ocr_thread.finished.connect(ocr_thread.release_keyframes)
+        ocr_thread.finished.connect(ocr_thread.deleteLater)
 
         folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
         data = {
             "suspect_id": "",
             "candidate_ids": [],
             "server_name": self.combo_server.currentText(),
-            "map_name": self.txt_map.text().strip(),
+            "map_name": "",
+            "default_map_name": self.txt_map.text().strip(),
             "note": self.txt_note.text().strip(),
             "evidence_url": "",
-            "file_path": file_path
+            "file_path": file_path,
+            "file_origin": "generated",
         }
 
         modal = ReportPreviewModal(data, drive_mgr=self.drive_mgr, folder_name=folder_name, discord_webhook_url=self.txt_discord_webhook.text(), upload_destination=self.combo_upload_destination.currentData(), ocr_thread=ocr_thread, parent=self)
         modal.report_confirmed.connect(self.execute_submission)
         modal.exec()
+        modal.dispose_when_idle()
+
+    def toggle_replay_buffer(self):
+        if self.replay_controller.is_running:
+            self.replay_controller.stop()
+            return
+
+        win_title = self.combo_windows.currentText().strip()
+        if not win_title:
+            QMessageBox.warning(self, "無法啟動回放緩衝", "請先選擇目標遊戲視窗。")
+            return
+        selected_audio_device_id = self.combo_audio_output.currentData() or ""
+        self.cfg["record_audio"] = self.chk_record_audio.isChecked()
+        self.cfg["audio_output_device_id"] = selected_audio_device_id
+        self.settings_controller.save_model()
+        if not self.chk_record_audio.isChecked():
+            self.lbl_replay_audio_source.setText("音訊來源：未錄製系統聲音")
+        self.replay_controller.start(
+            win_title,
+            fps=int(self.combo_fps.currentData()),
+            buffer_seconds=self.spin_replay_seconds.value(),
+            record_audio=self.chk_record_audio.isChecked(),
+            audio_device_id=selected_audio_device_id or None,
+        )
+
+    def refresh_audio_devices(self, preferred_device_id=None):
+        if isinstance(preferred_device_id, bool):
+            preferred_device_id = self.combo_audio_output.currentData() or ""
+        preferred_device_id = str(preferred_device_id or "")
+        default_name = get_default_audio_output_name()
+
+        self.combo_audio_output.blockSignals(True)
+        self.combo_audio_output.clear()
+        self.combo_audio_output.addItem(f"系統預設（{default_name}）", "")
+        for device_id, name in get_audio_output_devices():
+            self.combo_audio_output.addItem(name, device_id)
+        selected_index = self.combo_audio_output.findData(preferred_device_id)
+        if preferred_device_id and selected_index < 0:
+            self.combo_audio_output.addItem(
+                "先前選擇的音訊裝置目前未連線", preferred_device_id
+            )
+            selected_index = self.combo_audio_output.count() - 1
+        self.combo_audio_output.setCurrentIndex(max(0, selected_index))
+        self.combo_audio_output.blockSignals(False)
+        self.on_record_audio_toggled(self.chk_record_audio.isChecked())
+        self.update_audio_source_label()
+
+    def on_audio_output_changed(self, _index: int):
+        self.cfg["audio_output_device_id"] = (
+            self.combo_audio_output.currentData() or ""
+        )
+        self.settings_controller.save_model()
+        self.update_audio_source_label()
+
+    def update_audio_source_label(self):
+        if not hasattr(self, "lbl_replay_audio_source"):
+            return
+        if not self.chk_record_audio.isChecked():
+            text = "音訊來源：未錄製系統聲音"
+        else:
+            device_name = self.combo_audio_output.currentText().strip()
+            text = f"音訊來源：{device_name or '找不到可用裝置'}"
+        self.lbl_replay_audio_source.setText(text)
+        self.lbl_replay_audio_source.setAccessibleDescription(text)
+
+    def on_record_audio_toggled(self, enabled: bool):
+        editable = enabled and not self.replay_controller.is_running
+        self.combo_audio_output.setEnabled(editable)
+        self.btn_refresh_audio.setEnabled(editable)
+        self.update_audio_source_label()
+
+    def on_replay_audio_source_changed(self, device_name: str):
+        text = f"正在錄製音訊：{device_name}"
+        self.lbl_replay_audio_source.setText(text)
+        self.lbl_replay_audio_source.setAccessibleDescription(text)
+
+    def on_replay_seconds_changed(self, _value: int):
+        preset_index = self.combo_replay_seconds.findData(_value)
+        if preset_index < 0:
+            preset_index = self.combo_replay_seconds.count() - 1
+        self.combo_replay_seconds.blockSignals(True)
+        self.combo_replay_seconds.setCurrentIndex(preset_index)
+        self.combo_replay_seconds.blockSignals(False)
+        if not self.replay_controller.is_running:
+            self.on_replay_state_changed("idle", 0.0)
+
+    def on_replay_preset_changed(self, _index: int):
+        seconds = self.combo_replay_seconds.currentData()
+        if seconds is not None:
+            self.spin_replay_seconds.setValue(int(seconds))
+
+    def save_replay_segment(self):
+        if not self.replay_controller.save():
+            QMessageBox.information(
+                self,
+                "片段尚未就緒",
+                "請先啟動回放緩衝並等待至少幾秒，再儲存最近片段。",
+            )
+
+    def on_replay_state_changed(self, state: str, duration: float):
+        total = self.spin_replay_seconds.value()
+        elapsed = min(total, max(0, int(duration)))
+
+        def clock(seconds: int) -> str:
+            return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+        self.lbl_replay_time.setText(f"{clock(elapsed)} / {clock(total)}")
+        self.lbl_replay_time.setAccessibleDescription(
+            f"已緩衝 {elapsed} 秒，共可保留 {total} 秒"
+        )
+
+        running_states = {"warming", "ready", "saving", "stopping"}
+        running = state in running_states
+        saving = state == "saving"
+        self.combo_windows.setEnabled(not running)
+        self.btn_refresh_wins.setEnabled(not running)
+        self.combo_fps.setEnabled(not running)
+        self.chk_record_audio.setEnabled(not running)
+        self.combo_audio_output.setEnabled(not running and self.chk_record_audio.isChecked())
+        self.btn_refresh_audio.setEnabled(not running and self.chk_record_audio.isChecked())
+        self.spin_replay_seconds.setEnabled(not running)
+        self.combo_replay_seconds.setEnabled(not running)
+        self.btn_toggle_replay.setEnabled(state not in {"saving", "stopping"})
+
+        if state == "idle":
+            self.update_audio_source_label()
+            self.lbl_replay_status.setText("● 未啟動")
+            self.lbl_replay_status.setStyleSheet("color: #616161; font-weight: bold;")
+            self.btn_toggle_replay.setText("啟動回放緩衝")
+            self.btn_save_replay.setText("儲存最近片段")
+            self.btn_save_replay.setEnabled(False)
+        elif state == "warming":
+            self.lbl_replay_status.setText("● 正在建立緩衝")
+            self.lbl_replay_status.setStyleSheet("color: #ad6800; font-weight: bold;")
+            self.btn_toggle_replay.setText("停止回放緩衝")
+            self.btn_save_replay.setText("儲存目前片段")
+            self.btn_save_replay.setEnabled(duration >= 3.0)
+        elif state == "ready":
+            self.lbl_replay_status.setText("● 可儲存最近片段")
+            self.lbl_replay_status.setStyleSheet("color: #1b5e20; font-weight: bold;")
+            self.btn_toggle_replay.setText("停止回放緩衝")
+            self.btn_save_replay.setText(f"儲存最近 {total} 秒")
+            self.btn_save_replay.setEnabled(True)
+        elif state == "saving":
+            self.lbl_replay_status.setText("● 正在儲存片段，緩衝持續中")
+            self.lbl_replay_status.setStyleSheet("color: #0d47a1; font-weight: bold;")
+            self.btn_toggle_replay.setText("停止回放緩衝")
+            self.btn_save_replay.setText("正在儲存片段…")
+            self.btn_save_replay.setEnabled(False)
+        elif state == "stopping":
+            self.lbl_replay_status.setText("● 正在停止回放緩衝")
+            self.lbl_replay_status.setStyleSheet("color: #616161; font-weight: bold;")
+            self.btn_toggle_replay.setText("正在停止…")
+            self.btn_save_replay.setText("無法儲存")
+            self.btn_save_replay.setEnabled(False)
+        elif state == "error":
+            self.lbl_replay_status.setText("● 回放緩衝發生錯誤")
+            self.lbl_replay_status.setStyleSheet("color: #b71c1c; font-weight: bold;")
+            self.btn_toggle_replay.setText("重新啟動回放緩衝")
+            self.btn_save_replay.setText("無法儲存")
+            self.btn_save_replay.setEnabled(False)
+
+        self.lbl_replay_status.setAccessibleDescription(self.lbl_replay_status.text())
+
+    def on_replay_saved(self, file_path: str, keyframes):
+        self.open_generated_video_preview(file_path, keyframes)
+
+    def on_replay_error(self, message: str):
+        if not self.replay_controller.is_running:
+            self.replay_controller.stop()
+        QMessageBox.warning(self, "回放緩衝", message)
+
+    def on_replay_warning(self, message: str):
+        QMessageBox.information(self, "回放緩衝音訊", message)
+
+    def open_generated_video_preview(self, file_path: str, keyframes):
+        from maple_reporter.ocr.ocr_worker import OcrWorkerThread
+
+        api_key = self.txt_gemini_key.text().strip()
+        wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
+        ocr_thread = OcrWorkerThread(
+            keyframes, api_key=api_key, whitelist=wl_list, parent=self
+        )
+        ocr_thread.finished.connect(ocr_thread.release_keyframes)
+        ocr_thread.finished.connect(ocr_thread.deleteLater)
+        folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
+        data = {
+            "suspect_id": "",
+            "candidate_ids": [],
+            "server_name": self.combo_server.currentText(),
+            "map_name": "",
+            "default_map_name": self.txt_map.text().strip(),
+            "note": self.txt_note.text().strip(),
+            "evidence_url": "",
+            "file_path": file_path,
+            "file_origin": "generated",
+        }
+        modal = ReportPreviewModal(
+            data,
+            drive_mgr=self.drive_mgr,
+            folder_name=folder_name,
+            discord_webhook_url=self.txt_discord_webhook.text(),
+            upload_destination=self.combo_upload_destination.currentData(),
+            ocr_thread=ocr_thread,
+            parent=self,
+        )
+        modal.report_confirmed.connect(self.execute_submission)
+        modal.exec()
+        modal.dispose_when_idle()
 
     def trigger_video_report(self):
         win_title = self.combo_windows.currentText()
@@ -571,13 +875,14 @@ class MainWindow(QMainWindow):
             QCoreApplication.processEvents()
 
         # Record video and extract keyframes
-        file_path, keyframes = record_short_video(
+        file_path, keyframes = self.capture_controller.record_video(
             win_title,
             duration_sec=duration,
             fps=fps,
             progress_callback=update_progress,
             cancel_checker=lambda: progress.wasCanceled(),
-            record_audio=self.chk_record_audio.isChecked()
+            record_audio=self.chk_record_audio.isChecked(),
+            audio_device_id=self.combo_audio_output.currentData() or None,
         )
 
         user_canceled = progress.wasCanceled()
@@ -586,27 +891,7 @@ class MainWindow(QMainWindow):
         if user_canceled or not file_path:
             return
 
-        # Open the preview immediately; the background worker runs local OCR only.
-        from maple_reporter.ocr.ocr_worker import OcrWorkerThread
-        api_key = self.txt_gemini_key.text().strip()
-        wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
-
-        ocr_thread = OcrWorkerThread(keyframes, api_key=api_key, whitelist=wl_list, parent=self)
-
-        folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
-        data = {
-            "suspect_id": "",
-            "candidate_ids": [],
-            "server_name": self.combo_server.currentText(),
-            "map_name": self.txt_map.text().strip(),
-            "note": self.txt_note.text().strip(),
-            "evidence_url": "",
-            "file_path": file_path
-        }
-
-        modal = ReportPreviewModal(data, drive_mgr=self.drive_mgr, folder_name=folder_name, discord_webhook_url=self.txt_discord_webhook.text(), upload_destination=self.combo_upload_destination.currentData(), ocr_thread=ocr_thread, parent=self)
-        modal.report_confirmed.connect(self.execute_submission)
-        modal.exec()
+        self.open_generated_video_preview(file_path, keyframes)
 
     def trigger_local_file_report(self):
         from PySide6.QtWidgets import QFileDialog
@@ -619,98 +904,51 @@ class MainWindow(QMainWindow):
         if not file_path or not os.path.exists(file_path):
             return
 
-        ext = os.path.splitext(file_path)[1].lower()
-        keyframes = []
-
-        if ext in [".mp4", ".mkv", ".avi", ".mov"]:
-            import cv2
-            cap = cv2.VideoCapture(file_path)
-            fps = cap.get(cv2.CAP_PROP_FPS) or 20
-            step = max(1, int(fps * 1.5))
-            frame_idx = 0
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                if frame_idx % step == 0:
-                    keyframes.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
-                frame_idx += 1
-            cap.release()
-        else:
-            try:
-                keyframes = [Image.open(file_path)]
-            except Exception as e:
-                QMessageBox.warning(self, "讀取失敗", f"無法開啟圖片檔案: {str(e)}")
-                return
+        keyframes = self.capture_controller.load_keyframes(file_path)
+        if not keyframes:
+            QMessageBox.warning(self, "讀取失敗", "無法從本機事證讀取可辨識的影格。")
+            return
 
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
         api_key = self.txt_gemini_key.text().strip()
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
         ocr_thread = OcrWorkerThread(keyframes, api_key=api_key, whitelist=wl_list, parent=self)
+        ocr_thread.finished.connect(ocr_thread.release_keyframes)
+        ocr_thread.finished.connect(ocr_thread.deleteLater)
 
         folder_name = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
         data = {
             "suspect_id": "",
             "candidate_ids": [],
             "server_name": self.combo_server.currentText(),
-            "map_name": self.txt_map.text().strip(),
+            "map_name": "",
+            "default_map_name": self.txt_map.text().strip(),
             "note": self.txt_note.text().strip(),
             "evidence_url": "",
-            "file_path": file_path
+            "file_path": file_path,
+            "file_origin": "imported",
         }
 
         modal = ReportPreviewModal(data, drive_mgr=self.drive_mgr, folder_name=folder_name, discord_webhook_url=self.txt_discord_webhook.text(), upload_destination=self.combo_upload_destination.currentData(), ocr_thread=ocr_thread, parent=self)
         modal.report_confirmed.connect(self.execute_submission)
         modal.exec()
+        modal.dispose_when_idle()
 
     def save_settings(self):
         """Persist all current UI field values to config.json."""
-        self.cfg["default_server"] = self.combo_server.currentText()
-        self.cfg["default_map"] = self.txt_map.text().strip()
-        self.cfg["default_note"] = self.txt_note.text().strip()
-        self.cfg["selected_window_title"] = self.combo_windows.currentText()
-        self.cfg["record_duration_sec"] = self.spin_duration.value()
-        self.cfg["record_fps"] = int(self.combo_fps.currentData())
-        self.cfg["record_countdown_sec"] = self.spin_countdown.value()
-        self.cfg["gdrive_folder_name"] = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
-        self.cfg["gemini_api_key"] = self.txt_gemini_key.text().strip()
-        self.cfg["discord_webhook_url"] = self.txt_discord_webhook.text().strip()
-        self.cfg["upload_destination"] = self.combo_upload_destination.currentData()
-        wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
-        self.cfg["whitelist"] = wl_list
-        self.cfg["auto_delete_after_upload"] = self.chk_auto_delete.isChecked()
-        self.cfg["record_audio"] = self.chk_record_audio.isChecked()
-        save_config(self.cfg)
+        self.settings_controller.save_from_window(self)
         self.btn_save_settings.setText("已儲存")
         from PySide6.QtCore import QTimer
         QTimer.singleShot(2000, lambda: self.btn_save_settings.setText("儲存設定"))
 
     def execute_submission(self, confirmed_data: dict):
-        self.cfg["default_server"] = confirmed_data.get("server_name", "雪吉拉")
-        self.cfg["default_map"] = confirmed_data.get("map_name", "維多利亞島")
-        self.txt_map.setText(self.cfg["default_map"])
-        self.cfg["default_note"] = confirmed_data.get("note", "自動打怪/外掛行為")
-        self.cfg["selected_window_title"] = self.combo_windows.currentText()
-        self.cfg["record_duration_sec"] = self.spin_duration.value()
-        self.cfg["record_fps"] = int(self.combo_fps.currentData())
-        self.cfg["record_countdown_sec"] = self.spin_countdown.value()
-        self.cfg["gdrive_folder_name"] = self.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
-        self.cfg["gemini_api_key"] = self.txt_gemini_key.text().strip()
-        self.cfg["discord_webhook_url"] = self.txt_discord_webhook.text().strip()
-        self.cfg["upload_destination"] = self.combo_upload_destination.currentData()
-        wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
-        self.cfg["whitelist"] = wl_list
-        self.cfg["auto_delete_after_upload"] = self.chk_auto_delete.isChecked()
-        save_config(self.cfg)
-        self.submit_thread = SubmitThread(confirmed_data)
-        self.submit_thread.finished_signal.connect(
-            lambda ok, msg, error: self.on_submission_finished(ok, msg, confirmed_data, error)
-        )
-        self.submit_thread.start()
+        self.txt_map.setText(confirmed_data.get("map_name", "維多利亞島"))
+        self.settings_controller.save_from_window(self)
+        if not self.submission_controller.submit(confirmed_data):
+            QMessageBox.information(self, "送出中", "已有另一筆表單正在送出，請稍候。")
 
     def clear_all_recordings(self):
-        from maple_reporter.utils.config import get_recordings_dir
         rec_dir = get_recordings_dir()
         files = [f for f in rec_dir.iterdir() if f.is_file()]
         if not files:
@@ -729,16 +967,19 @@ class MainWindow(QMainWindow):
                 try:
                     f.unlink()
                     deleted += 1
-                except Exception:
-                    pass
+                except OSError as error:
+                    LOGGER.warning(
+                        "清理錄影檔案失敗 (%s: %s)", f.name, type(error).__name__
+                    )
             QMessageBox.information(self, "清理完成", f"已成功刪除 {deleted} 個檔案！")
 
     def closeEvent(self, event):
         """Persist local settings, including the masked Gemini key, on exit."""
+        self.replay_controller.stop()
         self.save_settings()
         event.accept()
 
-    def on_submission_finished(self, ok: bool, msg: str, data: dict, error=None):
+    def on_submission_finished(self, ok: bool, msg: str, error, data: dict):
         status_str = "成功" if ok else "失敗"
         entry = {
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -748,17 +989,14 @@ class MainWindow(QMainWindow):
             "url": data.get("evidence_url", ""),
             "status": status_str
         }
-        add_history_entry(entry)
+        self.history_controller.add(entry)
         self.refresh_history_table()
 
         if ok:
-            if self.chk_auto_delete.isChecked():
-                file_path = data.get("file_path")
-                if file_path and os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                    except Exception:
-                        pass
+            if self.chk_auto_delete.isChecked() and SubmissionController.can_delete_evidence(
+                data, form_confirmed=True
+            ):
+                SubmissionController.delete_confirmed_evidence(data)
             QMessageBox.information(self, "成功", msg)
         elif isinstance(error, PlaywrightBrowserError):
             show_playwright_error_dialog(self, error)
@@ -766,21 +1004,4 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "失敗", msg)
 
     def refresh_history_table(self):
-        history = load_history()
-        self.table_history.setRowCount(len(history))
-        for row, item in enumerate(history):
-            self.table_history.setItem(row, 0, QTableWidgetItem(item.get("time", "")))
-            self.table_history.setItem(row, 1, QTableWidgetItem(item.get("suspect_id", "")))
-            self.table_history.setItem(row, 2, QTableWidgetItem(item.get("server", "")))
-            self.table_history.setItem(row, 3, QTableWidgetItem(item.get("map", "")))
-
-            url_text = item.get("url", "")
-            url_item = QTableWidgetItem(url_text)
-            if url_text.startswith("http"):
-                url_item.setForeground(Qt.GlobalColor.blue)
-                font = url_item.font()
-                font.setUnderline(True)
-                url_item.setFont(font)
-                url_item.setToolTip("點擊前往開啟雲端事證網址")
-            self.table_history.setItem(row, 4, url_item)
-            self.table_history.setItem(row, 5, QTableWidgetItem(item.get("status", "")))
+        self.history_controller.refresh_table(self.table_history)

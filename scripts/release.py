@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""
-Automated Release Workflow Script for Maple Classic Auto Reporter.
+"""Safe, explicit release workflow for Maple Classic Auto Reporter.
 
-Usage:
-    python scripts/release.py                      # Interactive mode
-    python scripts/release.py --type minor         # Bump minor version (v1.0.0 -> v1.1.0)
-    python scripts/release.py --type patch         # Bump patch version (v1.1.0 -> v1.1.1)
-    python scripts/release.py --type major         # Bump major version (v1.0.0 -> v2.0.0)
-    python scripts/release.py --version 1.0.0      # Set explicit version
+The script is intentionally conservative: it refuses to start from a dirty
+worktree, creates a new commit/tag without force operations, builds from that
+exact commit, and only pushes after the build succeeds.
 """
+
+from __future__ import annotations
 
 import argparse
-import os
 import re
 import shutil
 import subprocess
@@ -26,6 +23,40 @@ README_MD = ROOT_DIR / "README.md"
 CONTEXT_MD = ROOT_DIR / "CONTEXT.md"
 DIST_DIR = ROOT_DIR / "dist"
 BUILD_SCRIPT = ROOT_DIR / "scripts" / "build_windows.ps1"
+SENSITIVE_PATH_PARTS = {
+    "build_secrets",
+    "client_secrets.json",
+    "google_oauth_client.json",
+    "token.json",
+    ".dpapi",
+}
+
+
+def _run_git(*arguments: str, capture_output: bool = False) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=ROOT_DIR,
+        check=True,
+        text=True,
+        capture_output=capture_output,
+    )
+
+
+def get_worktree_status() -> list[str]:
+    result = _run_git(
+        "status", "--porcelain=v1", "--untracked-files=all", capture_output=True
+    )
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def ensure_clean_worktree() -> None:
+    dirty = get_worktree_status()
+    if dirty:
+        preview = "\n".join(dirty[:20])
+        raise RuntimeError(
+            "Release requires a clean worktree. Commit or stash these changes first:\n"
+            + preview
+        )
 
 
 def get_current_version() -> str:
@@ -39,7 +70,7 @@ def get_current_version() -> str:
 def parse_semver(version_str: str) -> tuple[int, int, int]:
     clean = version_str.lstrip("v")
     parts = clean.split(".")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
         raise ValueError(f"Invalid semver string: '{version_str}'")
     return int(parts[0]), int(parts[1]), int(parts[2])
 
@@ -48,15 +79,14 @@ def calculate_next_version(current: str, bump_type: str) -> str:
     major, minor, patch = parse_semver(current)
     if bump_type == "major":
         return f"{major + 1}.0.0"
-    elif bump_type == "minor":
+    if bump_type == "minor":
         return f"{major}.{minor + 1}.0"
-    elif bump_type == "patch":
+    if bump_type == "patch":
         return f"{major}.{minor}.{patch + 1}"
-    else:
-        raise ValueError(f"Unknown bump type: '{bump_type}'")
+    raise ValueError(f"Unknown bump type: '{bump_type}'")
 
 
-def update_file_version(file_path: Path, pattern: str, replacement: str):
+def update_file_version(file_path: Path, pattern: str, replacement: str) -> None:
     if not file_path.exists():
         return
     text = file_path.read_text(encoding="utf-8")
@@ -65,148 +95,165 @@ def update_file_version(file_path: Path, pattern: str, replacement: str):
     print(f"  [OK] Updated {file_path.name}")
 
 
-def update_all_version_files(new_version: str):
+def update_all_version_files(new_version: str) -> None:
+    parse_semver(new_version)
     print(f"\n[1/6] Updating version string to '{new_version}' across codebase...")
-
-    # 1. src/maple_reporter/__init__.py
     update_file_version(
         INIT_PY,
         r'__version__\s*=\s*["\'][^"\']+["\']',
-        f'__version__ = "{new_version}"'
+        f'__version__ = "{new_version}"',
     )
-
-    # 2. pyproject.toml
     update_file_version(
         PYPROJECT_TOML,
         r'(version\s*=\s*["\'])[^"\']+(["\'])',
-        rf'\g<1>{new_version}\g<2>'
+        rf"\g<1>{new_version}\g<2>",
     )
-
-    # 3. README.md
-    update_file_version(
-        README_MD,
-        r'v\d+\.\d+\.\d+',
-        f'v{new_version}'
-    )
-
-    # 4. CONTEXT.md
-    update_file_version(
-        CONTEXT_MD,
-        r'v\d+\.\d+\.\d+',
-        f'v{new_version}'
-    )
+    update_file_version(README_MD, r'v\d+\.\d+\.\d+', f"v{new_version}")
+    update_file_version(CONTEXT_MD, r'v\d+\.\d+\.\d+', f"v{new_version}")
 
 
-def run_unit_tests():
+def run_unit_tests() -> None:
     print("\n[2/6] Running unit test suite...")
-    venv_python = ROOT_DIR / ".venv" / "Scripts" / "python.exe"
-    python_cmd = str(venv_python) if venv_python.exists() else sys.executable
-
-    res = subprocess.run([python_cmd, "-m", "unittest", "discover", "tests"], cwd=ROOT_DIR)
-    if res.returncode != 0:
-        print("\n[ERROR] Unit tests failed! Aborting release.")
-        sys.exit(1)
+    python_cmd = sys.executable
+    result = subprocess.run(
+        [python_cmd, "-m", "unittest", "discover", "tests"], cwd=ROOT_DIR
+    )
+    if result.returncode != 0:
+        raise RuntimeError("Unit tests failed; release was not pushed.")
     print("  [OK] All unit tests passed!")
 
 
-def build_executable():
+def build_executable(expected_commit: str | None = None) -> Path:
     print("\n[3/6] Compiling standalone EXE with PyInstaller...")
-    cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(BUILD_SCRIPT)]
-    res = subprocess.run(cmd, cwd=ROOT_DIR)
-    if res.returncode != 0:
-        print("\n[ERROR] PyInstaller build failed! Aborting release.")
-        sys.exit(1)
+    if expected_commit:
+        actual_commit = _run_git("rev-parse", "HEAD", capture_output=True).stdout.strip()
+        if actual_commit != expected_commit:
+            raise RuntimeError("Build source changed after the release commit was created.")
+    result = subprocess.run(
+        ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(BUILD_SCRIPT)],
+        cwd=ROOT_DIR,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("PyInstaller build failed; release was not pushed.")
 
     exe_path = DIST_DIR / "MapleClassicReporter.exe"
     if not exe_path.exists():
-        print(f"\n[ERROR] Compiled EXE not found at '{exe_path}'!")
-        sys.exit(1)
-    print("  [OK] Successfully compiled MapleClassicReporter.exe!")
+        raise RuntimeError(f"Compiled EXE not found at '{exe_path}'.")
+    print(f"  [OK] Successfully compiled {exe_path}")
+    return exe_path
 
 
 def zip_release(new_version: str) -> Path:
     print("\n[4/6] Packaging release ZIP...")
     exe_path = DIST_DIR / "MapleClassicReporter.exe"
-    zip_name = f"MapleClassicReporter-v{new_version}-windows-x64.zip"
-    zip_path = DIST_DIR / zip_name
-
+    if not exe_path.exists():
+        raise RuntimeError("Cannot package a missing executable.")
+    zip_path = DIST_DIR / f"MapleClassicReporter-v{new_version}-windows-x64.zip"
     if zip_path.exists():
         zip_path.unlink()
-
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(exe_path, arcname="MapleClassicReporter.exe")
-
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.write(exe_path, arcname="MapleClassicReporter.exe")
     print(f"  [OK] Created {zip_path} ({zip_path.stat().st_size / 1024 / 1024:.2f} MB)")
     return zip_path
 
 
-def git_commit_tag_push(new_version: str):
-    print("\n[5/6] Performing Git commit, tagging, and push...")
-    tag_name = f"v{new_version}"
+def _assert_tag_does_not_exist(tag_name: str) -> None:
+    local = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/tags/{tag_name}"],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+    )
+    if local.returncode == 0:
+        raise RuntimeError(f"Tag {tag_name} already exists locally; refusing to overwrite it.")
 
-    # Explicitly add only version-managed files to ensure no unignored data files are committed
-    files_to_stage = [
-        "src/maple_reporter/__init__.py",
-        "src/maple_reporter/gui/main_window.py",
-        "pyproject.toml",
-        "README.md",
-        "CONTEXT.md",
-        "tests/test_modules.py",
-        "scripts/",
-        ".github/"
-    ]
-    subprocess.run(["git", "add"] + files_to_stage, cwd=ROOT_DIR, check=True)
-
-    # Check if there are staged changes to commit
-    diff_res = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT_DIR)
-    if diff_res.returncode != 0:
-        subprocess.run(["git", "commit", "-m", f"release: {tag_name}"], cwd=ROOT_DIR, check=True)
-    else:
-        print("  [NOTICE] No staged changes to commit.")
-
-    # Remove tag if exists locally
-    subprocess.run(["git", "tag", "-d", tag_name], cwd=ROOT_DIR, capture_output=True)
-    subprocess.run(["git", "tag", tag_name], cwd=ROOT_DIR, check=True)
-
-    print("  Pushing commits and tags to GitHub...")
-    subprocess.run(["git", "push", "origin", "main"], cwd=ROOT_DIR, check=True)
-    subprocess.run(["git", "push", "origin", tag_name, "--force"], cwd=ROOT_DIR, check=True)
-    print("  [OK] Git commit, tag, and push completed!")
+    remote = subprocess.run(
+        ["git", "ls-remote", "--exit-code", "--tags", "origin", f"refs/tags/{tag_name}"],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+    )
+    if remote.returncode == 0:
+        raise RuntimeError(f"Tag {tag_name} already exists on origin; refusing to overwrite it.")
 
 
-def publish_github_release(new_version: str, zip_path: Path):
+def create_release_commit_and_tag(new_version: str) -> tuple[str, str]:
+    """Stage all intended changes, commit, and create a non-overwriting tag."""
+
+    tag_name = f"v{parse_semver(new_version)[0]}.{parse_semver(new_version)[1]}.{parse_semver(new_version)[2]}"
+    _assert_tag_does_not_exist(tag_name)
+    _run_git("add", "-A")
+    staged = _run_git("diff", "--cached", "--name-only", capture_output=True).stdout.splitlines()
+    for path in staged:
+        normalized = path.replace("\\", "/")
+        if any(part in normalized for part in SENSITIVE_PATH_PARTS):
+            _run_git("reset", "--", path)
+            raise RuntimeError(f"Refusing to stage sensitive release path: {path}")
+    if not staged:
+        raise RuntimeError("No staged changes are available for the release commit.")
+
+    print("\n[5/6] Creating release commit and tag...")
+    _run_git("commit", "-m", f"release: {tag_name}")
+    commit_hash = _run_git("rev-parse", "HEAD", capture_output=True).stdout.strip()
+    _run_git("tag", "-a", tag_name, commit_hash, "-m", f"Release {tag_name}")
+    return commit_hash, tag_name
+
+
+def push_release(commit_hash: str, tag_name: str) -> None:
+    current_branch = _run_git("branch", "--show-current", capture_output=True).stdout.strip()
+    if not current_branch:
+        raise RuntimeError("Release must run from a named branch, not detached HEAD.")
+    actual_commit = _run_git("rev-parse", "HEAD", capture_output=True).stdout.strip()
+    if actual_commit != commit_hash:
+        raise RuntimeError("HEAD changed before push; refusing to publish a different commit.")
+    subprocess.run(["git", "push", "origin", current_branch], cwd=ROOT_DIR, check=True)
+    # No --force: an existing remote tag is a hard failure instead of an
+    # overwrite. The tag points to the explicit commit created above.
+    subprocess.run(["git", "push", "origin", tag_name], cwd=ROOT_DIR, check=True)
+
+
+def git_commit_tag_push(new_version: str) -> None:
+    """Compatibility entry point: create, then safely push a release."""
+
+    commit_hash, tag_name = create_release_commit_and_tag(new_version)
+    push_release(commit_hash, tag_name)
+
+
+def publish_github_release(new_version: str, zip_path: Path) -> None:
     print("\n[6/6] Publishing GitHub Release with auto-generated notes...")
     tag_name = f"v{new_version}"
     gh_cmd = shutil.which("gh")
-
     if not gh_cmd:
         print("  [NOTICE] GitHub CLI ('gh') is not installed locally.")
-        print("  GitHub Actions workflow will complete the release automatically upon tag push!")
+        print("  GitHub Actions will publish the release after the tag push.")
         return
+    result = subprocess.run(
+        [
+            gh_cmd,
+            "release",
+            "create",
+            tag_name,
+            str(zip_path),
+            "--title",
+            tag_name,
+            "--generate-notes",
+        ],
+        cwd=ROOT_DIR,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("GitHub Release creation failed after the safe tag push.")
 
-    cmd = [
-        gh_cmd, "release", "create", tag_name,
-        str(zip_path),
-        "--title", f"v{new_version}",
-        "--generate-notes"
-    ]
-    res = subprocess.run(cmd, cwd=ROOT_DIR)
-    if res.returncode == 0:
-        print("  [OK] GitHub Release successfully created with auto-generated release notes!")
-    else:
-        print("  [WARNING] gh release command failed. GitHub Actions will handle release publishing.")
 
-
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Maple Classic Auto Reporter Release Tool")
-    parser.add_argument("--type", choices=["major", "minor", "patch"], help="Bump type (major, minor, patch)")
+    parser.add_argument("--type", choices=["major", "minor", "patch"], help="Bump type")
     parser.add_argument("--version", help="Explicit version string (e.g. 1.0.0)")
     parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
-
     args = parser.parse_args()
+
+    ensure_clean_worktree()
     current_version = get_current_version()
-    print(f"=== Maple Classic Auto Reporter Release Tool ===")
-    print(f"Current version: v{current_version}")
+    print(f"=== Maple Classic Auto Reporter Release Tool ===\nCurrent version: v{current_version}")
 
     if args.version:
         new_version = args.version.lstrip("v")
@@ -215,13 +262,7 @@ def main():
     elif args.yes:
         new_version = calculate_next_version(current_version, "minor")
     else:
-        print("\nSelect release bump type:")
-        print(f"  1) Major (重大破壞性更新: v{current_version} -> v{calculate_next_version(current_version, 'major')})")
-        print(f"  2) Minor (功能更新: v{current_version} -> v{calculate_next_version(current_version, 'minor')})")
-        print(f"  3) Patch (Bug 修復: v{current_version} -> v{calculate_next_version(current_version, 'patch')})")
-        print(f"  4) Custom (自訂版本號)")
-
-        choice = input("\nEnter choice (1-4) [default: 2]: ").strip() or "2"
+        choice = input("Choose bump type: 1=major, 2=minor, 3=patch, 4=custom [2]: ").strip() or "2"
         if choice == "1":
             new_version = calculate_next_version(current_version, "major")
         elif choice == "2":
@@ -231,27 +272,27 @@ def main():
         elif choice == "4":
             new_version = input("Enter custom version (e.g. 1.0.0): ").strip().lstrip("v")
         else:
-            print("Invalid choice. Exiting.")
-            sys.exit(1)
+            raise SystemExit("Invalid choice.")
+    parse_semver(new_version)
 
     print(f"\n>>> Target Release Version: v{new_version} <<<")
     if not (args.version or args.type or args.yes):
-        confirm = input("Proceed with release? (y/N): ").strip().lower()
-        if confirm != "y":
-            print("Release canceled.")
-            sys.exit(0)
+        if input("Proceed with release? (y/N): ").strip().lower() != "y":
+            raise SystemExit("Release canceled.")
 
     update_all_version_files(new_version)
     run_unit_tests()
-    build_executable()
+    commit_hash, tag_name = create_release_commit_and_tag(new_version)
+    build_executable(expected_commit=commit_hash)
     zip_path = zip_release(new_version)
-    git_commit_tag_push(new_version)
+    push_release(commit_hash, tag_name)
     publish_github_release(new_version, zip_path)
-
-    print(f"\n==========================================")
-    print(f" SUCCESS! Release v{new_version} published!")
-    print(f"==========================================")
+    print(f"\nSUCCESS! Release {tag_name} published.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (RuntimeError, ValueError) as error:
+        print(f"[ERROR] {error}", file=sys.stderr)
+        raise SystemExit(1)
