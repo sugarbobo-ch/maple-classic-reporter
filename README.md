@@ -1,4 +1,4 @@
-# 新楓之谷：經典版《自動外掛檢舉工具》 v1.1.0 (MapleStory Classic Auto Reporter)
+# 新楓之谷：經典版《自動外掛檢舉工具》 v1.1.1 (MapleStory Classic Auto Reporter)
 
 開源桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，快速舉報違規外掛。
 
@@ -12,7 +12,7 @@
 1. **RapidOCR 本機識別**：從程式介面按下「擷取畫面並辨識」或「錄製影片並辨識」，自動辨識遊戲畫面中的疑似外掛角色 ID；RapidOCR 無法使用時會退回 Windows OCR。
 2. **指定視窗自動錄影/截圖**：選擇錄影秒數與 15–60 FPS。採用真實時間動態補幀技術，確保生成的影片總秒數與現實秒數精準 1:1 對應（1.0x 正常播放速度）。
 3. **系統聲音同步錄音 (Audio)**：可勾選同步錄製系統音效/遊戲聲音，採用 WASAPI Loopback 背景擷取並以 PyAV 原生合成為標準 AAC + H.264 MP4 檔案。
-4. **回放緩衝**：可持續保留最近 10–60 秒的遊戲畫面與系統聲音，發現違規時按「儲存最近片段」即可保存事證，不必事後回想發生時間。
+4. **回放緩衝**：可持續保留最近 10–60 秒的遊戲畫面與系統聲音，發現違規時按「儲存最近片段」即可保存事證；最後 5 秒會以每 0.5 秒一張的密度取樣 OCR 截圖，提高事件尾端的辨識機會。
 5. **倒數與錄影隨時取消**：倒數、一般錄影與回放儲存流程皆可取消，並自動清理未完成的暫存檔。
 6. **本機 OCR 與手動 AI 複核**：以 RapidOCR 辨識角色 ID 與地圖名稱；需要時才以 Gemini 複核單一影格，不會自動上傳整段影片。
 7. **地圖目錄與候選過濾**：針對小地圖、角色名稱、公會／勳章文字做分區辨識、地圖名稱校正、候選排序與白名單過濾，減少誤判。
@@ -20,18 +20,14 @@
 9. **安全的 Google OAuth 與設定保存**：OAuth refresh token、Gemini API Key 與 Discord Webhook 使用 Windows DPAPI 保護，不把使用者機密寫入明文設定檔。
 10. **上傳成功確認與安全清理**：只有在雲端上傳及官方表單收到明確成功回應後，才會依設定刪除本機事證，避免誤刪未送出的證據。
 11. **一鍵開啟雲端資料夾與歷史紀錄**：提供 Google Drive 資料夾、事證網址與過往檢舉歷史的快速開啟功能。
-12. **可攜式快速啟動發行版**：Windows 版以 onedir bundle 發行，Chromium、driver 與 RapidOCR 資源隨資料夾提供，不需要安裝 Python、uv 或 Chrome，也不會每次啟動解壓大型 one-file EXE。
+12. **可攜式 onedir 發行版**：Windows 版以 onedir bundle 發行，Chromium、driver 與 RapidOCR 資源隨資料夾提供，不需要安裝 Python、uv 或 Chrome，也不會每次啟動解壓大型 one-file EXE。
 
-## v1.1.0 更新內容
+## v1.1.1 更新內容
 
 相較於上一版 `v1.1.0`，本版重點如下：
 
-- 新增回放緩衝，可保存最近一段畫面與系統聲音。
-- OCR 拆分為地圖辨識、候選排序、影像前處理與背景 worker，提升辨識穩定性並降低 UI 卡頓。
-- 新增 Google OAuth DPAPI 保護、Discord/Gemini 機密保護、URL 驗證與更嚴格的上傳成功確認。
-- 影片錄製、音訊合併、取消流程與本機事證清理更加穩定，並補上對應測試。
-- Windows 發行版改用 onedir：主程式與 Chromium 資源放在同一個資料夾，啟動時不再解壓約 1 GB 的暫存內容。
-- Release CI/CD 加入鎖定依賴、單元測試、建置、完整資料夾 ZIP 與版本化 release notes 驗證。
+- 回放緩衝影片維持原本的 FPS；儲存時最後 5 秒改為每 0.5 秒提供一張 OCR 截圖，增加抓到事件尾端的機會。
+- 簡化主視窗標題，改為只顯示產品名稱與版本號。
 
 ## 快速開始
 
@@ -71,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 ```powershell
 Compress-Archive `
   -LiteralPath .\dist\MapleClassicReporter `
-  -DestinationPath .\dist\MapleClassicReporter-v1.1.0-windows-x64.zip `
+  -DestinationPath .\dist\MapleClassicReporter-v1.1.1-windows-x64.zip `
   -CompressionLevel Optimal -Force
 ```
 

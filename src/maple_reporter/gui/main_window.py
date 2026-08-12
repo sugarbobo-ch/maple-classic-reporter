@@ -257,6 +257,7 @@ class MainWindow(QMainWindow):
         self.lbl_replay_hint = QLabel(
             "功能說明：啟動後會像滑動時間線一樣，持續保留最近一段畫面與聲音；"
             "超過設定秒數的內容會自動淘汰。按下「儲存最近片段」只會保存當下時間窗，"
+            "最後 5 秒會加密取樣截圖，增加事件尾端的辨識機會；"
             "不會停止或重設背景緩衝。"
         )
         self.lbl_replay_hint.setWordWrap(True)
@@ -362,7 +363,9 @@ class MainWindow(QMainWindow):
         self.btn_save_replay = QPushButton("儲存最近片段")
         self.btn_save_replay.setMinimumHeight(44)
         self.btn_save_replay.setEnabled(False)
-        self.btn_save_replay.setToolTip("儲存目前時間窗；背景緩衝不會停止或重設")
+        self.btn_save_replay.setToolTip(
+            "儲存目前時間窗；最後 5 秒會加密取樣截圖，背景緩衝不會停止或重設"
+        )
         self.btn_save_replay.clicked.connect(self.save_replay_segment)
         replay_actions.addWidget(self.btn_toggle_replay)
         replay_actions.addWidget(self.btn_save_replay, 1)

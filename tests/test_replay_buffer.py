@@ -22,6 +22,9 @@ from maple_reporter.recorder.replay_buffer import (
     BufferedFrame,
     ReplayBufferRecorder,
     RollingAudioRecorder,
+    REPLAY_KEYFRAME_MAX_COUNT,
+    _build_replay_keyframe_indices,
+    _build_replay_keyframe_times,
     _clip_monitor_to_virtual_screen,
     capture_monitor_frame,
     get_audio_output_devices,
@@ -38,6 +41,21 @@ def jpeg_frame(value: int) -> bytes:
 
 
 class TestReplayBuffer(unittest.TestCase):
+    def test_replay_keyframes_sample_the_event_tail_more_densely(self):
+        times = _build_replay_keyframe_times(30.0)
+        tail_start = 30.0 - 5.0
+        regular_times = [value for value in times if value < tail_start]
+        tail_times = [value for value in times if value >= tail_start]
+
+        self.assertLessEqual(len(times), REPLAY_KEYFRAME_MAX_COUNT)
+        self.assertEqual(regular_times[:3], [0.0, 2.0, 4.0])
+        self.assertEqual(tail_times[0], tail_start)
+        self.assertAlmostEqual(tail_times[1] - tail_times[0], 0.5)
+        self.assertAlmostEqual(tail_times[-1], 30.0)
+
+        indices = _build_replay_keyframe_indices(30.0, fps=20, output_count=601)
+        self.assertEqual(len(indices), len(times))
+
     def test_audio_device_list_keeps_working_when_one_endpoint_breaks(self):
         class BrokenSpeaker:
             id = "broken-id"
@@ -225,7 +243,9 @@ class TestReplayBuffer(unittest.TestCase):
 
             self.assertEqual(frame_count, 11)
             self.assertAlmostEqual(frame_count / fps, 2.2, delta=0.25)
-            self.assertEqual(len(keyframes), 2)
+            # A short replay is entirely inside the event tail, so screenshots
+            # are sampled every 0.5 seconds instead of every 2 seconds.
+            self.assertEqual(len(keyframes), 5)
 
     def test_replay_video_can_be_remuxed_with_an_aac_audio_track(self):
         recorder = ReplayBufferRecorder()

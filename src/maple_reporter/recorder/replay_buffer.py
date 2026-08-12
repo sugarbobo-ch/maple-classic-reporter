@@ -33,6 +33,16 @@ from maple_reporter.utils.config import get_recordings_dir
 LOGGER = logging.getLogger(__name__)
 
 
+# Replay videos keep their configured FPS. These intervals only control the
+# representative screenshots sent to OCR and the preview modal. The tail is
+# sampled more densely because the user usually presses "save" immediately
+# after spotting a suspected player, just like a dashcam event buffer.
+REPLAY_KEYFRAME_BASE_INTERVAL_SECONDS = 2.0
+REPLAY_KEYFRAME_TAIL_WINDOW_SECONDS = 5.0
+REPLAY_KEYFRAME_TAIL_INTERVAL_SECONDS = 0.5
+REPLAY_KEYFRAME_MAX_COUNT = 40
+
+
 @dataclass(frozen=True)
 class BufferedFrame:
     captured_at: float
@@ -52,6 +62,70 @@ class ReplayState(str, Enum):
     SAVING = "saving"
     STOPPING = "stopping"
     ERROR = "error"
+
+
+def _build_replay_keyframe_times(duration: float) -> list[float]:
+    """Return representative screenshot times with a denser event tail."""
+
+    duration = max(0.0, float(duration))
+    if duration <= 0.0:
+        return [0.0]
+
+    tail_start = max(0.0, duration - REPLAY_KEYFRAME_TAIL_WINDOW_SECONDS)
+    times: list[float] = []
+
+    current = 0.0
+    while current < tail_start - 1e-9:
+        times.append(round(current, 6))
+        current += REPLAY_KEYFRAME_BASE_INTERVAL_SECONDS
+
+    current = tail_start
+    while current <= duration + 1e-9:
+        times.append(round(min(current, duration), 6))
+        current += REPLAY_KEYFRAME_TAIL_INTERVAL_SECONDS
+
+    if not times or times[-1] < duration - 1e-9:
+        times.append(round(duration, 6))
+
+    # Keep the event tail intact if a future buffer setting exceeds the normal
+    # 60-second UI limit. Thin only the older, lower-priority samples.
+    if len(times) > REPLAY_KEYFRAME_MAX_COUNT:
+        tail_times = [time for time in times if time >= tail_start - 1e-9]
+        regular_times = [time for time in times if time < tail_start - 1e-9]
+        available_regular = REPLAY_KEYFRAME_MAX_COUNT - len(tail_times)
+        if available_regular <= 0:
+            times = tail_times[-REPLAY_KEYFRAME_MAX_COUNT:]
+        elif len(regular_times) > available_regular:
+            if available_regular == 1:
+                regular_times = [regular_times[0]]
+            else:
+                indexes = np.linspace(
+                    0,
+                    len(regular_times) - 1,
+                    num=available_regular,
+                    dtype=int,
+                )
+                regular_times = [regular_times[int(index)] for index in indexes]
+            times = regular_times + tail_times
+
+    return times
+
+
+def _build_replay_keyframe_indices(
+    duration: float,
+    fps: int,
+    output_count: int,
+) -> set[int]:
+    """Map screenshot times to unique encoded-video frame indexes."""
+
+    if output_count <= 0:
+        return set()
+    safe_fps = max(1, int(fps))
+    max_index = output_count - 1
+    return {
+        min(max_index, max(0, int(round(timestamp * safe_fps))))
+        for timestamp in _build_replay_keyframe_times(duration)
+    }
 
 
 def _clip_monitor_to_virtual_screen(
@@ -456,9 +530,14 @@ class ReplayBufferRecorder(QObject):
             start_time = frames[0].captured_at
             duration = max(0.0, frames[-1].captured_at - start_time)
             output_count = max(1, int(round(duration * self._fps)) + 1)
+            video_duration = max(0.0, (output_count - 1) / self._fps)
+            keyframe_indexes = _build_replay_keyframe_indices(
+                video_duration,
+                self._fps,
+                output_count,
+            )
             source_index = 0
             keyframes: list[Image.Image] = []
-            next_keyframe_time = 0.0
 
             for output_index in range(output_count):
                 target_time = start_time + (output_index / self._fps)
@@ -474,10 +553,9 @@ class ReplayBufferRecorder(QObject):
                 if image is None:
                     continue
                 image = image[:height, :width]
-                if (output_index / self._fps) >= next_keyframe_time:
+                if output_index in keyframe_indexes:
                     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                     keyframes.append(Image.fromarray(rgb))
-                    next_keyframe_time += 2.0
                 video_frame = av.VideoFrame.from_ndarray(image, format="bgr24")
                 for packet in stream.encode(video_frame):
                     container.mux(packet)
@@ -507,6 +585,12 @@ __all__ = [
     "ReplayCaptureError",
     "ReplayState",
     "RollingAudioRecorder",
+    "REPLAY_KEYFRAME_BASE_INTERVAL_SECONDS",
+    "REPLAY_KEYFRAME_TAIL_WINDOW_SECONDS",
+    "REPLAY_KEYFRAME_TAIL_INTERVAL_SECONDS",
+    "REPLAY_KEYFRAME_MAX_COUNT",
+    "_build_replay_keyframe_times",
+    "_build_replay_keyframe_indices",
     "capture_monitor_frame",
     "get_audio_output_devices",
     "get_default_audio_output_name",

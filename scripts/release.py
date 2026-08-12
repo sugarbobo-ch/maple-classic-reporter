@@ -9,6 +9,7 @@ exact commit, and only pushes after the build succeeds.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -110,8 +111,26 @@ def update_all_version_files(new_version: str) -> None:
         r'(version\s*=\s*["\'])[^"\']+(["\'])',
         rf"\g<1>{new_version}\g<2>",
     )
-    update_file_version(README_MD, r'v\d+\.\d+\.\d+', f"v{new_version}")
-    update_file_version(CONTEXT_MD, r'v\d+\.\d+\.\d+', f"v{new_version}")
+    update_file_version(
+        README_MD,
+        r"(?m)^(# .*? v)\d+\.\d+\.\d+",
+        rf"\g<1>{new_version}",
+    )
+    update_file_version(
+        README_MD,
+        r"(MapleClassicReporter-v)\d+\.\d+\.\d+(-windows-x64\.zip)",
+        rf"\g<1>{new_version}\g<2>",
+    )
+    update_file_version(
+        CONTEXT_MD,
+        r"(?m)^- \*\*Version\*\*: `[^`]+`",
+        f"- **Version**: `{new_version}`",
+    )
+    update_file_version(
+        CONTEXT_MD,
+        r"(MapleClassicReporter-v)\d+\.\d+\.\d+(-windows-x64\.zip)",
+        rf"\g<1>{new_version}\g<2>",
+    )
 
 
 def refresh_lockfile() -> None:
@@ -126,8 +145,15 @@ def refresh_lockfile() -> None:
 def run_unit_tests() -> None:
     print("\n[2/6] Running unit test suite...")
     python_cmd = sys.executable
+    test_env = os.environ.copy()
+    source_path = str(ROOT_DIR / "src")
+    test_env["PYTHONPATH"] = os.pathsep.join(
+        path for path in (source_path, test_env.get("PYTHONPATH", "")) if path
+    )
     result = subprocess.run(
-        [python_cmd, "-m", "unittest", "discover", "tests"], cwd=ROOT_DIR
+        [python_cmd, "-m", "unittest", "discover", "tests"],
+        cwd=ROOT_DIR,
+        env=test_env,
     )
     if result.returncode != 0:
         raise RuntimeError("Unit tests failed; release was not pushed.")
@@ -194,7 +220,7 @@ def _assert_tag_does_not_exist(tag_name: str) -> None:
 
 
 def create_release_commit_and_tag(new_version: str) -> tuple[str, str]:
-    """Stage all intended changes, commit, and create a non-overwriting tag."""
+    """Stage changes, commit when needed, and create a non-overwriting tag."""
 
     tag_name = f"v{parse_semver(new_version)[0]}.{parse_semver(new_version)[1]}.{parse_semver(new_version)[2]}"
     _assert_tag_does_not_exist(tag_name)
@@ -206,7 +232,12 @@ def create_release_commit_and_tag(new_version: str) -> tuple[str, str]:
             _run_git("reset", "--", path)
             raise RuntimeError(f"Refusing to stage sensitive release path: {path}")
     if not staged:
-        raise RuntimeError("No staged changes are available for the release commit.")
+        if get_current_version() != new_version:
+            raise RuntimeError("No staged changes are available for the release commit.")
+        print("  [OK] Release version is already committed; tagging the current HEAD.")
+        commit_hash = _run_git("rev-parse", "HEAD", capture_output=True).stdout.strip()
+        _run_git("tag", "-a", tag_name, commit_hash, "-m", f"Release {tag_name}")
+        return commit_hash, tag_name
 
     print("\n[5/6] Creating release commit and tag...")
     _run_git("commit", "-m", f"release: {tag_name}")
