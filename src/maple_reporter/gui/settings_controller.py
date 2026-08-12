@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from maple_reporter.platform.global_hotkeys import (
+    DEFAULT_RECORD_VIDEO_HOTKEY,
+    DEFAULT_SAVE_REPLAY_HOTKEY,
+    DEFAULT_RECORD_VIDEO_KEY,
+    DEFAULT_SAVE_REPLAY_KEY,
+    fixed_hotkey_for_key,
+    hotkey_key_from_shortcut,
+)
 from maple_reporter.utils.config import load_config, save_config
 
 
@@ -31,7 +39,6 @@ class SettingsController:
         window.txt_gdrive_folder.setText(
             self.config.get("gdrive_folder_name", "MapleClassic_Reports")
         )
-        window.txt_gemini_key.setText(self.config.get("gemini_api_key", ""))
         window.txt_discord_webhook.setText(
             self.config.get("discord_webhook_url", "")
         )
@@ -49,6 +56,23 @@ class SettingsController:
         window.chk_record_audio.setChecked(self.config.get("record_audio", True))
         window.refresh_audio_devices(self.config.get("audio_output_device_id", ""))
         window.spin_replay_seconds.setValue(self.config.get("replay_buffer_sec", 30))
+        window.chk_global_hotkeys.setChecked(
+            self.config.get("global_hotkeys_enabled", True)
+        )
+        save_key = hotkey_key_from_shortcut(
+            self.config.get("save_replay_hotkey", DEFAULT_SAVE_REPLAY_HOTKEY),
+            DEFAULT_SAVE_REPLAY_KEY,
+        )
+        record_key = hotkey_key_from_shortcut(
+            self.config.get("record_video_hotkey", DEFAULT_RECORD_VIDEO_HOTKEY),
+            DEFAULT_RECORD_VIDEO_KEY,
+        )
+        window.combo_save_replay_hotkey_key.setCurrentIndex(
+            window.combo_save_replay_hotkey_key.findData(save_key)
+        )
+        window.combo_record_video_hotkey_key.setCurrentIndex(
+            window.combo_record_video_hotkey_key.findData(record_key)
+        )
         window.on_replay_state_changed("idle", 0.0)
 
     def load_templates(self, window) -> None:
@@ -89,7 +113,6 @@ class SettingsController:
         self.config["gdrive_folder_name"] = (
             window.txt_gdrive_folder.text().strip() or "MapleClassic_Reports"
         )
-        self.config["gemini_api_key"] = window.txt_gemini_key.text().strip()
         self.config["discord_webhook_url"] = window.txt_discord_webhook.text().strip()
         self.config["upload_destination"] = window.combo_upload_destination.currentData()
         self.config["whitelist"] = [
@@ -101,6 +124,19 @@ class SettingsController:
         self.config["record_audio"] = window.chk_record_audio.isChecked()
         self.config["audio_output_device_id"] = (
             window.combo_audio_output.currentData() or ""
+        )
+        self.config["global_hotkeys_enabled"] = window.chk_global_hotkeys.isChecked()
+        self.config["save_replay_hotkey"] = (
+            fixed_hotkey_for_key(
+                window.combo_save_replay_hotkey_key.currentData()
+                or DEFAULT_SAVE_REPLAY_KEY
+            )
+        )
+        self.config["record_video_hotkey"] = (
+            fixed_hotkey_for_key(
+                window.combo_record_video_hotkey_key.currentData()
+                or DEFAULT_RECORD_VIDEO_KEY
+            )
         )
         return self.config
 

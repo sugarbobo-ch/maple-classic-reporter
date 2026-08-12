@@ -18,8 +18,8 @@ LOGGER = logging.getLogger(__name__)
 class SubmitThread(QThread):
     finished_signal = Signal(bool, str, object)
 
-    def __init__(self, data: dict):
-        super().__init__()
+    def __init__(self, data: dict, parent=None):
+        super().__init__(parent)
         self.data = data
 
     def run(self) -> None:
@@ -56,15 +56,28 @@ class SubmissionController(QObject):
         self._thread: SubmitThread | None = None
 
     def submit(self, data: dict) -> bool:
-        if self._thread and self._thread.isRunning():
-            return False
-        self._thread = SubmitThread(data)
-        self._thread.finished_signal.connect(
+        if self._thread:
+            try:
+                if self._thread.isRunning():
+                    return False
+            except RuntimeError:
+                # The QThread wrapper can outlive its C++ object after the
+                # previous finished signal scheduled deleteLater().
+                self._thread = None
+
+        thread = SubmitThread(data, self)
+        self._thread = thread
+        thread.finished_signal.connect(
             lambda ok, message, error: self._on_finished(ok, message, error, data)
         )
-        self._thread.finished.connect(self._thread.deleteLater)
-        self._thread.start()
+        thread.finished.connect(lambda: self._clear_finished_thread(thread))
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
         return True
+
+    def _clear_finished_thread(self, thread: SubmitThread) -> None:
+        if self._thread is thread:
+            self._thread = None
 
     def _on_finished(self, ok: bool, message: str, error, data: dict) -> None:
         data["form_confirmed"] = bool(ok)

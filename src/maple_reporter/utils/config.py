@@ -39,7 +39,8 @@ def get_default_token_path() -> Path:
     return get_user_app_data_dir() / "oauth_token.dpapi"
 
 
-_SECRET_CONFIG_KEYS = ("gemini_api_key", "discord_webhook_url")
+_SECRET_CONFIG_KEYS = ("discord_webhook_url",)
+_REMOVED_CONFIG_KEYS = ("gemini_api_key",)
 
 
 def get_default_secret_path(name: str) -> Path:
@@ -75,7 +76,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "selected_window_title": "新楓之谷",
     "gdrive_token_file": str(get_default_token_path()),
     "gdrive_folder_name": "MapleClassic_Reports",
-    "gemini_api_key": "",
     "discord_webhook_url": "",
     "upload_destination": "gdrive",
     "violation_templates": [{"name": "自動打怪／外掛行為", "content": "自動打怪/外掛行為"}],
@@ -85,6 +85,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "auto_delete_after_upload": False,
     "record_audio": True,
     "audio_output_device_id": "",
+    "global_hotkeys_enabled": True,
+    "save_replay_hotkey": "Ctrl+Shift+F9",
+    "record_video_hotkey": "Ctrl+Shift+F10",
 }
 
 def ensure_config_dir() -> Path:
@@ -172,6 +175,16 @@ def _delete_secret(name: str) -> None:
     except OSError as error:
         LOGGER.warning("刪除受保護設定失敗 (%s: %s)", name, type(error).__name__)
 
+
+def _delete_removed_config_secret(name: str) -> None:
+    """Remove a secret belonging to a feature that no longer exists."""
+
+    path = get_user_app_data_dir() / f"{name}.dpapi"
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as error:
+        LOGGER.warning("刪除已移除的受保護設定失敗 (%s: %s)", name, type(error).__name__)
+
 def load_config() -> Dict[str, Any]:
     ensure_config_dir()
     source_path = CONFIG_FILE if CONFIG_FILE.exists() else LEGACY_CONFIG_FILE
@@ -188,10 +201,20 @@ def load_config() -> Dict[str, Any]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
         return DEFAULT_CONFIG.copy()
 
+    for name in _REMOVED_CONFIG_KEYS:
+        merged.pop(name, None)
+
     # Secrets are migrated out of the legacy JSON file on first read. They are
-    # still returned to the UI in memory, but are never written back to JSON.
+    # never written back to JSON. Removed feature secrets are deleted instead
+    # of being loaded into the application model.
     sanitized = dict(cfg) if isinstance(cfg, dict) else {}
     changed = False
+    for name in _REMOVED_CONFIG_KEYS:
+        if name in sanitized:
+            sanitized.pop(name, None)
+            changed = True
+        _delete_removed_config_secret(name)
+
     for name in _SECRET_CONFIG_KEYS:
         legacy_value = sanitized.get(name, "")
         stored_value = _load_secret(name)
@@ -225,6 +248,9 @@ def load_config() -> Dict[str, Any]:
 def save_config(cfg: Dict[str, Any]) -> None:
     ensure_config_dir()
     serializable = dict(cfg)
+    for name in _REMOVED_CONFIG_KEYS:
+        serializable.pop(name, None)
+        _delete_removed_config_secret(name)
     for name in _SECRET_CONFIG_KEYS:
         if name not in serializable:
             continue

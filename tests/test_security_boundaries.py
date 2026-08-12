@@ -5,15 +5,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from PIL import Image
-
 from maple_reporter.discord.webhook_service import (
     is_valid_discord_webhook_url,
     upload_evidence_to_discord,
 )
 from maple_reporter.gdrive.drive_service import escape_drive_query_literal
 from maple_reporter.gdrive.token_store import SECRET_DPAPI_HEADER
-from maple_reporter.ocr import win_ocr
 from maple_reporter.recorder.window_recorder import capture_screenshot
 from maple_reporter.utils import config
 from maple_reporter.utils.urls import is_safe_https_url
@@ -80,23 +77,8 @@ class TestSecurityBoundaries(unittest.TestCase):
         self.assertFalse(is_safe_https_url("httpsx://example.com"))
         self.assertFalse(is_safe_https_url("https://user:pass@example.com/file"))
 
-    def test_gemini_key_is_sent_in_header_not_url(self):
-        response = MagicMock(status_code=200)
-        response.json.return_value = {
-            "candidates": [
-                {"content": {"parts": [{"text": '{"ids": [], "map_name": ""}'}]}}
-            ]
-        }
-        image = Image.new("RGB", (10, 10), color="white")
-        with patch.object(win_ocr.requests, "post", return_value=response) as post:
-            win_ocr.recognize_with_gemini_unified(image, "test-api-key")
-
-        url, kwargs = post.call_args
-        self.assertNotIn("key=", url)
-        self.assertEqual(kwargs["headers"]["x-goog-api-key"], "test-api-key")
-
     @unittest.skipUnless(os.name == "nt", "application secret storage uses Windows DPAPI")
-    def test_config_json_does_not_contain_application_secrets(self):
+    def test_removed_gemini_setting_is_not_persisted(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_file = root / "config" / "config.json"
@@ -115,23 +97,21 @@ class TestSecurityBoundaries(unittest.TestCase):
                 )
 
                 raw = json.loads(config_file.read_text(encoding="utf-8"))
-                self.assertNotIn("gemini_api_key", raw)
                 self.assertNotIn("discord_webhook_url", raw)
-                self.assertTrue(
-                    (root / "appdata" / "MapleClassicReporter" / "gemini_api_key.dpapi").is_file()
+                self.assertFalse(
+                    (root / "appdata" / "MapleClassicReporter" / "gemini_api_key.dpapi").exists()
                 )
-                if os.name == "nt":
-                    self.assertTrue(
-                        (
-                            root
-                            / "appdata"
-                            / "MapleClassicReporter"
-                            / "gemini_api_key.dpapi"
-                        ).read_bytes().startswith(SECRET_DPAPI_HEADER)
-                    )
+                self.assertTrue(
+                    (
+                        root
+                        / "appdata"
+                        / "MapleClassicReporter"
+                        / "discord_webhook_url.dpapi"
+                    ).read_bytes().startswith(SECRET_DPAPI_HEADER)
+                )
 
                 loaded = config.load_config()
-                self.assertEqual(loaded["gemini_api_key"], "gemini-secret")
+                self.assertNotIn("gemini_api_key", loaded)
 
     def test_only_owned_recordings_are_deletable(self):
         with tempfile.TemporaryDirectory() as temp_dir:

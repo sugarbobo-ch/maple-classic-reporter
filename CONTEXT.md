@@ -39,6 +39,6 @@
   - 於預覽彈窗提供「點擊前往查看」按鈕，完成上傳後可立即點擊開啟雲端事證連結。
   - 歷史紀錄表格之網址欄位格式化為藍字底線超連結，點選或雙擊即可於瀏覽器開啟檢視。
 - **Bundled Browser Runtime (內嵌瀏覽器執行環境)**: 發行版將 Playwright driver、Chromium 與 RapidOCR 模型放在同一個 PyInstaller onedir bundle；使用者不需要另外安裝 Chrome、Python 或 uv，且啟動時不必把整個 bundle 解壓到暫存目錄。
-- **Release Secret Boundary (發行敏感資料邊界)**: `build_secrets/` 內的 OAuth client JSON 可在 release build 時嵌入 onedir bundle，但不可提交 Git；`data/`、`.env`、DPAPI refresh token、Gemini API Key、Discord Webhook URL 與錄影事證絕不能進入 Git 或發行 ZIP。
+- **Release Secret Boundary (發行敏感資料邊界)**: `build_secrets/` 內的 OAuth client JSON 可在 release build 時嵌入 onedir bundle，但不可提交 Git；`data/`、`.env`、DPAPI refresh token、Discord Webhook URL 與錄影事證絕不能進入 Git 或發行 ZIP。
 - **Violation Template (違規範本)**: 可新增、編輯或刪除的「名稱＋違規說明」預設內容。
 - **Report Form (外掛回報表單)**: 遊戲橘子官方線上 SurveyCake 結構表單 (`https://forms.gamania.com/s/eLGg4`)。

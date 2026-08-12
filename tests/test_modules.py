@@ -20,6 +20,7 @@ class TestMapleReporter(unittest.TestCase):
     def test_config(self):
         cfg = load_config()
         self.assertIn("default_server", cfg)
+        self.assertNotIn("gemini_api_key", cfg)
 
     def test_window_list(self):
         titles = get_active_window_titles()

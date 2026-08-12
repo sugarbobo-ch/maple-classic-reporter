@@ -1,7 +1,10 @@
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from PySide6.QtCore import QCoreApplication
 
 from maple_reporter.automation.form_filler import (
     _submission_failure_reason,
@@ -110,6 +113,47 @@ class TestRefactorBoundaries(unittest.TestCase):
                 self.assertTrue(SubmissionController.can_delete_evidence(base, True))
                 self.assertTrue(SubmissionController.delete_confirmed_evidence(base))
             self.assertFalse(recording.exists())
+
+    def test_submission_controller_accepts_a_second_report_after_first_finishes(self):
+        app = QCoreApplication.instance() or QCoreApplication([])
+        controller = SubmissionController()
+        completed = []
+        controller.finished.connect(
+            lambda ok, _message, _error, data: completed.append((ok, data))
+        )
+        data = {
+            "suspect_id": "suspect",
+            "server_name": "雪吉拉",
+            "map_name": "測試地圖",
+            "note": "note",
+            "evidence_url": "https://example.com/evidence",
+        }
+
+        with patch(
+            "maple_reporter.gui.submission_controller.submit_gamania_report",
+            return_value=(True, "ok"),
+        ):
+            self.assertTrue(controller.submit(dict(data)))
+            deadline = time.monotonic() + 3
+            while len(completed) < 1 and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(0.01)
+            self.assertEqual(len(completed), 1)
+
+            # Drain the completed QThread's lifecycle events before starting
+            # the next report, matching a user waiting for the first result.
+            for _ in range(10):
+                app.processEvents()
+                time.sleep(0.01)
+
+            self.assertTrue(controller.submit(dict(data)))
+            deadline = time.monotonic() + 3
+            while len(completed) < 2 and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(0.01)
+
+        self.assertEqual(len(completed), 2)
+        self.assertTrue(all(ok for ok, _data in completed))
 
     def test_history_write_uses_unique_fsynced_temp_file_and_replaces_atomically(self):
         with tempfile.TemporaryDirectory() as temp_dir:

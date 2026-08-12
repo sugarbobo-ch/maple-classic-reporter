@@ -13,14 +13,15 @@
 2. **指定視窗自動錄影/截圖**：選擇錄影秒數與 15–60 FPS。採用真實時間動態補幀技術，確保生成的影片總秒數與現實秒數精準 1:1 對應（1.0x 正常播放速度）。
 3. **系統聲音同步錄音 (Audio)**：可勾選同步錄製系統音效/遊戲聲音，採用 WASAPI Loopback 背景擷取並以 PyAV 原生合成為標準 AAC + H.264 MP4 檔案。
 4. **回放緩衝**：可持續保留最近 10–60 秒的遊戲畫面與系統聲音，發現違規時按「儲存最近片段」即可保存事證；最後 5 秒會以每 0.5 秒一張的密度取樣 OCR 截圖，提高事件尾端的辨識機會。
-5. **倒數與錄影隨時取消**：倒數、一般錄影與回放儲存流程皆可取消，並自動清理未完成的暫存檔。
-6. **本機 OCR 與手動 AI 複核**：以 RapidOCR 辨識角色 ID 與地圖名稱；需要時才以 Gemini 複核單一影格，不會自動上傳整段影片。
-7. **地圖目錄與候選過濾**：針對小地圖、角色名稱、公會／勳章文字做分區辨識、地圖名稱校正、候選排序與白名單過濾，減少誤判。
-8. **事證目的地二選一**：Google Drive 適合官方審查；Discord 適合 10 MiB 內的短片快速分享。
-9. **安全的 Google OAuth 與設定保存**：OAuth refresh token、Gemini API Key 與 Discord Webhook 使用 Windows DPAPI 保護，不把使用者機密寫入明文設定檔。
-10. **上傳成功確認與安全清理**：只有在雲端上傳及官方表單收到明確成功回應後，才會依設定刪除本機事證，避免誤刪未送出的證據。
-11. **一鍵開啟雲端資料夾與歷史紀錄**：提供 Google Drive 資料夾、事證網址與過往檢舉歷史的快速開啟功能。
-12. **可攜式 onedir 發行版**：Windows 版以 onedir bundle 發行，Chromium、driver 與 RapidOCR 資源隨資料夾提供，不需要安裝 Python、uv 或 Chrome，也不會每次啟動解壓大型 one-file EXE。
+5. **全域錄影快捷鍵**：使用 Windows 全域快捷鍵，即使 Unity 遊戲視窗在前景仍可儲存回放或開始一般錄影；設定時只需選擇第三個鍵位，`Ctrl` 與 `Shift` 固定。預設為 `Ctrl+Shift+F9` 儲存最近片段、`Ctrl+Shift+F10` 開始一般錄影；F10 錄影中再次按下會取消，不會排入下一次錄影；回放儲存或預覽處理中再次按 F9 會忽略，也不會排隊。F10 會顯示與手動錄影相同的倒數與錄影進度視窗。
+6. **倒數與錄影隨時取消**：倒數、一般錄影與回放儲存流程皆可取消；一般錄影中再次按下「錄製影片並辨識」也會取消，並自動清理未完成的暫存檔。
+7. **本機 OCR 與候選過濾**：以 RapidOCR 辨識角色 ID 與地圖名稱，搭配地圖目錄、白名單與候選排序降低誤判；辨識流程不會自動上傳整段影片。
+8. **地圖目錄與候選過濾**：針對小地圖、角色名稱、公會／勳章文字做分區辨識、地圖名稱校正、候選排序與白名單過濾，減少誤判。
+9. **事證目的地二選一**：Google Drive 適合官方審查；Discord 適合 10 MiB 內的短片快速分享。
+10. **安全的 Google OAuth 與設定保存**：OAuth refresh token 與 Discord Webhook 使用 Windows DPAPI 保護，不把使用者機密寫入明文設定檔。
+11. **上傳成功確認與安全清理**：只有在雲端上傳及官方表單收到明確成功回應後，才會依設定刪除本機事證，避免誤刪未送出的證據。
+12. **一鍵開啟雲端資料夾與歷史紀錄**：提供 Google Drive 資料夾、事證網址與過往檢舉歷史的快速開啟功能。
+13. **可攜式 onedir 發行版**：Windows 版以 onedir bundle 發行，Chromium、driver 與 RapidOCR 資源隨資料夾提供，不需要安裝 Python、uv 或 Chrome，也不會每次啟動解壓大型 one-file EXE。
 
 ## v1.1.2 更新內容
 
@@ -104,10 +105,9 @@ MapleClassicReporter\
    └─ ms-playwright\              # Chromium 與其 DLL／資源
 ```
 
-錄影、一般設定與回報歷史都會寫入使用者專屬目錄 `%LOCALAPPDATA%\MapleClassicReporter\`；舊版 `data/config/` 的一般設定會在啟動時自動遷移。Gemini API Key 與 Discord Webhook 不再寫入 JSON，而是分別以 Windows DPAPI 保護於：
+錄影、一般設定與回報歷史都會寫入使用者專屬目錄 `%LOCALAPPDATA%\MapleClassicReporter\`；舊版 `data/config/` 的一般設定會在啟動時自動遷移。Discord Webhook 以 Windows DPAPI 保護，不會寫入 JSON：
 
 ```text
-%LOCALAPPDATA%\MapleClassicReporter\gemini_api_key.dpapi
 %LOCALAPPDATA%\MapleClassicReporter\discord_webhook_url.dpapi
 %LOCALAPPDATA%\MapleClassicReporter\recordings\
 ```
@@ -141,8 +141,9 @@ Windows DPAPI 可防止其他 Windows 使用者或單純外洩檔案直接讀出
 1. 在主畫面選擇《新楓之谷：經典版》遊戲視窗。
 2. 選擇錄影秒數與 FPS。錄得更久會提供更多影格供 OCR 辨識角色 ID 與地圖名稱，但影片也會更大；建議先使用 8–15 秒與 30 FPS。
 3. 可勾選 **「同步錄製系統聲音 (Audio)」**，錄製遊戲聲音音效。
-4. 可勾選 **「上傳成功後自動刪除本機事證檔案」** 節省磁碟空間；或隨時使用 **「一鍵清理所有錄製檔案」** 刪除所有本機暫存。
-5. 按「擷取畫面並辨識」完成畫面拉框，或按「錄製影片並辨識」直接錄製遊戲視窗（倒數與錄影過程隨時可按「取消」）；完成後會開啟送出前確認頁。
+4. 在 **「全域快捷鍵」** 開啟快捷鍵，只選擇最後一個鍵位即可，`Ctrl` 與 `Shift` 固定。預設 `Ctrl+Shift+F9` 儲存最近片段，`Ctrl+Shift+F10` 開始一般錄影；第一次按 F9 會先啟動回放緩衝，累積幾秒後再次按 F9 才會儲存片段。F10 會顯示與手動錄影相同的倒數、錄影進度與取消按鈕。若快捷鍵已被其他程式使用，請換一個鍵位後重新儲存。
+5. 可勾選 **「上傳成功後自動刪除本機事證檔案」** 節省磁碟空間；或隨時使用 **「一鍵清理所有錄製檔案」** 刪除所有本機暫存。
+6. 按「擷取畫面並辨識」完成畫面拉框，或按「錄製影片並辨識」直接錄製遊戲視窗（倒數與錄影過程可按視窗中的「取消」，或再次按主畫面的「取消錄影」）；完成後會開啟送出前確認頁。
 
 ### 3. 填寫並送出檢舉
 
@@ -175,7 +176,7 @@ build_secrets/google_oauth_client.json
 
 原始碼開發可用環境變數 `MAPLE_REPORTER_GOOGLE_OAUTH_CONFIG` 指向測試用 OAuth JSON；舊的 `data/config/client_secrets.json` 僅保留作為進階開發者 fallback。若 fork 本專案，請建立並使用自己的 OAuth project，不要重用維護者的 client 或 token。
 
-目前正式 OAuth 設定使用 External / Production，且只要求 `https://www.googleapis.com/auth/drive.file`；不使用 service account 或完整的 `drive` scope。Webhook、Gemini key 與 DPAPI token 都位於使用者的 `%LOCALAPPDATA%`，不應提交到 Git。
+目前正式 OAuth 設定使用 External / Production，且只要求 `https://www.googleapis.com/auth/drive.file`；不使用 service account 或完整的 `drive` scope。Webhook 與 DPAPI token 都位於使用者的 `%LOCALAPPDATA%`，不應提交到 Git。
 
 ## Discord 上傳
 

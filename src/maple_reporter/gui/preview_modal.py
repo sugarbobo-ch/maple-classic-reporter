@@ -1,11 +1,11 @@
 import os
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QRadioButton, QButtonGroup, QPushButton, QTextEdit, QMessageBox
 )
 from maple_reporter.discord.webhook_service import upload_evidence_to_discord
-from maple_reporter.ocr.ocr_worker import AiReviewWorkerThread
+from maple_reporter.gui.widgets import WheelSafeComboBox
 
 
 class EvidenceUploadThread(QThread):
@@ -39,13 +39,6 @@ class ReportPreviewModal(QDialog):
         self.folder_name = folder_name
         self.file_path = data.get("file_path", "")
         self.ocr_thread = ocr_thread
-        self.ai_review_image = (
-            ocr_thread.keyframes[0]
-            if ocr_thread and ocr_thread.keyframes
-            else None
-        )
-        self.ai_review_api_key = ocr_thread.api_key if ocr_thread else ""
-        self.ai_review_whitelist = list(ocr_thread.whitelist) if ocr_thread else []
         self.discord_webhook_url = discord_webhook_url.strip()
         self.upload_destination = upload_destination
         self.default_map_name = (
@@ -53,7 +46,6 @@ class ReportPreviewModal(QDialog):
             or "維多利亞島"
         )
         self._map_name_user_edited = False
-        self.ai_review_thread = None
         self.upload_thread = None
         self.pending_data = None
         self._dispose_requested = False
@@ -96,7 +88,7 @@ class ReportPreviewModal(QDialog):
         # 1. Suspect ID (Editable QComboBox with Candidate List & Whitelist Button)
         layout.addWidget(QLabel("1. 外掛玩家角色 ID (可隨時手動輸入或選取):"))
         id_box = QHBoxLayout()
-        self.id_combo = QComboBox()
+        self.id_combo = WheelSafeComboBox()
         self.id_combo.setEditable(True)
 
         candidates = data.get("candidate_ids", [])
@@ -139,14 +131,6 @@ class ReportPreviewModal(QDialog):
             self.ocr_thread.map_name_found.connect(self.on_live_map_name_found)
             self.ocr_thread.status_changed.connect(self.on_ocr_status_changed)
             self.ocr_thread.finished.connect(self.on_ocr_finished)
-
-        self.btn_ai_review = QPushButton("AI 複核目前畫面")
-        self.btn_ai_review.setToolTip("只傳送一張影格給 Gemini，不會掃描整段影片")
-        self.btn_ai_review.setEnabled(
-            bool(self.ai_review_api_key and self.ai_review_image)
-        )
-        self.btn_ai_review.clicked.connect(self.request_ai_review)
-        layout.addWidget(self.btn_ai_review)
 
         # 2. Server Selection
         layout.addWidget(QLabel("2. 伺服器:"))
@@ -301,31 +285,6 @@ class ReportPreviewModal(QDialog):
         self.map_input.setFocus()
         self.map_input.selectAll()
 
-    def request_ai_review(self):
-        if not self.ai_review_api_key or self.ai_review_image is None:
-            return
-        self.btn_ai_review.setEnabled(False)
-        self.ai_review_thread = AiReviewWorkerThread(
-            self.ai_review_image,
-            self.ai_review_api_key,
-            self.ai_review_whitelist,
-            parent=self,
-        )
-        self.ai_review_thread.candidates_found.connect(self.on_live_candidates_found)
-        self.ai_review_thread.map_name_found.connect(self.on_live_map_name_found)
-        self.ai_review_thread.status_changed.connect(self.on_ocr_status_changed)
-        self.ai_review_thread.finished.connect(self.on_ai_review_finished)
-        self.ai_review_thread.start()
-
-    def on_ai_review_finished(self):
-        thread = self.ai_review_thread
-        self.ai_review_thread = None
-        self.btn_ai_review.setEnabled(True)
-        if thread:
-            thread.image = None
-            thread.deleteLater()
-        self._dispose_if_idle()
-
     def dispose_when_idle(self):
         """Delete the closed modal after its child worker threads have exited."""
         self._dispose_requested = True
@@ -334,10 +293,9 @@ class ReportPreviewModal(QDialog):
     def _dispose_if_idle(self):
         if not self._dispose_requested:
             return
-        active_threads = [self.ai_review_thread, self.upload_thread]
+        active_threads = [self.upload_thread]
         if any(thread and thread.isRunning() for thread in active_threads):
             return
-        self.ai_review_image = None
         self.ocr_thread = None
         self.deleteLater()
 

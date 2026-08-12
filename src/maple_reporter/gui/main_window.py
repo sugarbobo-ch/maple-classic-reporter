@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QLabel, QLineEdit, QComboBox, QSpinBox, QPushButton, QTableWidget,
+    QLabel, QLineEdit, QSpinBox, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QTabWidget, QCheckBox,
     QProgressDialog, QDialog, QDialogButtonBox, QInputDialog, QScrollArea
 )
@@ -32,6 +32,19 @@ from maple_reporter.gui.history_controller import HistoryController
 from maple_reporter.gui.replay_controller import ReplayController
 from maple_reporter.gui.settings_controller import SettingsController
 from maple_reporter.gui.submission_controller import SubmissionController
+from maple_reporter.gui.widgets import WheelSafeComboBox
+from maple_reporter.platform.global_hotkeys import (
+    ACTION_RECORD_VIDEO,
+    ACTION_SAVE_REPLAY,
+    DEFAULT_RECORD_VIDEO_HOTKEY,
+    DEFAULT_RECORD_VIDEO_KEY,
+    DEFAULT_SAVE_REPLAY_HOTKEY,
+    DEFAULT_SAVE_REPLAY_KEY,
+    GlobalHotkeyManager,
+    HOTKEY_KEY_OPTIONS,
+    fixed_hotkey_for_key,
+    hotkey_key_from_shortcut,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -49,6 +62,18 @@ class MainWindow(QMainWindow):
         self.history_controller = HistoryController()
         self.capture_controller = EvidenceCaptureController()
         self.replay_controller = ReplayController(self)
+        self.hotkey_manager = GlobalHotkeyManager(self)
+        self.hotkey_manager.activated.connect(self.on_global_hotkey)
+        self.hotkey_manager.registration_changed.connect(
+            self.on_hotkey_registration_changed
+        )
+        self._hotkey_statuses = {}
+        self._hotkey_recording_active = False
+        self._video_workflow_active = False
+        self._active_video_countdown = None
+        self._active_video_progress = None
+        self._replay_save_workflow_active = False
+        self._closing = False
         self.submission_controller = SubmissionController(self)
         self.drive_mgr = GoogleDriveManager()
         # Keep the attribute name for integrations that access the recorder,
@@ -67,6 +92,7 @@ class MainWindow(QMainWindow):
 
         self.setup_ui()
         self.load_settings_to_ui()
+        self.configure_global_hotkeys()
         self.refresh_history_table()
         if not self.cfg.get("onboarding_completed", False):
             self.show_onboarding()
@@ -137,7 +163,7 @@ class MainWindow(QMainWindow):
 
         row_destination = QHBoxLayout()
         row_destination.addWidget(QLabel("上傳目的地："))
-        self.combo_upload_destination = QComboBox()
+        self.combo_upload_destination = WheelSafeComboBox()
         self.combo_upload_destination.addItem("Google Drive（建議用於官方審查）", "gdrive")
         self.combo_upload_destination.addItem("Discord（短片快速分享）", "discord")
         row_destination.addWidget(self.combo_upload_destination, 1)
@@ -159,7 +185,7 @@ class MainWindow(QMainWindow):
 
         row_win = QHBoxLayout()
         row_win.addWidget(QLabel("選擇目標遊戲視窗:"))
-        self.combo_windows = QComboBox()
+        self.combo_windows = WheelSafeComboBox()
         self.btn_refresh_wins = QPushButton("重新整理")
         self.btn_refresh_wins.clicked.connect(self.refresh_window_list)
         row_win.addWidget(self.combo_windows, 1)
@@ -175,7 +201,7 @@ class MainWindow(QMainWindow):
         row_rec.addWidget(self.spin_duration)
 
         row_rec.addWidget(QLabel("FPS："))
-        self.combo_fps = QComboBox()
+        self.combo_fps = WheelSafeComboBox()
         for fps in (15, 20, 24, 30, 45, 60):
             self.combo_fps.addItem(f"{fps} FPS", fps)
         row_rec.addWidget(self.combo_fps)
@@ -213,7 +239,7 @@ class MainWindow(QMainWindow):
 
         row_audio = QHBoxLayout()
         row_audio.addWidget(QLabel("系統聲音來源："))
-        self.combo_audio_output = QComboBox()
+        self.combo_audio_output = WheelSafeComboBox()
         self.combo_audio_output.setAccessibleName("系統聲音錄製來源")
         self.combo_audio_output.setToolTip("選擇目前實際播放遊戲聲音的 Windows 輸出裝置")
         self.combo_audio_output.currentIndexChanged.connect(
@@ -244,7 +270,7 @@ class MainWindow(QMainWindow):
         replay_settings.addWidget(self.spin_replay_seconds)
         replay_settings.addSpacing(12)
         replay_settings.addWidget(QLabel("快速選擇："))
-        self.combo_replay_seconds = QComboBox()
+        self.combo_replay_seconds = WheelSafeComboBox()
         for seconds in (10, 15, 30, 45, 60):
             self.combo_replay_seconds.addItem(f"{seconds} 秒", seconds)
         self.combo_replay_seconds.addItem("自訂", None)
@@ -272,6 +298,68 @@ class MainWindow(QMainWindow):
         )
         g2_layout.addWidget(replay_group)
 
+        hotkey_group = QGroupBox("全域快捷鍵")
+        hotkey_layout = QVBoxLayout(hotkey_group)
+        hotkey_layout.setSpacing(8)
+
+        self.chk_global_hotkeys = QCheckBox("啟用全域快捷鍵")
+        self.chk_global_hotkeys.setAccessibleName("啟用全域快捷鍵")
+        self.chk_global_hotkeys.setToolTip(
+            "遊戲視窗在前景時仍可使用快捷鍵；快捷鍵不會攔截遊戲的其他按鍵。"
+        )
+        hotkey_layout.addWidget(self.chk_global_hotkeys)
+
+        row_save_hotkey = QHBoxLayout()
+        row_save_hotkey.addWidget(QLabel("儲存最近片段：Ctrl + Shift +"))
+        self.combo_save_replay_hotkey_key = WheelSafeComboBox()
+        for key in HOTKEY_KEY_OPTIONS:
+            self.combo_save_replay_hotkey_key.addItem(key, key)
+        self.combo_save_replay_hotkey_key.setCurrentIndex(
+            self.combo_save_replay_hotkey_key.findData(DEFAULT_SAVE_REPLAY_KEY)
+        )
+        self.combo_save_replay_hotkey_key.setAccessibleName(
+            "儲存最近片段第三個鍵位"
+        )
+        self.combo_save_replay_hotkey_key.setToolTip(
+            "Ctrl 與 Shift 固定，請選擇最後一個鍵位。"
+        )
+        row_save_hotkey.addWidget(self.combo_save_replay_hotkey_key, 1)
+        hotkey_layout.addLayout(row_save_hotkey)
+
+        row_record_hotkey = QHBoxLayout()
+        row_record_hotkey.addWidget(QLabel("開始一般錄影：Ctrl + Shift +"))
+        self.combo_record_video_hotkey_key = WheelSafeComboBox()
+        for key in HOTKEY_KEY_OPTIONS:
+            self.combo_record_video_hotkey_key.addItem(key, key)
+        self.combo_record_video_hotkey_key.setCurrentIndex(
+            self.combo_record_video_hotkey_key.findData(DEFAULT_RECORD_VIDEO_KEY)
+        )
+        self.combo_record_video_hotkey_key.setAccessibleName(
+            "開始一般錄影第三個鍵位"
+        )
+        self.combo_record_video_hotkey_key.setToolTip(
+            "Ctrl 與 Shift 固定，請選擇最後一個鍵位。"
+        )
+        row_record_hotkey.addWidget(self.combo_record_video_hotkey_key, 1)
+        hotkey_layout.addLayout(row_record_hotkey)
+
+        self.lbl_hotkey_status = QLabel("尚未註冊")
+        self.lbl_hotkey_status.setObjectName("hint")
+        self.lbl_hotkey_status.setAccessibleName("全域快捷鍵狀態")
+        hotkey_layout.addWidget(self.lbl_hotkey_status)
+        self.lbl_hotkey_hint = QLabel(
+            "第一次按 F9 會啟動回放緩衝；累積幾秒後再次按 F9 儲存片段。"
+            "按住快捷鍵不會重複觸發。"
+        )
+        self.lbl_hotkey_hint.setWordWrap(True)
+        self.lbl_hotkey_hint.setObjectName("hint")
+        self.lbl_hotkey_hint.setAccessibleName("全域快捷鍵使用說明")
+        hotkey_layout.addWidget(self.lbl_hotkey_hint)
+        self.chk_global_hotkeys.toggled.connect(
+            self.on_global_hotkeys_enabled_toggled
+        )
+        g2_layout.addWidget(hotkey_group)
+
         control_layout.addWidget(g2)
 
         # Group 3: Default Form Values
@@ -280,7 +368,7 @@ class MainWindow(QMainWindow):
 
         row_s = QHBoxLayout()
         row_s.addWidget(QLabel("預設伺服器:"))
-        self.combo_server = QComboBox()
+        self.combo_server = WheelSafeComboBox()
         self.combo_server.addItems(["雪吉拉", "菇菇寶貝"])
         row_s.addWidget(self.combo_server)
 
@@ -291,7 +379,7 @@ class MainWindow(QMainWindow):
 
         row_n = QHBoxLayout()
         row_n.addWidget(QLabel("違規說明範本："))
-        self.combo_template = QComboBox()
+        self.combo_template = WheelSafeComboBox()
         self.combo_template.currentIndexChanged.connect(self.apply_selected_template)
         row_n.addWidget(self.combo_template, 1)
         self.btn_manage_templates = QPushButton("管理範本")
@@ -301,14 +389,6 @@ class MainWindow(QMainWindow):
         self.txt_note.setPlaceholderText("可在這裡微調本次預設內容")
         row_n.addWidget(self.txt_note, 2)
         g3_layout.addLayout(row_n)
-
-        row_ai = QHBoxLayout()
-        row_ai.addWidget(QLabel("Gemini API Key（選填）："))
-        self.txt_gemini_key = QLineEdit()
-        self.txt_gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.txt_gemini_key.setPlaceholderText("可填入 Gemini API 金鑰提升 99%+ 辨識率 (留空則使用 RapidOCR 本地引擎)...")
-        row_ai.addWidget(self.txt_gemini_key, 1)
-        g3_layout.addLayout(row_ai)
 
         row_wl = QHBoxLayout()
         row_wl.addWidget(QLabel("ID 白名單（以逗號分隔）："))
@@ -541,6 +621,81 @@ class MainWindow(QMainWindow):
     def load_settings_to_ui(self):
         self.settings_controller.apply_to_window(self)
 
+    def configure_global_hotkeys(self) -> bool:
+        """Apply the current shortcut fields without taking focus from the game."""
+
+        configured = self.hotkey_manager.configure(
+            int(self.winId()),
+            enabled=self.chk_global_hotkeys.isChecked(),
+            bindings={
+                ACTION_SAVE_REPLAY: fixed_hotkey_for_key(
+                    self.combo_save_replay_hotkey_key.currentData()
+                    or DEFAULT_SAVE_REPLAY_KEY
+                ),
+                ACTION_RECORD_VIDEO: fixed_hotkey_for_key(
+                    self.combo_record_video_hotkey_key.currentData()
+                    or DEFAULT_RECORD_VIDEO_KEY
+                ),
+            },
+        )
+        self.on_hotkey_registration_changed("", configured, "", "")
+        return configured
+
+    def on_global_hotkeys_enabled_toggled(self, enabled: bool):
+        self.combo_save_replay_hotkey_key.setEnabled(enabled)
+        self.combo_record_video_hotkey_key.setEnabled(enabled)
+        if not enabled:
+            self.lbl_hotkey_status.setText("儲存設定後停用全域快捷鍵")
+            self.lbl_hotkey_status.setStyleSheet("color: #616161;")
+
+    def on_hotkey_registration_changed(
+        self,
+        action: str,
+        registered: bool,
+        shortcut: str,
+        message: str,
+    ):
+        if action:
+            self._hotkey_statuses[action] = (registered, shortcut, message)
+
+        if not self.chk_global_hotkeys.isChecked():
+            text = "全域快捷鍵已停用"
+            color = "#616161"
+        elif self.hotkey_manager.last_error:
+            text = f"快捷鍵未套用：{self.hotkey_manager.last_error} 目前設定未變更。"
+            color = "#b71c1c"
+        else:
+            active = self.hotkey_manager.active_bindings
+            labels = []
+            if ACTION_SAVE_REPLAY in active:
+                labels.append(f"儲存片段 {active[ACTION_SAVE_REPLAY]}")
+            if ACTION_RECORD_VIDEO in active:
+                labels.append(f"一般錄影 {active[ACTION_RECORD_VIDEO]}")
+            text = "全域快捷鍵已啟用：" + "；".join(labels)
+            color = "#1b5e20"
+
+        self.lbl_hotkey_status.setText(text)
+        self.lbl_hotkey_status.setAccessibleDescription(text)
+        self.lbl_hotkey_status.setStyleSheet(f"color: {color};")
+
+    def on_global_hotkey(self, action: str):
+        """Dispatch a Windows hotkey without requiring the Reporter to be focused."""
+
+        if action == ACTION_SAVE_REPLAY:
+            self.handle_save_replay_hotkey()
+        elif action == ACTION_RECORD_VIDEO:
+            self.trigger_video_report(from_hotkey=True)
+
+    def handle_save_replay_hotkey(self):
+        """Start the replay buffer first, then save it on later F9 presses."""
+
+        if self._closing or self._replay_save_workflow_active:
+            return
+        if self.replay_controller.is_running:
+            self.save_replay_segment(from_hotkey=True)
+        else:
+            self.toggle_replay_buffer(from_hotkey=True)
+
     def load_templates(self):
         self.settings_controller.load_templates(self)
 
@@ -601,10 +756,9 @@ class MainWindow(QMainWindow):
         file_path = self.capture_controller.save_snippet(pil_img)
 
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
-        api_key = self.txt_gemini_key.text().strip()
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
-        ocr_thread = OcrWorkerThread([pil_img], api_key=api_key, whitelist=wl_list, parent=self)
+        ocr_thread = OcrWorkerThread([pil_img], whitelist=wl_list, parent=self)
         ocr_thread.finished.connect(ocr_thread.release_keyframes)
         ocr_thread.finished.connect(ocr_thread.deleteLater)
 
@@ -626,14 +780,21 @@ class MainWindow(QMainWindow):
         modal.exec()
         modal.dispose_when_idle()
 
-    def toggle_replay_buffer(self):
+    def toggle_replay_buffer(self, from_hotkey: bool = False):
         if self.replay_controller.is_running:
-            self.replay_controller.stop()
+            if from_hotkey:
+                self.save_replay_segment(from_hotkey=True)
+            else:
+                self.replay_controller.stop()
             return
 
         win_title = self.combo_windows.currentText().strip()
         if not win_title:
-            QMessageBox.warning(self, "無法啟動回放緩衝", "請先選擇目標遊戲視窗。")
+            message = "無法啟動回放緩衝：請先選擇目標遊戲視窗。"
+            if from_hotkey:
+                self.statusBar().showMessage(message, 5000)
+            else:
+                QMessageBox.warning(self, "無法啟動回放緩衝", message)
             return
         selected_audio_device_id = self.combo_audio_output.currentData() or ""
         self.cfg["record_audio"] = self.chk_record_audio.isChecked()
@@ -641,13 +802,21 @@ class MainWindow(QMainWindow):
         self.settings_controller.save_model()
         if not self.chk_record_audio.isChecked():
             self.lbl_replay_audio_source.setText("音訊來源：未錄製系統聲音")
-        self.replay_controller.start(
+        started = self.replay_controller.start(
             win_title,
             fps=int(self.combo_fps.currentData()),
             buffer_seconds=self.spin_replay_seconds.value(),
             record_audio=self.chk_record_audio.isChecked(),
             audio_device_id=selected_audio_device_id or None,
         )
+        if from_hotkey:
+            if started:
+                self.statusBar().showMessage(
+                    "F9 已啟動回放緩衝；累積幾秒後再次按 F9 儲存片段。",
+                    5000,
+                )
+            else:
+                self.statusBar().showMessage("回放緩衝啟動失敗。", 5000)
 
     def refresh_audio_devices(self, preferred_device_id=None):
         if isinstance(preferred_device_id, bool):
@@ -715,13 +884,24 @@ class MainWindow(QMainWindow):
         if seconds is not None:
             self.spin_replay_seconds.setValue(int(seconds))
 
-    def save_replay_segment(self):
-        if not self.replay_controller.save():
+    def save_replay_segment(self, from_hotkey: bool = False):
+        if from_hotkey and self._replay_save_workflow_active:
+            return
+        saved = self.replay_controller.save()
+        if not saved:
+            if from_hotkey:
+                self.statusBar().showMessage(
+                    "回放緩衝尚未累積足夠畫面，請稍候再按 F9。",
+                    5000,
+                )
+                return
             QMessageBox.information(
                 self,
                 "片段尚未就緒",
                 "請先啟動回放緩衝並等待至少幾秒，再儲存最近片段。",
             )
+            return
+        self._replay_save_workflow_active = True
 
     def on_replay_state_changed(self, state: str, duration: float):
         total = self.spin_replay_seconds.value()
@@ -789,9 +969,13 @@ class MainWindow(QMainWindow):
         self.lbl_replay_status.setAccessibleDescription(self.lbl_replay_status.text())
 
     def on_replay_saved(self, file_path: str, keyframes):
-        self.open_generated_video_preview(file_path, keyframes)
+        try:
+            self.open_generated_video_preview(file_path, keyframes)
+        finally:
+            self._replay_save_workflow_active = False
 
     def on_replay_error(self, message: str):
+        self._replay_save_workflow_active = False
         if not self.replay_controller.is_running:
             self.replay_controller.stop()
         QMessageBox.warning(self, "回放緩衝", message)
@@ -802,10 +986,9 @@ class MainWindow(QMainWindow):
     def open_generated_video_preview(self, file_path: str, keyframes):
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
 
-        api_key = self.txt_gemini_key.text().strip()
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
         ocr_thread = OcrWorkerThread(
-            keyframes, api_key=api_key, whitelist=wl_list, parent=self
+            keyframes, whitelist=wl_list, parent=self
         )
         ocr_thread.finished.connect(ocr_thread.release_keyframes)
         ocr_thread.finished.connect(ocr_thread.deleteLater)
@@ -834,71 +1017,140 @@ class MainWindow(QMainWindow):
         modal.exec()
         modal.dispose_when_idle()
 
-    def trigger_video_report(self):
+    def trigger_video_report(self, from_hotkey: bool = False):
+        """Run one video workflow; a repeated trigger cancels the active capture."""
+
+        if self._video_workflow_active:
+            self.cancel_video_recording()
+            return
+
+        self._video_workflow_active = True
+        self._set_video_trigger_active(True)
+        try:
+            self._perform_video_report(from_hotkey=from_hotkey)
+        finally:
+            self._video_workflow_active = False
+            self._set_video_trigger_active(False)
+
+    def _set_video_trigger_active(self, active: bool):
+        if active:
+            self.btn_trigger_video.setText("取消錄影")
+            self.btn_trigger_video.setToolTip("再次按下可取消倒數或正在進行的錄影")
+            self.btn_trigger_video.setAccessibleName("取消錄影")
+        else:
+            self.btn_trigger_video.setText("錄製影片並辨識")
+            self.btn_trigger_video.setToolTip("開始錄製影片並辨識；錄影中再次按下可取消")
+            self.btn_trigger_video.setAccessibleName("錄製影片並辨識")
+
+    def cancel_video_recording(self):
+        """Cancel the active countdown or capture when the trigger is pressed again."""
+
+        dialog = self._active_video_countdown or self._active_video_progress
+        if dialog is None:
+            return False
+        dialog.cancel()
+        self.statusBar().showMessage("正在取消錄影…", 3000)
+        return True
+
+    def _perform_video_report(self, from_hotkey: bool = False):
+        if self._hotkey_recording_active:
+            return
+
         win_title = self.combo_windows.currentText()
         if not win_title:
-            QMessageBox.warning(self, "警告", "請先選擇目標遊戲視窗！")
+            if from_hotkey:
+                self.statusBar().showMessage("無法錄影：請先選擇目標遊戲視窗。", 5000)
+            else:
+                QMessageBox.warning(self, "警告", "請先選擇目標遊戲視窗！")
             return
 
         duration = self.spin_duration.value()
         fps = int(self.combo_fps.currentData())
         countdown = self.spin_countdown.value()
 
-        # Focus game window
         focus_window(win_title)
 
-        # Countdown phase
+        # Keep the global-hotkey path visually identical to the manual path:
+        # users need to see the same countdown before capture begins.
+        progress_cd = None
         if countdown > 0:
             from PySide6.QtCore import QCoreApplication
             progress_cd = QProgressDialog(f"準備錄影中，倒數 {countdown} 秒", "取消", 0, countdown, self)
             progress_cd.setWindowTitle("錄影倒數計時")
-            progress_cd.setWindowModality(Qt.WindowModality.WindowModal)
+            progress_cd.setWindowModality(Qt.WindowModality.NonModal)
+            progress_cd.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
             progress_cd.setAutoReset(False)
             progress_cd.setAutoClose(False)
+            self._active_video_countdown = progress_cd
             progress_cd.show()
 
-            for i in range(countdown, 0, -1):
-                if progress_cd.wasCanceled():
-                    progress_cd.close()
-                    return
-                progress_cd.setLabelText(f"倒數 {i} 秒後開始錄製遊戲視窗")
-                progress_cd.setValue(countdown - i)
-                QCoreApplication.processEvents()
-                time.sleep(1)
-            progress_cd.close()
+            try:
+                for i in range(countdown, 0, -1):
+                    if progress_cd.wasCanceled():
+                        return
+                    progress_cd.setLabelText(f"倒數 {i} 秒後開始錄製遊戲視窗")
+                    progress_cd.setValue(countdown - i)
+                    QCoreApplication.processEvents()
+                    time.sleep(1)
+                    if progress_cd.wasCanceled():
+                        return
+            finally:
+                progress_cd.close()
+                self._active_video_countdown = None
 
-        # Re-focus right before grabbing video
         focus_window(win_title)
 
-        progress = QProgressDialog(f"正在錄製遊戲視窗（{duration} 秒 @ {fps} FPS）", "取消", 0, 100, self)
+        progress = QProgressDialog(
+            f"正在錄製遊戲視窗（{duration} 秒 @ {fps} FPS）",
+            "取消",
+            0,
+            100,
+            self,
+        )
         progress.setWindowTitle("錄影中")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         progress.setAutoReset(False)
         progress.setAutoClose(False)
+        self._active_video_progress = progress
         progress.show()
+        if from_hotkey:
+            self._hotkey_recording_active = True
+            self.statusBar().showMessage(
+                f"快捷鍵已觸發，正在錄影 {duration} 秒…"
+            )
 
         def update_progress(val):
             progress.setValue(int(val * 100))
             from PySide6.QtCore import QCoreApplication
             QCoreApplication.processEvents()
 
-        # Record video and extract keyframes
-        file_path, keyframes = self.capture_controller.record_video(
-            win_title,
-            duration_sec=duration,
-            fps=fps,
-            progress_callback=update_progress,
-            cancel_checker=lambda: progress.wasCanceled(),
-            record_audio=self.chk_record_audio.isChecked(),
-            audio_device_id=self.combo_audio_output.currentData() or None,
-        )
-
-        user_canceled = progress.wasCanceled()
-        progress.close()
+        try:
+            file_path, keyframes = self.capture_controller.record_video(
+                win_title,
+                duration_sec=duration,
+                fps=fps,
+                progress_callback=update_progress,
+                cancel_checker=lambda: progress.wasCanceled(),
+                record_audio=self.chk_record_audio.isChecked(),
+                audio_device_id=self.combo_audio_output.currentData() or None,
+            )
+            user_canceled = progress.wasCanceled()
+        finally:
+            progress.close()
+            self._active_video_progress = None
+            if from_hotkey:
+                self._hotkey_recording_active = False
 
         if user_canceled or not file_path:
+            if from_hotkey:
+                self.statusBar().showMessage("快捷鍵錄影已取消。", 5000)
+            else:
+                self.statusBar().showMessage("錄影已取消。", 5000)
             return
 
+        if from_hotkey:
+            self.statusBar().showMessage("快捷鍵錄影完成，正在開啟辨識預覽。", 5000)
         self.open_generated_video_preview(file_path, keyframes)
 
     def trigger_local_file_report(self):
@@ -918,10 +1170,9 @@ class MainWindow(QMainWindow):
             return
 
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
-        api_key = self.txt_gemini_key.text().strip()
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
-        ocr_thread = OcrWorkerThread(keyframes, api_key=api_key, whitelist=wl_list, parent=self)
+        ocr_thread = OcrWorkerThread(keyframes, whitelist=wl_list, parent=self)
         ocr_thread.finished.connect(ocr_thread.release_keyframes)
         ocr_thread.finished.connect(ocr_thread.deleteLater)
 
@@ -943,16 +1194,77 @@ class MainWindow(QMainWindow):
         modal.exec()
         modal.dispose_when_idle()
 
+    def _persist_settings(self, *, show_hotkey_error: bool) -> bool:
+        """Persist settings after applying global shortcuts transactionally."""
+
+        hotkey_keys = (
+            "global_hotkeys_enabled",
+            "save_replay_hotkey",
+            "record_video_hotkey",
+        )
+        previous_hotkeys = {
+            key: self.cfg.get(key)
+            for key in hotkey_keys
+        }
+        self.settings_controller.collect_from_window(self)
+
+        if not self.configure_global_hotkeys():
+            for key, value in previous_hotkeys.items():
+                if value is None:
+                    self.cfg.pop(key, None)
+                else:
+                    self.cfg[key] = value
+            self.chk_global_hotkeys.setChecked(
+                bool(previous_hotkeys.get("global_hotkeys_enabled", True))
+            )
+            save_key = hotkey_key_from_shortcut(
+                str(
+                    previous_hotkeys.get(
+                        "save_replay_hotkey", DEFAULT_SAVE_REPLAY_HOTKEY
+                    )
+                ),
+                DEFAULT_SAVE_REPLAY_KEY,
+            )
+            record_key = hotkey_key_from_shortcut(
+                str(
+                    previous_hotkeys.get(
+                        "record_video_hotkey", DEFAULT_RECORD_VIDEO_HOTKEY
+                    )
+                ),
+                DEFAULT_RECORD_VIDEO_KEY,
+            )
+            self.combo_save_replay_hotkey_key.setCurrentIndex(
+                self.combo_save_replay_hotkey_key.findData(save_key)
+            )
+            self.combo_record_video_hotkey_key.setCurrentIndex(
+                self.combo_record_video_hotkey_key.findData(record_key)
+            )
+            self.on_global_hotkeys_enabled_toggled(
+                self.chk_global_hotkeys.isChecked()
+            )
+            self.on_hotkey_registration_changed("", False, "", "")
+            if show_hotkey_error:
+                QMessageBox.warning(
+                    self,
+                    "快捷鍵未套用",
+                    f"{self.hotkey_manager.last_error}\n原本的快捷鍵設定仍在使用。",
+                )
+            return False
+
+        self.settings_controller.save_model()
+        return True
+
     def save_settings(self):
         """Persist all current UI field values to config.json."""
-        self.settings_controller.save_from_window(self)
+        if not self._persist_settings(show_hotkey_error=True):
+            return
         self.btn_save_settings.setText("已儲存")
         from PySide6.QtCore import QTimer
         QTimer.singleShot(2000, lambda: self.btn_save_settings.setText("儲存設定"))
 
     def execute_submission(self, confirmed_data: dict):
         self.txt_map.setText(confirmed_data.get("map_name", "維多利亞島"))
-        self.settings_controller.save_from_window(self)
+        self._persist_settings(show_hotkey_error=False)
         if not self.submission_controller.submit(confirmed_data):
             QMessageBox.information(self, "送出中", "已有另一筆表單正在送出，請稍候。")
 
@@ -982,9 +1294,11 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "清理完成", f"已成功刪除 {deleted} 個檔案！")
 
     def closeEvent(self, event):
-        """Persist local settings, including the masked Gemini key, on exit."""
+        """Persist local settings on exit."""
+        self._closing = True
         self.replay_controller.stop()
-        self.save_settings()
+        self._persist_settings(show_hotkey_error=False)
+        self.hotkey_manager.shutdown()
         event.accept()
 
     def on_submission_finished(self, ok: bool, msg: str, error, data: dict):

@@ -1,8 +1,8 @@
 """Backward-compatible OCR facade.
 
 Provider adapters, image preprocessing, and candidate ranking live in separate
-modules. This facade keeps the public functions used by the existing UI and
-third-party integrations stable.
+modules. This facade keeps the local OCR functions used by the existing UI
+stable.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import logging
 from typing import List
 
 import numpy as np
-import requests
 from PIL import Image
 
 from maple_reporter.ocr.candidate_ranker import (
@@ -35,7 +34,6 @@ from maple_reporter.ocr.ocr_providers import (
     HAS_WINSDK,
     RAPID_OCR_ENGINE,
     recognize_text_from_image as _provider_recognize_text_from_image,
-    recognize_with_gemini_unified as _provider_recognize_with_gemini_unified,
 )
 
 
@@ -44,32 +42,6 @@ _MAP_LABELS = ("小地圖", "小地畫", "小地图", "小地画")
 _MAP_NOISE = [*_MAP_LABELS, "NEWS", "NEW", "Pup", "Pdn", "HP", "MP", "EXP", "LV"]
 _GUILD_MEDAL_EXCLUSION_PX = 60
 _BOTTOM_UI_CROP_Y = 0.78
-
-
-def recognize_with_gemini_unified(
-    pil_image: Image.Image, api_key: str
-) -> tuple[list[str], str]:
-    ids, map_name = _provider_recognize_with_gemini_unified(
-        pil_image, api_key, request_post=requests.post
-    )
-    return [candidate for candidate in ids if is_valid_suspect_id(candidate)], map_name
-
-
-def recognize_with_gemini_vision(pil_image: Image.Image, api_key: str) -> List[str]:
-    """Backward-compatible wrapper returning only player IDs."""
-
-    ids, _ = recognize_with_gemini_unified(pil_image, api_key)
-    return ids
-
-
-def recognize_map_name_with_gemini(pil_images: list, api_key: str) -> str:
-    """Backward-compatible wrapper returning only the map name."""
-
-    for image in pil_images[:2]:
-        _, map_name = recognize_with_gemini_unified(image, api_key)
-        if map_name:
-            return map_name
-    return ""
 
 
 def recognize_text_from_image(pil_image: Image.Image) -> str:
@@ -284,8 +256,5 @@ __all__ = [
     "is_valid_suspect_id",
     "recognize_candidates_from_image_list",
     "recognize_map_name_from_image_list",
-    "recognize_map_name_with_gemini",
     "recognize_text_from_image",
-    "recognize_with_gemini_unified",
-    "recognize_with_gemini_vision",
 ]
