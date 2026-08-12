@@ -138,6 +138,38 @@ class SubmissionConfirmationTests(unittest.TestCase):
         browser.close.assert_not_called()
         runtime.stop.assert_not_called()
 
+    @patch("maple_reporter.automation.form_filler._retain_submission_session")
+    @patch("maple_reporter.automation.form_filler.resolve_chromium_executable")
+    @patch("maple_reporter.automation.form_filler.sync_playwright")
+    @patch("maple_reporter.automation.form_filler._wait_for_submission_confirmation")
+    def test_confirmed_submit_closes_the_form_browser(
+        self, confirm, sync_playwright, resolve_executable, retain_session
+    ):
+        resolve_executable.return_value = "chromium.exe"
+        confirm.return_value = True
+        page = Mock()
+
+        def locator(selector):
+            if selector == 'input[type="url"]':
+                return _Locator(visible=True, count=1)
+            return _Locator(visible=True)
+
+        page.locator.side_effect = locator
+        browser = Mock()
+        browser.new_context.return_value.new_page.return_value = page
+        runtime = Mock()
+        runtime.chromium.launch.return_value = browser
+        sync_playwright.return_value.start.return_value = runtime
+
+        ok, _message = submit_gamania_report(
+            "suspect", "server", "test map", "note", "https://example.com/evidence"
+        )
+
+        self.assertTrue(ok)
+        retain_session.assert_not_called()
+        browser.close.assert_called_once_with()
+        runtime.stop.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()

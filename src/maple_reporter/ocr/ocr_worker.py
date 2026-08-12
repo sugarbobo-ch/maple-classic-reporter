@@ -22,6 +22,9 @@ class OcrWorkerThread(QThread):
         self.keyframes = keyframes
         self.api_key = api_key
         self.whitelist = [w.strip() for w in whitelist if w.strip()] if whitelist else []
+        # Keep the value after the signal is emitted so the preview dialog can
+        # recover a very fast result when the queued signal is delivered late.
+        self.detected_map_name = ""
 
     def run(self):
         if not self.keyframes:
@@ -34,13 +37,15 @@ class OcrWorkerThread(QThread):
 
         # Local OCR is the fast default. AI review is explicit in the preview UI.
         self.status_changed.emit("RapidOCR 辨識地圖名稱中...")
-        map_name = recognize_map_name_from_image_list(self.keyframes)
-        if map_name:
-            self.map_name_found.emit(map_name)
+        self.detected_map_name = recognize_map_name_from_image_list(self.keyframes)
+        if self.detected_map_name:
+            self.map_name_found.emit(self.detected_map_name)
 
         # RapidOCR / WinSDK — local recognition
         self.status_changed.emit("RapidOCR 本地補充掃描中...")
-        local_cands = recognize_candidates_from_image_list(self.keyframes, detected_map_name=map_name)
+        local_cands = recognize_candidates_from_image_list(
+            self.keyframes, detected_map_name=self.detected_map_name
+        )
         for lc in local_cands:
             if lc not in seen and lc not in excluded:
                 seen.add(lc)

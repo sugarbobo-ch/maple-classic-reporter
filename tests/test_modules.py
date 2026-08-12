@@ -8,7 +8,10 @@ from PIL import Image
 sys.path.insert(0, os.path.abspath("src"))
 
 from maple_reporter.utils.config import load_config, save_config
-from maple_reporter.ocr.win_ocr import recognize_text_from_image
+from maple_reporter.ocr.win_ocr import (
+    recognize_map_name_from_image_list,
+    recognize_text_from_image,
+)
 from maple_reporter.recorder.window_recorder import get_active_window_titles
 from maple_reporter.ocr.map_catalog import normalize_map_name, resolve_map_name
 from maple_reporter.ocr.win_ocr import _clean_map_ocr_text
@@ -36,6 +39,21 @@ class TestMapleReporter(unittest.TestCase):
         worker.release_keyframes()
         self.assertEqual(worker.keyframes, [])
 
+    def test_ocr_worker_keeps_detected_map_for_preview_fallback(self):
+        from maple_reporter.ocr.ocr_worker import OcrWorkerThread
+
+        with patch(
+            "maple_reporter.ocr.ocr_worker.recognize_map_name_from_image_list",
+            return_value="童話村",
+        ), patch(
+            "maple_reporter.ocr.ocr_worker.recognize_candidates_from_image_list",
+            return_value=[],
+        ):
+            worker = OcrWorkerThread([Image.new("RGB", (320, 240))])
+            worker.run()
+
+        self.assertEqual(worker.detected_map_name, "童話村")
+
     def test_map_name_catalog_normalizes_roman_numerals(self):
         self.assertEqual(normalize_map_name("海岸草叢Ⅰ"), normalize_map_name("海岸草叢I"))
         self.assertEqual(resolve_map_name("海岸草叢I"), "海岸草叢Ⅰ")
@@ -49,6 +67,23 @@ class TestMapleReporter(unittest.TestCase):
 
     def test_minimap_map_text_cleans_training_ground_and_roman_numeral(self):
         self.assertEqual(_clean_map_ocr_text("南部森林訓辣場！"), "南部森林訓練場Ⅰ")
+
+    def test_minimap_map_name_accepts_a_single_detected_map_line(self):
+        def bbox(y):
+            return [[0, y], [80, y], [80, y + 8], [0, y + 8]]
+
+        ocr_results = [
+            (bbox(0), "小地圖", 0.99),
+            (bbox(8), "弓箭手訓练场I", 0.92),
+        ]
+        with patch("maple_reporter.ocr.win_ocr.HAS_RAPID_OCR", True), patch(
+            "maple_reporter.ocr.win_ocr.RAPID_OCR_ENGINE",
+            return_value=(ocr_results, None),
+        ):
+            self.assertEqual(
+                recognize_map_name_from_image_list([Image.new("RGB", (640, 480))]),
+                "弓箭手訓練場Ⅰ",
+            )
 
     def test_is_valid_suspect_id_accepts_names_containing_ch_or_lv(self):
         from maple_reporter.ocr.win_ocr import is_valid_suspect_id

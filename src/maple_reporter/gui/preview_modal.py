@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
 )
 from maple_reporter.discord.webhook_service import upload_evidence_to_discord
 from maple_reporter.ocr.ocr_worker import AiReviewWorkerThread
-from maple_reporter.utils.urls import is_safe_https_url
 
 
 class EvidenceUploadThread(QThread):
@@ -139,8 +138,7 @@ class ReportPreviewModal(QDialog):
             self.ocr_thread.candidates_found.connect(self.on_live_candidates_found)
             self.ocr_thread.map_name_found.connect(self.on_live_map_name_found)
             self.ocr_thread.status_changed.connect(self.on_ocr_status_changed)
-            if not self.ocr_thread.isRunning():
-                self.ocr_thread.start()
+            self.ocr_thread.finished.connect(self.on_ocr_finished)
 
         self.btn_ai_review = QPushButton("AI 複核目前畫面")
         self.btn_ai_review.setToolTip("只傳送一張影格給 Gemini，不會掃描整段影片")
@@ -208,23 +206,7 @@ class ReportPreviewModal(QDialog):
         self.url_input.setReadOnly(True)
         self.url_input.setPlaceholderText(f"完成上傳後會自動產生，並填入外部檢舉表單")
         self.url_input.setToolTip("此連結由上傳流程自動產生，不能手動修改。")
-
-        self.btn_open_evidence_url = QPushButton("點擊前往查看")
-        self.btn_open_evidence_url.setEnabled(bool(data.get("evidence_url", "")))
-        self.btn_open_evidence_url.setStyleSheet("""
-            QPushButton {
-                background-color: #0288d1;
-                color: white;
-                font-weight: bold;
-                padding: 4px 10px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #0277bd; }
-        """)
-        self.btn_open_evidence_url.clicked.connect(self.open_evidence_url)
-
-        url_box.addWidget(self.url_input, 1)
-        url_box.addWidget(self.btn_open_evidence_url)
+        url_box.addWidget(self.url_input)
         layout.addLayout(url_box)
 
         self.lbl_upload_status = QLabel("")
@@ -257,6 +239,12 @@ class ReportPreviewModal(QDialog):
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_submit)
         layout.addLayout(btn_layout)
+
+        # Start OCR only after every field, including map_input, exists. A
+        # fast OCR result can otherwise arrive while __init__ is still
+        # constructing the dialog and be lost before it can be displayed.
+        if self.ocr_thread and not self.ocr_thread.isRunning():
+            self.ocr_thread.start()
 
     def on_ocr_status_changed(self, status_text: str):
         self.lbl_ocr_status.setText(status_text)
@@ -294,6 +282,15 @@ class ReportPreviewModal(QDialog):
         # edit or selection made through the default-name button.
         if not self._map_name_user_edited:
             self.map_input.setText(detected_map)
+
+    def on_ocr_finished(self):
+        """Apply a stored map result if its queued signal arrived too early."""
+
+        if not self.ocr_thread or self._map_name_user_edited:
+            return
+        detected_map = str(getattr(self.ocr_thread, "detected_map_name", "") or "")
+        if detected_map:
+            self.on_live_map_name_found(detected_map)
 
     def _on_map_name_edited(self, _text: str):
         self._map_name_user_edited = True
@@ -428,12 +425,6 @@ class ReportPreviewModal(QDialog):
         self.upload_thread = None
         self._dispose_if_idle()
 
-    def open_evidence_url(self):
-        url = self.url_input.text().strip()
-        if is_safe_https_url(url):
-            import webbrowser
-            webbrowser.open(url)
-
     def on_upload_finished(self, ok: bool, evidence_url: str):
         destination_name = "Google Drive" if self.upload_destination == "gdrive" else "Discord"
         self.btn_submit.setEnabled(True)
@@ -444,8 +435,6 @@ class ReportPreviewModal(QDialog):
             QMessageBox.warning(self, "上傳失敗", f"{evidence_url}\n表單尚未送出。")
             return
         self.url_input.setText(evidence_url)
-        if is_safe_https_url(evidence_url):
-            self.btn_open_evidence_url.setEnabled(True)
         self.btn_submit.setText("已完成上傳，正在送出表單…")
         self.lbl_upload_status.setText(f"已完成上傳至 {destination_name}，正在帶入連結並送出表單。")
         self.pending_data["evidence_url"] = evidence_url

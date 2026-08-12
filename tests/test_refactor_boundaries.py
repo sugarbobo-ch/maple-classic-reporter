@@ -49,6 +49,26 @@ class TestRefactorBoundaries(unittest.TestCase):
         page = _Page("https://forms.gamania.com/s/eLGg4/success")
         self.assertFalse(_wait_for_submission_confirmation(page, timeout_ms=100))
 
+    def test_preview_modal_starts_ocr_after_map_field_is_created(self):
+        source = Path("src/maple_reporter/gui/preview_modal.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            source.index("self.map_input = QLineEdit"),
+            source.index("self.ocr_thread.start()"),
+        )
+        self.assertLess(
+            source.index("self.ocr_thread.finished.connect(self.on_ocr_finished)"),
+            source.index("self.ocr_thread.start()"),
+        )
+
+    def test_local_evidence_picker_starts_at_recordings_dir(self):
+        source = Path("src/maple_reporter/gui/main_window.py").read_text(
+            encoding="utf-8"
+        )
+        dialog_call = source[source.index("def trigger_local_file_report"):]
+        self.assertIn("str(get_recordings_dir())", dialog_call)
+
     def test_submission_success_rejects_unrelated_host_url(self):
         page = _Page("https://example.com/success")
         self.assertFalse(_wait_for_submission_confirmation(page, timeout_ms=100))

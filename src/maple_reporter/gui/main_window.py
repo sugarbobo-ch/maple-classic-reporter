@@ -11,7 +11,10 @@ from PySide6.QtWidgets import (
 )
 
 from maple_reporter import __version__
-from maple_reporter.utils.config import get_recordings_dir, get_user_app_data_dir
+from maple_reporter.utils.config import (
+    get_recordings_dir,
+    get_user_app_data_dir,
+)
 from maple_reporter.recorder.window_recorder import (
     get_active_window_titles, focus_window
 )
@@ -903,7 +906,7 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "選擇本地影片或圖片檔案進行 OCR 與檢舉",
-            "",
+            str(get_recordings_dir()),
             "媒體檔案 (*.mp4 *.mkv *.avi *.mov *.png *.jpg *.jpeg);;所有檔案 (*.*)"
         )
         if not file_path or not os.path.exists(file_path):

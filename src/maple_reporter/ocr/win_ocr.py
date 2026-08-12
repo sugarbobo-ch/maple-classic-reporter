@@ -40,7 +40,8 @@ from maple_reporter.ocr.ocr_providers import (
 
 
 LOGGER = logging.getLogger(__name__)
-_MAP_NOISE = ["小地圖", "小地畫", "NEWS", "NEW", "Pup", "Pdn", "HP", "MP", "EXP", "LV"]
+_MAP_LABELS = ("小地圖", "小地畫", "小地图", "小地画")
+_MAP_NOISE = [*_MAP_LABELS, "NEWS", "NEW", "Pup", "Pdn", "HP", "MP", "EXP", "LV"]
 _GUILD_MEDAL_EXCLUSION_PX = 60
 _BOTTOM_UI_CROP_Y = 0.78
 
@@ -92,6 +93,40 @@ def _ocr_result(engine, image: Image.Image):
     return result
 
 
+def _is_map_label(text: str) -> bool:
+    return any(label in text for label in _MAP_LABELS)
+
+
+def _select_map_line(lines: list[tuple[str, float]]) -> str:
+    """Pick the actual map line from the mini-map text rows.
+
+    MapleStory normally renders a broad region on the first row and the map
+    name on the next row.  OCR can miss either row, though, so a single row is
+    still a valid map candidate.  Prefer the offline catalogue when possible
+    and retain the OCR text for hidden maps that are not in the catalogue.
+    """
+
+    if not lines:
+        return ""
+
+    candidate_lines = lines[1:] if len(lines) >= 2 else lines
+    catalogue_matches = []
+    for index, (text, score) in enumerate(candidate_lines):
+        candidate, similarity = best_map_name_match(text)
+        if candidate and similarity >= 0.76:
+            catalogue_matches.append((candidate, similarity, score, index))
+
+    if catalogue_matches:
+        return max(
+            catalogue_matches,
+            key=lambda item: (item[1], item[2], -item[3]),
+        )[0]
+
+    # Keep support for maps that are not yet in map_names_zh.json.  The first
+    # row after the region is the map title; later rows can be extra UI text.
+    return candidate_lines[0][0]
+
+
 def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
     """Recognize the mini-map title and vote across keyframes."""
 
@@ -113,7 +148,7 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
         for bbox, raw_text, score in sorted_results:
             text = _clean_map_ocr_text(raw_text)
             center_y = _bbox_cy(bbox)
-            if "小地圖" in text or "小地畫" in text:
+            if _is_map_label(text):
                 label_y = center_y
                 continue
             if is_map_noise(text, _MAP_NOISE) or not (0.40 <= score and 2 <= len(text) <= 22):
@@ -124,16 +159,16 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
             for bbox, raw_text, score in sorted_results:
                 text = _clean_map_ocr_text(raw_text)
                 center_y = _bbox_cy(bbox)
-                if center_y <= label_y + 12 or is_map_noise(text, _MAP_NOISE):
+                # OCR boxes can be close together on small captures.  The
+                # previous 12px gap skipped the only map row in that case.
+                if center_y <= label_y + 2 or is_map_noise(text, _MAP_NOISE):
                     continue
                 if score < 0.40 or not (2 <= len(text) <= 22):
                     continue
                 lines.append((text, float(score)))
-            if len(lines) >= 2:
-                actual_text = lines[1][0]
-                detections.append(
-                    resolve_map_name(actual_text, minimum_score=0.86) or actual_text
-                )
+            actual_text = _select_map_line(lines)
+            if actual_text:
+                detections.append(actual_text)
             continue
 
         for bbox, raw_text, score in sorted_results:

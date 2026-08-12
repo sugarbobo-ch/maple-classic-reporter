@@ -329,11 +329,16 @@ def submit_gamania_report(
             except Exception as error:
                 LOGGER.warning("點擊表單送出按鈕失敗 (%s)", type(error).__name__)
                 return False, "無法確認表單送出結果；表單視窗會保持開啟，請查看後手動關閉。"
-            if _wait_for_submission_confirmation(
+            submission_confirmed = _wait_for_submission_confirmation(
                 page,
                 initial_url=initial_url,
                 response_confirmation=response_confirmation,
-            ):
+            )
+            if submission_confirmed:
+                # A confirmed SurveyCake success page is safe to close. Keep
+                # failed submissions open so the user can inspect and fix the
+                # form instead of losing the validation message.
+                keep_browser_open = False
                 return True, f"外掛 ID「{suspect_id}」成功送出回報！"
             reason = _submission_failure_reason(page)
             if reason:
