@@ -15,6 +15,6 @@ data/config/
 # OAuth credentials from older project layouts
 client_secrets.json
 
-# Release-only OAuth client resource (embedded into the EXE, never committed)
+# Release-only OAuth client resource (embedded into the release bundle, never committed)
 build_secrets/
 google_oauth_client.json

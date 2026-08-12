@@ -62,9 +62,16 @@ jobs:
       - name: Package release ZIP
         shell: powershell
         run: |
-          $tagName = if ("${{ github.ref_name }}" -like "v*") { "${{ github.ref_name }}" } else { "v1.0.0" }
+          $versionLine = Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"([^"]+)"'
+          $projectVersion = $versionLine.Matches[0].Groups[1].Value
+          $tagName = if ("${{ github.ref_name }}" -like "v*") { "${{ github.ref_name }}" } else { "v$projectVersion" }
+          $bundlePath = "dist/MapleClassicReporter"
+          $exePath = Join-Path $bundlePath "MapleClassicReporter.exe"
+          if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+            throw "Missing onedir executable: $exePath"
+          }
           $zipPath = "dist/MapleClassicReporter-$tagName-windows-x64.zip"
-          Compress-Archive -LiteralPath "dist/MapleClassicReporter.exe" -DestinationPath $zipPath -Force
+          Compress-Archive -LiteralPath $bundlePath -DestinationPath $zipPath -CompressionLevel Optimal -Force
           Write-Host "Created release package: $zipPath"
 
       - name: Upload release package
@@ -83,13 +90,39 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
       - name: Download release package
         uses: actions/download-artifact@v4
         with:
           name: MapleClassicReporter-windows-x64
           path: dist
 
-      - name: Create GitHub release
+      - name: Select release notes
+        id: release-notes
+        shell: bash
+        run: |
+          notes_path="docs/releases/${GITHUB_REF_NAME}.md"
+          if [[ -f "$notes_path" ]]; then
+            echo "has_custom_notes=true" >> "$GITHUB_OUTPUT"
+            echo "notes_path=$notes_path" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_custom_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release with project notes
+        if: steps.release-notes.outputs.has_custom_notes == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          body_path: ${{ steps.release-notes.outputs.notes_path }}
+          generate_release_notes: false
+
+      - name: Create GitHub release with generated notes
+        if: steps.release-notes.outputs.has_custom_notes != 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip

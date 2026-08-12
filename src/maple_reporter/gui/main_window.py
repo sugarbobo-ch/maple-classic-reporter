@@ -36,7 +36,9 @@ LOGGER = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"新楓之谷：經典版《自動外掛檢舉工具》 v{__version__}")
+        self.setWindowTitle(
+            f"新楓之谷：經典版《自動外掛檢舉工具》｜v{__version__}｜快速啟動版"
+        )
         self.resize(900, 650)
 
         self.settings_controller = SettingsController()

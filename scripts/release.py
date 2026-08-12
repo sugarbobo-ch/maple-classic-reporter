@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import shutil
 import subprocess
 import sys
 import zipfile
@@ -22,6 +21,9 @@ PYPROJECT_TOML = ROOT_DIR / "pyproject.toml"
 README_MD = ROOT_DIR / "README.md"
 CONTEXT_MD = ROOT_DIR / "CONTEXT.md"
 DIST_DIR = ROOT_DIR / "dist"
+RELEASE_BUNDLE_DIR = DIST_DIR / "MapleClassicReporter"
+RELEASE_EXE = RELEASE_BUNDLE_DIR / "MapleClassicReporter.exe"
+RELEASE_NOTES_DIR = ROOT_DIR / "docs" / "releases"
 BUILD_SCRIPT = ROOT_DIR / "scripts" / "build_windows.ps1"
 SENSITIVE_PATH_PARTS = {
     "build_secrets",
@@ -112,6 +114,15 @@ def update_all_version_files(new_version: str) -> None:
     update_file_version(CONTEXT_MD, r'v\d+\.\d+\.\d+', f"v{new_version}")
 
 
+def refresh_lockfile() -> None:
+    """Regenerate uv.lock after the project version is changed."""
+
+    print("  [OK] Refreshing uv.lock for the new project version...")
+    result = subprocess.run(["uv", "lock"], cwd=ROOT_DIR)
+    if result.returncode != 0:
+        raise RuntimeError("uv lock failed after updating the project version.")
+
+
 def run_unit_tests() -> None:
     print("\n[2/6] Running unit test suite...")
     python_cmd = sys.executable
@@ -124,7 +135,7 @@ def run_unit_tests() -> None:
 
 
 def build_executable(expected_commit: str | None = None) -> Path:
-    print("\n[3/6] Compiling standalone EXE with PyInstaller...")
+    print("\n[3/6] Compiling onedir Windows bundle with PyInstaller...")
     if expected_commit:
         actual_commit = _run_git("rev-parse", "HEAD", capture_output=True).stdout.strip()
         if actual_commit != expected_commit:
@@ -136,23 +147,28 @@ def build_executable(expected_commit: str | None = None) -> Path:
     if result.returncode != 0:
         raise RuntimeError("PyInstaller build failed; release was not pushed.")
 
-    exe_path = DIST_DIR / "MapleClassicReporter.exe"
-    if not exe_path.exists():
-        raise RuntimeError(f"Compiled EXE not found at '{exe_path}'.")
-    print(f"  [OK] Successfully compiled {exe_path}")
-    return exe_path
+    if not RELEASE_EXE.exists():
+        raise RuntimeError(f"Compiled EXE not found at '{RELEASE_EXE}'.")
+    print(f"  [OK] Successfully compiled {RELEASE_BUNDLE_DIR}")
+    return RELEASE_BUNDLE_DIR
 
 
 def zip_release(new_version: str) -> Path:
     print("\n[4/6] Packaging release ZIP...")
-    exe_path = DIST_DIR / "MapleClassicReporter.exe"
-    if not exe_path.exists():
-        raise RuntimeError("Cannot package a missing executable.")
+    if not RELEASE_EXE.exists():
+        raise RuntimeError("Cannot package a missing onedir executable.")
     zip_path = DIST_DIR / f"MapleClassicReporter-v{new_version}-windows-x64.zip"
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.write(exe_path, arcname="MapleClassicReporter.exe")
+        for file_path in sorted(RELEASE_BUNDLE_DIR.rglob("*")):
+            if not file_path.is_file():
+                continue
+            relative_path = file_path.relative_to(RELEASE_BUNDLE_DIR)
+            archive.write(
+                file_path,
+                arcname=(Path(RELEASE_BUNDLE_DIR.name) / relative_path).as_posix(),
+            )
     print(f"  [OK] Created {zip_path} ({zip_path.stat().st_size / 1024 / 1024:.2f} MB)")
     return zip_path
 
@@ -220,28 +236,18 @@ def git_commit_tag_push(new_version: str) -> None:
 
 
 def publish_github_release(new_version: str, zip_path: Path) -> None:
-    print("\n[6/6] Publishing GitHub Release with auto-generated notes...")
+    """Hand the release to the tag-triggered GitHub Actions workflow.
+
+    The workflow is the single publisher. Creating a release locally after
+    pushing the tag would race the workflow and could create a duplicate.
+    """
+
     tag_name = f"v{new_version}"
-    gh_cmd = shutil.which("gh")
-    if not gh_cmd:
-        print("  [NOTICE] GitHub CLI ('gh') is not installed locally.")
-        print("  GitHub Actions will publish the release after the tag push.")
-        return
-    result = subprocess.run(
-        [
-            gh_cmd,
-            "release",
-            "create",
-            tag_name,
-            str(zip_path),
-            "--title",
-            tag_name,
-            "--generate-notes",
-        ],
-        cwd=ROOT_DIR,
-    )
-    if result.returncode != 0:
-        raise RuntimeError("GitHub Release creation failed after the safe tag push.")
+    release_notes_path = RELEASE_NOTES_DIR / f"{tag_name}.md"
+    print("\n[6/6] Handing release publication to GitHub Actions...")
+    print(f"  [OK] Tag {tag_name} pushed; workflow will publish {zip_path.name}.")
+    if release_notes_path.is_file():
+        print(f"  [OK] Project release notes: {release_notes_path}")
 
 
 def main() -> None:
@@ -281,13 +287,14 @@ def main() -> None:
             raise SystemExit("Release canceled.")
 
     update_all_version_files(new_version)
+    refresh_lockfile()
     run_unit_tests()
     commit_hash, tag_name = create_release_commit_and_tag(new_version)
     build_executable(expected_commit=commit_hash)
     zip_path = zip_release(new_version)
     push_release(commit_hash, tag_name)
     publish_github_release(new_version, zip_path)
-    print(f"\nSUCCESS! Release {tag_name} published.")
+    print(f"\nSUCCESS! Release tag {tag_name} pushed; GitHub Actions is publishing it.")
 
 
 if __name__ == "__main__":

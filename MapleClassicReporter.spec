@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-"""One-file Windows build with Playwright, Chromium, and OAuth client included."""
+"""One-directory Windows build with Playwright, Chromium, and OAuth client included."""
 
 import json
 from pathlib import Path
@@ -76,9 +76,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="MapleClassicReporter",
     debug=False,
     bootloader_ignore_signals=False,
@@ -91,4 +90,17 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=[str(PROJECT_ROOT / "assets" / "icon.ico")],
+)
+
+# Keep the native dependencies, Playwright driver, Chromium, and data files
+# beside the executable.  The one-file bootloader would unpack all of these
+# files into a fresh _MEI directory on every launch, which is especially slow
+# for the bundled Chromium runtime.
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="MapleClassicReporter",
 )

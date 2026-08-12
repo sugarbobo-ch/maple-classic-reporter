@@ -6,6 +6,8 @@ from maple_reporter.automation.playwright_runtime import (
     PLAYWRIGHT_DOWNLOAD_URL,
     PlaywrightBrowserError,
     PlaywrightErrorDetails,
+    get_bundled_browser_dir,
+    get_bundled_driver_path,
 )
 from maple_reporter.utils.config import get_base_dir
 
@@ -46,6 +48,28 @@ class TestPlaywrightRuntime(unittest.TestCase):
             "maple_reporter.utils.config.sys.executable", "C:/Apps/MapleClassicReporter.exe"
         ):
             self.assertEqual(get_base_dir(), Path("C:/Apps"))
+
+    def test_onedir_runtime_resources_resolve_from_internal_directory(self):
+        with patch(
+            "maple_reporter.automation.playwright_runtime.sys.frozen",
+            True,
+            create=True,
+        ), patch(
+            "maple_reporter.automation.playwright_runtime.sys._MEIPASS",
+            "C:/Apps/MapleClassicReporter/_internal",
+            create=True,
+        ):
+            self.assertEqual(
+                get_bundled_browser_dir(),
+                Path("C:/Apps/MapleClassicReporter/_internal/ms-playwright"),
+            )
+            self.assertEqual(
+                get_bundled_driver_path(),
+                Path(
+                    "C:/Apps/MapleClassicReporter/_internal/"
+                    "playwright/driver/node.exe"
+                ),
+            )
 
 
 if __name__ == "__main__":

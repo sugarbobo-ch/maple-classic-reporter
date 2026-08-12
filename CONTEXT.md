@@ -5,7 +5,7 @@
 - **Version**: `1.0.0`
 - **Windows release**: `MapleClassicReporter-v1.0.0-windows-x64.zip`
 - **Tutorial & Forum Post**: [巴哈姆特詳細教學文章](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)
-- **Distribution**: ZIP contains only `MapleClassicReporter.exe`; Playwright Chromium, its driver, and RapidOCR ONNX models are bundled inside the executable.
+- **Distribution**: ZIP contains the complete `MapleClassicReporter/` onedir bundle. The executable, Playwright Chromium, its driver, and RapidOCR ONNX models stay together in the extracted folder; users must not move the EXE out by itself.
 - **Runtime fallback**: The application checks bundled Playwright Chromium first, uses a local Playwright cache as fallback, and shows a copy-friendly error dialog with the official download URL when both are unavailable.
 
 ## Glossary & Ubiquitous Language
@@ -26,7 +26,7 @@
 - **Evidence Media (檢舉事證媒體)**: 外掛違規行為之圖片（PNG/JPG）或影片連結。
 - **Evidence Destination (事證目的地)**: 使用者在 Google Drive 與 Discord Webhook 間二選一。Google Drive 適合長期官方審查；Discord 限制為 10 MiB 內的短片。
 - **Evidence URL (事證連結)**: 上傳成功後由目的地回傳的公開連結。它是唯讀欄位，程式會自動帶入 SurveyCake 表單，不由使用者手動輸入。
-- **Google OAuth Client (Google OAuth 用戶端)**: 正式 EXE 內嵌 `google_oauth_client.json` 作為應用程式識別設定；原始碼開發可用 `MAPLE_REPORTER_GOOGLE_OAUTH_CONFIG` 覆寫，`build_secrets/google_oauth_client.json` 僅供 release build 使用，均不可提交到 Git。
+- **Google OAuth Client (Google OAuth 用戶端)**: 正式 onedir bundle 的 `_internal` 資源內嵌 `google_oauth_client.json` 作為應用程式識別設定；原始碼開發可用 `MAPLE_REPORTER_GOOGLE_OAUTH_CONFIG` 覆寫，`build_secrets/google_oauth_client.json` 僅供 release build 使用，均不可提交到 Git。
 - **Google OAuth Token (Google OAuth 權杖)**: `%LOCALAPPDATA%\MapleClassicReporter\oauth_token.dpapi` 使用 Windows DPAPI 保護單一使用者授權完成後的 refresh token；舊版 `data/config/token.json` 會自動遷移後刪除，絕不打包或與其他使用者共用。
 - **Discord Webhook URL**: Discord 頻道的寫入憑證，僅保存於使用者 `%LOCALAPPDATA%/MapleClassicReporter/discord_webhook_url.dpapi`，以 Windows DPAPI 保護且 UI 必須遮蔽顯示。
 - **Real-Time Video Pacing (真實時間動態補幀錄影)**: 依據真實經過秒數 (`elapsed * fps`) 動態計算並寫入影片張數，解決畫面擷取延遲與 OpenCV VideoWriter 幀率標頭不符導致影片播放加速與總秒數不符的問題，確保影片播放速度精準為 1.0x 且總長度符合現實時間。
@@ -38,7 +38,7 @@
   - 於上傳設定區塊提供「前往雲端資料夾」按鈕，直接於預設瀏覽器開啟 Google Drive 檢舉資料夾。
   - 於預覽彈窗提供「點擊前往查看」按鈕，完成上傳後可立即點擊開啟雲端事證連結。
   - 歷史紀錄表格之網址欄位格式化為藍字底線超連結，點選或雙擊即可於瀏覽器開啟檢視。
-- **Bundled Browser Runtime (內嵌瀏覽器執行環境)**: 發行版將 Playwright driver、Chromium 與 RapidOCR 模型封裝於單一 EXE；使用者不需要另外安裝 Chrome、Python 或 uv。
-- **Release Secret Boundary (發行敏感資料邊界)**: `build_secrets/` 內的 OAuth client JSON 可在 release build 時嵌入 EXE，但不可提交 Git；`data/`、`.env`、DPAPI refresh token、Gemini API Key、Discord Webhook URL 與錄影事證絕不能進入 Git 或發行 ZIP。
+- **Bundled Browser Runtime (內嵌瀏覽器執行環境)**: 發行版將 Playwright driver、Chromium 與 RapidOCR 模型放在同一個 PyInstaller onedir bundle；使用者不需要另外安裝 Chrome、Python 或 uv，且啟動時不必把整個 bundle 解壓到暫存目錄。
+- **Release Secret Boundary (發行敏感資料邊界)**: `build_secrets/` 內的 OAuth client JSON 可在 release build 時嵌入 onedir bundle，但不可提交 Git；`data/`、`.env`、DPAPI refresh token、Gemini API Key、Discord Webhook URL 與錄影事證絕不能進入 Git 或發行 ZIP。
 - **Violation Template (違規範本)**: 可新增、編輯或刪除的「名稱＋違規說明」預設內容。
 - **Report Form (外掛回報表單)**: 遊戲橘子官方線上 SurveyCake 結構表單 (`https://forms.gamania.com/s/eLGg4`)。
