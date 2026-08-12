@@ -3,7 +3,7 @@
 ## Current Release
 
 - **Version**: `1.0.0`
-- **Windows release**: `MapleClassicReporter-v1.0.0-windows-x64.zip`
+- **Windows release**: `MapleClassicReporter-v1.1.0-windows-x64.zip`
 - **Tutorial & Forum Post**: [巴哈姆特詳細教學文章](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)
 - **Distribution**: ZIP contains the complete `MapleClassicReporter/` onedir bundle. The executable, Playwright Chromium, its driver, and RapidOCR ONNX models stay together in the extracted folder; users must not move the EXE out by itself.
 - **Runtime fallback**: The application checks bundled Playwright Chromium first, uses a local Playwright cache as fallback, and shows a copy-friendly error dialog with the official download URL when both are unavailable.
