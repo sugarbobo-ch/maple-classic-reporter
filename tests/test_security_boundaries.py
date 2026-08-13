@@ -25,6 +25,29 @@ class TestSecurityBoundaries(unittest.TestCase):
                     Path(temp_dir) / "MapleClassicReporter",
                 )
 
+    def test_removed_recording_prompt_setting_is_not_persisted(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_file = root / "config" / "config.json"
+            with patch.object(config, "CONFIG_DIR", config_file.parent), patch.object(
+                config, "CONFIG_FILE", config_file
+            ), patch.object(
+                config, "RECORDINGS_DIR", root / "recordings"
+            ):
+                config.save_config(
+                    {
+                        "record_audio": False,
+                        "recording_prompt_enabled": True,
+                    }
+                )
+
+                raw = json.loads(config_file.read_text(encoding="utf-8"))
+                self.assertNotIn("recording_prompt_enabled", raw)
+                self.assertNotIn(
+                    "recording_prompt_enabled",
+                    config.load_config(),
+                )
+
     def test_discord_webhook_url_is_strictly_validated(self):
         valid = "https://discord.com/api/webhooks/123456789012345678/token_value-1"
         self.assertTrue(is_valid_discord_webhook_url(valid))

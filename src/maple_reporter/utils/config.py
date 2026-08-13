@@ -40,7 +40,7 @@ def get_default_token_path() -> Path:
 
 
 _SECRET_CONFIG_KEYS = ("discord_webhook_url",)
-_REMOVED_CONFIG_KEYS = ("gemini_api_key",)
+_REMOVED_CONFIG_KEYS = ("gemini_api_key", "recording_prompt_enabled")
 
 
 def get_default_secret_path(name: str) -> Path:

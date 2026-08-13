@@ -1,13 +1,14 @@
 import os
 import time
+import math
 import logging
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QCoreApplication, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QLabel, QLineEdit, QSpinBox, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QTabWidget, QCheckBox,
-    QProgressDialog, QDialog, QDialogButtonBox, QInputDialog, QScrollArea
+    QProgressBar, QDialog, QDialogButtonBox, QInputDialog, QScrollArea
 )
 
 from maple_reporter import __version__
@@ -16,7 +17,7 @@ from maple_reporter.utils.config import (
     get_user_app_data_dir,
 )
 from maple_reporter.recorder.window_recorder import (
-    get_active_window_titles, focus_window
+    focus_window, get_active_window_titles
 )
 from maple_reporter.recorder.audio_capture import (
     get_audio_output_devices,
@@ -49,6 +50,30 @@ from maple_reporter.platform.global_hotkeys import (
 
 LOGGER = logging.getLogger(__name__)
 
+VIDEO_TRIGGER_DEFAULT_STYLE = """
+    QPushButton {
+        background-color: #e65100;
+        color: white;
+        font-weight: bold;
+        font-size: 15px;
+        padding: 12px;
+        border-radius: 6px;
+    }
+    QPushButton:hover { background-color: #ef6c00; }
+"""
+
+VIDEO_TRIGGER_ACTIVE_STYLE = """
+    QPushButton {
+        background-color: #757575;
+        color: white;
+        font-weight: bold;
+        font-size: 15px;
+        padding: 12px;
+        border-radius: 6px;
+    }
+    QPushButton:hover { background-color: #616161; }
+"""
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -70,8 +95,8 @@ class MainWindow(QMainWindow):
         self._hotkey_statuses = {}
         self._hotkey_recording_active = False
         self._video_workflow_active = False
-        self._active_video_countdown = None
-        self._active_video_progress = None
+        self._video_cancel_requested = False
+        self._video_progress_value = 0
         self._replay_save_workflow_active = False
         self._closing = False
         self.submission_controller = SubmissionController(self)
@@ -471,17 +496,7 @@ class MainWindow(QMainWindow):
         self.btn_trigger_snip.clicked.connect(self.trigger_snipping)
 
         self.btn_trigger_video = QPushButton("錄製影片並辨識")
-        self.btn_trigger_video.setStyleSheet("""
-            QPushButton {
-                background-color: #e65100;
-                color: white;
-                font-weight: bold;
-                font-size: 15px;
-                padding: 12px;
-                border-radius: 6px;
-            }
-            QPushButton:hover { background-color: #ef6c00; }
-        """)
+        self.btn_trigger_video.setStyleSheet(VIDEO_TRIGGER_DEFAULT_STYLE)
         self.btn_trigger_video.clicked.connect(self.trigger_video_report)
         self.btn_select_file = QPushButton("選擇本機事證")
         self.btn_select_file.setStyleSheet("""
@@ -527,6 +542,32 @@ class MainWindow(QMainWindow):
 
         # Update GDrive UI Status
         self.update_gdrive_ui()
+
+        self.lbl_recording_progress = QLabel("未錄影")
+        self.lbl_recording_progress.setObjectName("recordingProgressLabel")
+        self.lbl_recording_progress.setAccessibleName("錄影進度")
+        self.lbl_recording_progress.setMinimumWidth(150)
+        self.lbl_recording_progress.setStyleSheet("color: #616161; font-weight: bold;")
+
+        self.progress_recording = QProgressBar()
+        self.progress_recording.setObjectName("recordingProgressBar")
+        self.progress_recording.setAccessibleName("錄影進度條")
+        self.progress_recording.setRange(0, 100)
+        self.progress_recording.setValue(0)
+        self.progress_recording.setTextVisible(False)
+        self.progress_recording.setFixedSize(170, 14)
+        self.progress_recording.hide()
+        self.statusBar().addWidget(self.lbl_recording_progress)
+        self.statusBar().addWidget(self.progress_recording)
+
+        self.btn_recording_status = QPushButton("未錄影")
+        self.btn_recording_status.setObjectName("recordingStatusButton")
+        self.btn_recording_status.setAccessibleName("錄影狀態")
+        self.btn_recording_status.setFixedHeight(24)
+        self.btn_recording_status.setMinimumWidth(150)
+        self.btn_recording_status.clicked.connect(self.cancel_video_recording)
+        self.statusBar().addPermanentWidget(self.btn_recording_status)
+        self._set_recording_status(False)
 
     def open_gdrive_folder(self):
         import webbrowser
@@ -1025,31 +1066,114 @@ class MainWindow(QMainWindow):
             return
 
         self._video_workflow_active = True
+        self._video_cancel_requested = False
         self._set_video_trigger_active(True)
         try:
             self._perform_video_report(from_hotkey=from_hotkey)
         finally:
             self._video_workflow_active = False
+            self._video_cancel_requested = False
             self._set_video_trigger_active(False)
 
     def _set_video_trigger_active(self, active: bool):
+        self._set_recording_status(active)
+        self.btn_trigger_video.setEnabled(True)
         if active:
+            self.btn_trigger_video.setStyleSheet(VIDEO_TRIGGER_ACTIVE_STYLE)
             self.btn_trigger_video.setText("取消錄影")
             self.btn_trigger_video.setToolTip("再次按下可取消倒數或正在進行的錄影")
             self.btn_trigger_video.setAccessibleName("取消錄影")
         else:
+            self.btn_trigger_video.setStyleSheet(VIDEO_TRIGGER_DEFAULT_STYLE)
             self.btn_trigger_video.setText("錄製影片並辨識")
             self.btn_trigger_video.setToolTip("開始錄製影片並辨識；錄影中再次按下可取消")
             self.btn_trigger_video.setAccessibleName("錄製影片並辨識")
 
-    def cancel_video_recording(self):
-        """Cancel the active countdown or capture when the trigger is pressed again."""
+    def _set_recording_progress(self, message: str, progress: int | None = None):
+        """Update the left side of the status bar without opening a window."""
 
-        dialog = self._active_video_countdown or self._active_video_progress
-        if dialog is None:
+        label = getattr(self, "lbl_recording_progress", None)
+        progress_bar = getattr(self, "progress_recording", None)
+        if label is None or progress_bar is None:
+            return
+
+        label.setText(message)
+        label.setAccessibleDescription(message)
+        if progress is None:
+            self._video_progress_value = 0
+            progress_bar.setValue(0)
+            progress_bar.hide()
+            return
+
+        value = max(0, min(100, int(progress)))
+        self._video_progress_value = value
+        progress_bar.setValue(value)
+        progress_bar.show()
+
+    def _set_video_cancelling(self):
+        """Give immediate visual feedback while the recorder drains its loop."""
+
+        self._set_recording_progress("正在取消錄影…", self._video_progress_value)
+        self.btn_trigger_video.setText("取消中…")
+        self.btn_trigger_video.setToolTip("正在停止錄影，請稍候…")
+        self.btn_trigger_video.setAccessibleName("取消中")
+        self.btn_trigger_video.setEnabled(False)
+        self.btn_recording_status.setText("取消中…")
+        self.btn_recording_status.setToolTip("正在停止錄影，請稍候…")
+        self.btn_recording_status.setAccessibleDescription("正在停止錄影，請稍候")
+        self.btn_recording_status.setEnabled(False)
+
+    def _set_recording_status(self, active: bool):
+        """Update the status-bar recording indicator and cancellation button."""
+
+        if active:
+            self.btn_recording_status.setText("錄影中（點此取消）")
+            self.btn_recording_status.setToolTip("取消目前正在進行的錄影")
+            self.btn_recording_status.setAccessibleDescription(
+                "錄影正在進行中，按此取消錄影"
+            )
+            self.btn_recording_status.setEnabled(True)
+            self.btn_recording_status.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: #757575;
+                    color: white;
+                    font-weight: bold;
+                    border: 1px solid #616161;
+                    border-radius: 3px;
+                    padding: 1px 8px;
+                }
+                QPushButton:hover { background-color: #616161; }
+                """
+            )
+            self._set_recording_progress("錄影準備中…", 0)
+        else:
+            self.btn_recording_status.setText("未錄影")
+            self.btn_recording_status.setToolTip("目前沒有進行中的錄影")
+            self.btn_recording_status.setAccessibleDescription("目前沒有進行中的錄影")
+            self.btn_recording_status.setEnabled(False)
+            self.btn_recording_status.setStyleSheet(
+                """
+                QPushButton {
+                    color: #757575;
+                    border: 1px solid #bdbdbd;
+                    border-radius: 3px;
+                    padding: 1px 8px;
+                }
+                """
+            )
+            self._set_recording_progress("未錄影")
+
+    def cancel_video_recording(self):
+        """Request cancellation and immediately update both cancel controls."""
+
+        if not getattr(self, "_video_workflow_active", False):
             return False
-        dialog.cancel()
-        self.statusBar().showMessage("正在取消錄影…", 3000)
+        if getattr(self, "_video_cancel_requested", False):
+            return True
+        self._video_cancel_requested = True
+        self._set_video_cancelling()
+        QCoreApplication.processEvents()
         return True
 
     def _perform_video_report(self, from_hotkey: bool = False):
@@ -1070,59 +1194,50 @@ class MainWindow(QMainWindow):
 
         focus_window(win_title)
 
-        # Keep the global-hotkey path visually identical to the manual path:
-        # users need to see the same countdown before capture begins.
-        progress_cd = None
         if countdown > 0:
-            from PySide6.QtCore import QCoreApplication
-            progress_cd = QProgressDialog(f"準備錄影中，倒數 {countdown} 秒", "取消", 0, countdown, self)
-            progress_cd.setWindowTitle("錄影倒數計時")
-            progress_cd.setWindowModality(Qt.WindowModality.NonModal)
-            progress_cd.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-            progress_cd.setAutoReset(False)
-            progress_cd.setAutoClose(False)
-            self._active_video_countdown = progress_cd
-            progress_cd.show()
-
-            try:
-                for i in range(countdown, 0, -1):
-                    if progress_cd.wasCanceled():
-                        return
-                    progress_cd.setLabelText(f"倒數 {i} 秒後開始錄製遊戲視窗")
-                    progress_cd.setValue(countdown - i)
-                    QCoreApplication.processEvents()
-                    time.sleep(1)
-                    if progress_cd.wasCanceled():
-                        return
-            finally:
-                progress_cd.close()
-                self._active_video_countdown = None
+            countdown_end = time.monotonic() + countdown
+            last_remaining = None
+            while True:
+                if self._video_cancel_requested:
+                    return
+                remaining = int(math.ceil(countdown_end - time.monotonic()))
+                if remaining <= 0:
+                    break
+                if remaining != last_remaining:
+                    elapsed_countdown = countdown - remaining
+                    percent = int(elapsed_countdown / countdown * 100)
+                    self._set_recording_progress(
+                        f"錄影前倒數 {remaining} 秒",
+                        percent,
+                    )
+                    last_remaining = remaining
+                QCoreApplication.processEvents()
+                if self._video_cancel_requested:
+                    return
+                time.sleep(min(0.05, max(0.0, countdown_end - time.monotonic())))
 
         focus_window(win_title)
 
-        progress = QProgressDialog(
-            f"正在錄製遊戲視窗（{duration} 秒 @ {fps} FPS）",
-            "取消",
-            0,
-            100,
-            self,
-        )
-        progress.setWindowTitle("錄影中")
-        progress.setWindowModality(Qt.WindowModality.NonModal)
-        progress.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        progress.setAutoReset(False)
-        progress.setAutoClose(False)
-        self._active_video_progress = progress
-        progress.show()
         if from_hotkey:
             self._hotkey_recording_active = True
-            self.statusBar().showMessage(
-                f"快捷鍵已觸發，正在錄影 {duration} 秒…"
-            )
+        self._set_recording_progress(f"錄影中 0 / {duration} 秒", 0)
+        last_elapsed = -1
 
         def update_progress(val):
-            progress.setValue(int(val * 100))
-            from PySide6.QtCore import QCoreApplication
+            nonlocal last_elapsed
+            fraction = max(0.0, min(1.0, float(val)))
+            elapsed = min(duration, int(math.ceil(fraction * duration)))
+            percent = int(fraction * 100)
+            if elapsed != last_elapsed:
+                self._set_recording_progress(
+                    f"錄影中 {elapsed} / {duration} 秒",
+                    percent,
+                )
+                last_elapsed = elapsed
+            else:
+                progress_bar = getattr(self, "progress_recording", None)
+                if progress_bar is not None:
+                    progress_bar.setValue(percent)
             QCoreApplication.processEvents()
 
         try:
@@ -1131,24 +1246,24 @@ class MainWindow(QMainWindow):
                 duration_sec=duration,
                 fps=fps,
                 progress_callback=update_progress,
-                cancel_checker=lambda: progress.wasCanceled(),
+                cancel_checker=lambda: self._video_cancel_requested,
                 record_audio=self.chk_record_audio.isChecked(),
                 audio_device_id=self.combo_audio_output.currentData() or None,
             )
-            user_canceled = progress.wasCanceled()
+            user_canceled = self._video_cancel_requested
         finally:
-            progress.close()
-            self._active_video_progress = None
             if from_hotkey:
                 self._hotkey_recording_active = False
 
         if user_canceled or not file_path:
+            self._set_recording_progress("錄影已取消", self._video_progress_value)
             if from_hotkey:
                 self.statusBar().showMessage("快捷鍵錄影已取消。", 5000)
             else:
                 self.statusBar().showMessage("錄影已取消。", 5000)
             return
 
+        self._set_recording_progress(f"錄影完成，共 {duration} 秒", 100)
         if from_hotkey:
             self.statusBar().showMessage("快捷鍵錄影完成，正在開啟辨識預覽。", 5000)
         self.open_generated_video_preview(file_path, keyframes)

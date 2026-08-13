@@ -147,6 +147,7 @@ class TestMapleReporter(unittest.TestCase):
         cfg = load_config()
         self.assertIn("auto_delete_after_upload", cfg)
         self.assertIn("record_audio", cfg)
+        self.assertNotIn("recording_prompt_enabled", cfg)
 
         rec_dir = get_recordings_dir()
         test_file = rec_dir / f"test_dummy_{int(time.time())}.txt"

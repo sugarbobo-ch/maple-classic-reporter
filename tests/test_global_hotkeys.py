@@ -1,9 +1,9 @@
 import ctypes
 import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
 from maple_reporter.gui.main_window import MainWindow
 from maple_reporter.platform.global_hotkeys import (
@@ -111,14 +111,15 @@ class TestReplayHotkeyDispatch(unittest.TestCase):
 
 
 class TestVideoWorkflowCancellation(unittest.TestCase):
-    def test_manual_repeat_cancels_active_progress_dialog(self):
+    def test_manual_repeat_marks_active_workflow_as_cancelling(self):
         window = Mock()
-        window._active_video_countdown = None
-        window._active_video_progress = Mock()
+        window._video_workflow_active = True
+        window._video_cancel_requested = False
 
         self.assertTrue(MainWindow.cancel_video_recording(window))
 
-        window._active_video_progress.cancel.assert_called_once_with()
+        self.assertTrue(window._video_cancel_requested)
+        window._set_video_cancelling.assert_called_once_with()
 
     def test_repeated_manual_or_global_trigger_requests_cancellation(self):
         window = Mock()
@@ -129,12 +130,83 @@ class TestVideoWorkflowCancellation(unittest.TestCase):
 
         self.assertEqual(window.cancel_video_recording.call_count, 2)
 
+    def test_recording_status_button_is_gray_and_enabled_while_active(self):
+        window = Mock()
+
+        MainWindow._set_recording_status(window, True)
+
+        window.btn_recording_status.setText.assert_called_with("錄影中（點此取消）")
+        window.btn_recording_status.setEnabled.assert_called_with(True)
+        active_style = window.btn_recording_status.setStyleSheet.call_args.args[0]
+        self.assertIn("#757575", active_style)
+
+        MainWindow._set_recording_status(window, False)
+
+        window.btn_recording_status.setText.assert_called_with("未錄影")
+        window.btn_recording_status.setEnabled.assert_called_with(False)
+
+    def test_video_trigger_button_turns_gray_while_active(self):
+        window = Mock()
+
+        MainWindow._set_video_trigger_active(window, True)
+
+        active_style = window.btn_trigger_video.setStyleSheet.call_args.args[0]
+        self.assertIn("#757575", active_style)
+        window.btn_trigger_video.setText.assert_called_with("取消錄影")
+
+        MainWindow._set_video_trigger_active(window, False)
+
+        inactive_style = window.btn_trigger_video.setStyleSheet.call_args.args[0]
+        self.assertIn("#e65100", inactive_style)
+        window.btn_trigger_video.setText.assert_called_with("錄製影片並辨識")
+
+    def test_cancel_state_disables_both_cancel_controls_immediately(self):
+        window = Mock()
+
+        MainWindow._set_video_cancelling(window)
+
+        window.btn_trigger_video.setText.assert_called_with("取消中…")
+        window.btn_trigger_video.setEnabled.assert_called_with(False)
+        window.btn_recording_status.setText.assert_called_with("取消中…")
+        window.btn_recording_status.setEnabled.assert_called_with(False)
+
+    def test_status_progress_displays_seconds_and_percentage(self):
+        window = Mock()
+
+        MainWindow._set_recording_progress(window, "錄影中 5 / 10 秒", 50)
+
+        window.lbl_recording_progress.setText.assert_called_with("錄影中 5 / 10 秒")
+        window.progress_recording.setValue.assert_called_with(50)
+        window.progress_recording.show.assert_called_once_with()
+
+    def test_video_report_updates_status_progress_without_a_dialog(self):
+        window = Mock()
+        window._hotkey_recording_active = False
+        window._video_cancel_requested = False
+        window.combo_windows.currentText.return_value = "game"
+        window.spin_duration.value.return_value = 3
+        window.combo_fps.currentData.return_value = 30
+        window.spin_countdown.value.return_value = 0
+        window.chk_record_audio.isChecked.return_value = False
+        window.combo_audio_output.currentData.return_value = ""
+
+        def record_video(*args, progress_callback, **kwargs):
+            progress_callback(0.5)
+            return None, []
+
+        window.capture_controller.record_video.side_effect = record_video
+
+        with patch("maple_reporter.gui.main_window.focus_window"):
+            MainWindow._perform_video_report(window)
+
+        window._set_recording_progress.assert_any_call("錄影中 2 / 3 秒", 50)
+
 
 @unittest.skipUnless(os.name == "nt", "Win32 hotkey registration is Windows-only")
 class TestGlobalHotkeyManager(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
         self.manager = GlobalHotkeyManager()
