@@ -3,7 +3,8 @@ import os
 import unittest
 from unittest.mock import Mock, patch
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QCheckBox
 
 from maple_reporter.gui.main_window import MainWindow
 from maple_reporter.platform.global_hotkeys import (
@@ -135,7 +136,7 @@ class TestVideoWorkflowCancellation(unittest.TestCase):
 
         MainWindow._set_recording_status(window, True)
 
-        window.btn_recording_status.setText.assert_called_with("錄影中（點此取消）")
+        window.btn_recording_status.setText.assert_called_with("取消錄影")
         window.btn_recording_status.setEnabled.assert_called_with(True)
         active_style = window.btn_recording_status.setStyleSheet.call_args.args[0]
         self.assertIn("#757575", active_style)
@@ -170,14 +171,48 @@ class TestVideoWorkflowCancellation(unittest.TestCase):
         window.btn_recording_status.setText.assert_called_with("取消中…")
         window.btn_recording_status.setEnabled.assert_called_with(False)
 
-    def test_status_progress_displays_seconds_and_percentage(self):
+    def test_status_progress_updates_status_text_and_progress_bar(self):
         window = Mock()
 
         MainWindow._set_recording_progress(window, "錄影中 5 / 10 秒", 50)
 
         window.lbl_recording_progress.setText.assert_called_with("錄影中 5 / 10 秒")
+        window.lbl_recording_progress.setAccessibleDescription.assert_called_with(
+            "錄影中 5 / 10 秒"
+        )
+        window.progress_recording.setAccessibleDescription.assert_called_with(
+            "錄影中 5 / 10 秒"
+        )
+        window.progress_recording.setToolTip.assert_called_with("錄影中 5 / 10 秒")
         window.progress_recording.setValue.assert_called_with(50)
         window.progress_recording.show.assert_called_once_with()
+
+    def test_ocr_master_checkbox_reflects_child_selection(self):
+        QApplication.instance() or QApplication([])
+        window = Mock()
+        window.chk_ocr_autofill = QCheckBox()
+        window.chk_ocr_autofill.setTristate(True)
+        window.chk_ocr_id = QCheckBox()
+        window.chk_ocr_map = QCheckBox()
+
+        window.chk_ocr_id.setChecked(True)
+        window.chk_ocr_map.setChecked(True)
+        MainWindow.sync_ocr_autofill_checkboxes(window)
+        self.assertEqual(
+            window.chk_ocr_autofill.checkState(), Qt.CheckState.Checked
+        )
+
+        window.chk_ocr_map.setChecked(False)
+        MainWindow.sync_ocr_autofill_checkboxes(window)
+        self.assertEqual(
+            window.chk_ocr_autofill.checkState(), Qt.CheckState.PartiallyChecked
+        )
+
+        MainWindow._on_ocr_autofill_master_changed(
+            window, Qt.CheckState.Unchecked
+        )
+        self.assertFalse(window.chk_ocr_id.isChecked())
+        self.assertFalse(window.chk_ocr_map.isChecked())
 
     def test_video_report_updates_status_progress_without_a_dialog(self):
         window = Mock()

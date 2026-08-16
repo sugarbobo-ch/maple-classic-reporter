@@ -2,7 +2,7 @@ import os
 import time
 import math
 import logging
-from PySide6.QtCore import QCoreApplication, QUrl
+from PySide6.QtCore import QCoreApplication, QUrl, Qt
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
@@ -261,6 +261,40 @@ class MainWindow(QMainWindow):
         row_opts.addStretch()
         row_opts.addWidget(self.btn_clear_recordings)
         g2_layout.addLayout(row_opts)
+
+        ocr_group = QGroupBox("OCR 影像辨識自動帶入")
+        ocr_layout = QVBoxLayout(ocr_group)
+        self.chk_ocr_autofill = QCheckBox("啟用 OCR 影像辨識自動帶入")
+        self.chk_ocr_autofill.setTristate(True)
+        self.chk_ocr_autofill.setChecked(True)
+        self.chk_ocr_autofill.setAccessibleName("啟用 OCR 影像辨識自動帶入")
+        self.chk_ocr_autofill.setToolTip(
+            "控制是否將 OCR 辨識到的角色 ID 與地圖名稱自動帶入預覽表單；"
+            "部分勾選代表只啟用其中一項。"
+        )
+        ocr_layout.addWidget(self.chk_ocr_autofill)
+
+        ocr_fields = QHBoxLayout()
+        ocr_fields.addSpacing(24)
+        self.chk_ocr_id = QCheckBox("角色 ID")
+        self.chk_ocr_id.setChecked(True)
+        self.chk_ocr_id.setAccessibleName("啟用角色 ID OCR 自動帶入")
+        self.chk_ocr_id.setToolTip("啟用後，自動辨識並帶入外掛玩家角色 ID")
+        self.chk_ocr_map = QCheckBox("地圖名稱")
+        self.chk_ocr_map.setChecked(True)
+        self.chk_ocr_map.setAccessibleName("啟用地圖名稱 OCR 自動帶入")
+        self.chk_ocr_map.setToolTip("啟用後，自動辨識並帶入所在地圖名稱")
+        self.chk_ocr_id.toggled.connect(self._on_ocr_autofill_child_toggled)
+        self.chk_ocr_map.toggled.connect(self._on_ocr_autofill_child_toggled)
+        self.chk_ocr_autofill.stateChanged.connect(
+            self._on_ocr_autofill_master_changed
+        )
+        ocr_fields.addWidget(self.chk_ocr_id)
+        ocr_fields.addWidget(self.chk_ocr_map)
+        ocr_fields.addStretch()
+        ocr_layout.addLayout(ocr_fields)
+        g2_layout.addWidget(ocr_group)
+        self.sync_ocr_autofill_checkboxes()
 
         row_audio = QHBoxLayout()
         row_audio.addWidget(QLabel("系統聲音來源："))
@@ -545,20 +579,23 @@ class MainWindow(QMainWindow):
 
         self.lbl_recording_progress = QLabel("未錄影")
         self.lbl_recording_progress.setObjectName("recordingProgressLabel")
-        self.lbl_recording_progress.setAccessibleName("錄影進度")
-        self.lbl_recording_progress.setMinimumWidth(150)
+        self.lbl_recording_progress.setAccessibleName("錄影目前狀態")
+        self.lbl_recording_progress.setMinimumWidth(160)
         self.lbl_recording_progress.setStyleSheet("color: #616161; font-weight: bold;")
 
         self.progress_recording = QProgressBar()
         self.progress_recording.setObjectName("recordingProgressBar")
-        self.progress_recording.setAccessibleName("錄影進度條")
+        self.progress_recording.setAccessibleName("錄影進度")
+        self.progress_recording.setToolTip("目前沒有進行中的錄影")
         self.progress_recording.setRange(0, 100)
         self.progress_recording.setValue(0)
         self.progress_recording.setTextVisible(False)
-        self.progress_recording.setFixedSize(170, 14)
+        self.progress_recording.setMinimumWidth(220)
+        self.progress_recording.setMaximumWidth(480)
+        self.progress_recording.setFixedHeight(16)
         self.progress_recording.hide()
         self.statusBar().addWidget(self.lbl_recording_progress)
-        self.statusBar().addWidget(self.progress_recording)
+        self.statusBar().addWidget(self.progress_recording, 1)
 
         self.btn_recording_status = QPushButton("未錄影")
         self.btn_recording_status.setObjectName("recordingStatusButton")
@@ -568,6 +605,38 @@ class MainWindow(QMainWindow):
         self.btn_recording_status.clicked.connect(self.cancel_video_recording)
         self.statusBar().addPermanentWidget(self.btn_recording_status)
         self._set_recording_status(False)
+
+    def sync_ocr_autofill_checkboxes(self):
+        """Reflect the two OCR options in the tri-state master checkbox."""
+
+        id_enabled = self.chk_ocr_id.isChecked()
+        map_enabled = self.chk_ocr_map.isChecked()
+        if id_enabled and map_enabled:
+            state = Qt.CheckState.Checked
+        elif id_enabled or map_enabled:
+            state = Qt.CheckState.PartiallyChecked
+        else:
+            state = Qt.CheckState.Unchecked
+
+        self.chk_ocr_autofill.blockSignals(True)
+        self.chk_ocr_autofill.setCheckState(state)
+        self.chk_ocr_autofill.blockSignals(False)
+        self.chk_ocr_autofill.setAccessibleDescription(
+            "角色 ID 與地圖名稱 OCR 自動帶入："
+            f"{'全部啟用' if state == Qt.CheckState.Checked else '部分啟用' if state == Qt.CheckState.PartiallyChecked else '全部停用'}"
+        )
+
+    def _on_ocr_autofill_child_toggled(self, _checked: bool):
+        self.sync_ocr_autofill_checkboxes()
+
+    def _on_ocr_autofill_master_changed(self, state: int):
+        # Clicking an unchecked or partially checked master enables the whole
+        # group; the next click on a checked master disables it.
+        state_value = getattr(state, "value", state)
+        enabled = state_value != Qt.CheckState.Unchecked.value
+        self.chk_ocr_id.setChecked(enabled)
+        self.chk_ocr_map.setChecked(enabled)
+        self.sync_ocr_autofill_checkboxes()
 
     def open_gdrive_folder(self):
         import webbrowser
@@ -799,7 +868,13 @@ class MainWindow(QMainWindow):
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
-        ocr_thread = OcrWorkerThread([pil_img], whitelist=wl_list, parent=self)
+        ocr_thread = OcrWorkerThread(
+            [pil_img],
+            whitelist=wl_list,
+            parent=self,
+            recognize_id=self.chk_ocr_id.isChecked(),
+            recognize_map=self.chk_ocr_map.isChecked(),
+        )
         ocr_thread.finished.connect(ocr_thread.release_keyframes)
         ocr_thread.finished.connect(ocr_thread.deleteLater)
 
@@ -1029,7 +1104,11 @@ class MainWindow(QMainWindow):
 
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
         ocr_thread = OcrWorkerThread(
-            keyframes, whitelist=wl_list, parent=self
+            keyframes,
+            whitelist=wl_list,
+            parent=self,
+            recognize_id=self.chk_ocr_id.isChecked(),
+            recognize_map=self.chk_ocr_map.isChecked(),
         )
         ocr_thread.finished.connect(ocr_thread.release_keyframes)
         ocr_thread.finished.connect(ocr_thread.deleteLater)
@@ -1090,7 +1169,7 @@ class MainWindow(QMainWindow):
             self.btn_trigger_video.setAccessibleName("錄製影片並辨識")
 
     def _set_recording_progress(self, message: str, progress: int | None = None):
-        """Update the left side of the status bar without opening a window."""
+        """Update the status text and progress bar without opening a window."""
 
         label = getattr(self, "lbl_recording_progress", None)
         progress_bar = getattr(self, "progress_recording", None)
@@ -1099,6 +1178,9 @@ class MainWindow(QMainWindow):
 
         label.setText(message)
         label.setAccessibleDescription(message)
+        label.setToolTip(message)
+        progress_bar.setAccessibleDescription(message)
+        progress_bar.setToolTip(message)
         if progress is None:
             self._video_progress_value = 0
             progress_bar.setValue(0)
@@ -1127,7 +1209,7 @@ class MainWindow(QMainWindow):
         """Update the status-bar recording indicator and cancellation button."""
 
         if active:
-            self.btn_recording_status.setText("錄影中（點此取消）")
+            self.btn_recording_status.setText("取消錄影")
             self.btn_recording_status.setToolTip("取消目前正在進行的錄影")
             self.btn_recording_status.setAccessibleDescription(
                 "錄影正在進行中，按此取消錄影"
@@ -1207,7 +1289,7 @@ class MainWindow(QMainWindow):
                     elapsed_countdown = countdown - remaining
                     percent = int(elapsed_countdown / countdown * 100)
                     self._set_recording_progress(
-                        f"錄影前倒數 {remaining} 秒",
+                        f"倒數開始錄影 {remaining} 秒",
                         percent,
                     )
                     last_remaining = remaining
@@ -1287,7 +1369,13 @@ class MainWindow(QMainWindow):
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
         wl_list = [w.strip() for w in self.txt_whitelist.text().split(",") if w.strip()]
 
-        ocr_thread = OcrWorkerThread(keyframes, whitelist=wl_list, parent=self)
+        ocr_thread = OcrWorkerThread(
+            keyframes,
+            whitelist=wl_list,
+            parent=self,
+            recognize_id=self.chk_ocr_id.isChecked(),
+            recognize_map=self.chk_ocr_map.isChecked(),
+        )
         ocr_thread.finished.connect(ocr_thread.release_keyframes)
         ocr_thread.finished.connect(ocr_thread.deleteLater)
 

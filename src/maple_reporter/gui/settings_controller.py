@@ -54,6 +54,9 @@ class SettingsController:
             self.config.get("auto_delete_after_upload", False)
         )
         window.chk_record_audio.setChecked(self.config.get("record_audio", True))
+        window.chk_ocr_id.setChecked(self.config.get("ocr_autofill_id", True))
+        window.chk_ocr_map.setChecked(self.config.get("ocr_autofill_map", True))
+        window.sync_ocr_autofill_checkboxes()
         window.refresh_audio_devices(self.config.get("audio_output_device_id", ""))
         window.spin_replay_seconds.setValue(self.config.get("replay_buffer_sec", 30))
         window.chk_global_hotkeys.setChecked(
@@ -122,6 +125,8 @@ class SettingsController:
         ]
         self.config["auto_delete_after_upload"] = window.chk_auto_delete.isChecked()
         self.config["record_audio"] = window.chk_record_audio.isChecked()
+        self.config["ocr_autofill_id"] = window.chk_ocr_id.isChecked()
+        self.config["ocr_autofill_map"] = window.chk_ocr_map.isChecked()
         self.config["audio_output_device_id"] = (
             window.combo_audio_output.currentData() or ""
         )

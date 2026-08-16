@@ -21,6 +21,8 @@ class TestMapleReporter(unittest.TestCase):
         cfg = load_config()
         self.assertIn("default_server", cfg)
         self.assertNotIn("gemini_api_key", cfg)
+        self.assertTrue(cfg["ocr_autofill_id"])
+        self.assertTrue(cfg["ocr_autofill_map"])
 
     def test_window_list(self):
         titles = get_active_window_titles()
@@ -54,6 +56,25 @@ class TestMapleReporter(unittest.TestCase):
             worker.run()
 
         self.assertEqual(worker.detected_map_name, "童話村")
+
+    def test_ocr_worker_skips_disabled_map_and_id_passes(self):
+        from maple_reporter.ocr.ocr_worker import OcrWorkerThread
+
+        with patch(
+            "maple_reporter.ocr.ocr_worker.recognize_map_name_from_image_list"
+        ) as recognize_map, patch(
+            "maple_reporter.ocr.ocr_worker.recognize_candidates_from_image_list"
+        ) as recognize_id:
+            worker = OcrWorkerThread(
+                [Image.new("RGB", (320, 240))],
+                recognize_id=False,
+                recognize_map=False,
+            )
+            worker.run()
+
+        recognize_map.assert_not_called()
+        recognize_id.assert_not_called()
+        self.assertEqual(worker.detected_map_name, "")
 
     def test_map_name_catalog_normalizes_roman_numerals(self):
         self.assertEqual(normalize_map_name("海岸草叢Ⅰ"), normalize_map_name("海岸草叢I"))

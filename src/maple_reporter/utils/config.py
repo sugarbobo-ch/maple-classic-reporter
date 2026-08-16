@@ -84,6 +84,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "auto_submit_without_preview": False,
     "auto_delete_after_upload": False,
     "record_audio": True,
+    "ocr_autofill_id": True,
+    "ocr_autofill_map": True,
     "audio_output_device_id": "",
     "global_hotkeys_enabled": True,
     "save_replay_hotkey": "Ctrl+Shift+F9",

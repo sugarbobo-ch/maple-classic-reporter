@@ -423,11 +423,17 @@ class GoogleDriveManager:
         if self.creds and self.creds.expired and self.creds.refresh_token:
             try:
                 self.creds.refresh(Request())
-                self._save_credentials()
                 credentials_persisted = True
             except Exception as error:
                 LOGGER.warning("OAuth token 更新失敗 (%s)", type(error).__name__)
-                self.creds = None
+            else:
+                try:
+                    self._save_credentials()
+                except Exception as error:
+                    LOGGER.warning(
+                        "OAuth token 更新後保存失敗 (%s)", type(error).__name__
+                    )
+                    credentials_persisted = False
 
         if self.creds and self.creds.valid:
             if self._loaded_from_legacy_token:
@@ -450,7 +456,36 @@ class GoogleDriveManager:
         return False
 
     def is_authenticated(self) -> bool:
-        return self.creds is not None and self.creds.valid and self.service is not None
+        if self.creds is None:
+            return False
+
+        if self.creds.expired and self.creds.refresh_token:
+            try:
+                self.creds.refresh(Request())
+            except Exception as error:
+                LOGGER.warning(
+                    "OAuth token 自動更新失敗 (%s)", type(error).__name__
+                )
+                return False
+            try:
+                self._save_credentials()
+            except Exception as error:
+                LOGGER.warning(
+                    "OAuth token 更新後保存失敗 (%s)", type(error).__name__
+                )
+
+        if not self.creds.valid:
+            return False
+
+        if self.service is None:
+            try:
+                self.service = build("drive", "v3", credentials=self.creds)
+            except Exception as error:
+                LOGGER.warning(
+                    "建立 Google Drive service 失敗 (%s)", type(error).__name__
+                )
+                self.service = None
+        return self.service is not None
 
     def authenticate_interactive(
         self,

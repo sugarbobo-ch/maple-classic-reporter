@@ -10,6 +10,76 @@ from maple_reporter.utils import config
 
 
 class TestProtectedTokenStore(unittest.TestCase):
+    def test_authentication_refreshes_credentials_that_expire_while_running(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            token_path = Path(temp_dir) / "oauth_token.dpapi"
+            credentials = MagicMock()
+            credentials.expired = False
+            credentials.valid = True
+            credentials.refresh_token = "test-only-refresh-token"
+            credentials.to_json.return_value = '{"token":"refreshed-test-token"}'
+
+            with patch.object(
+                drive_service.GoogleDriveManager,
+                "_load_credentials",
+                return_value=True,
+            ), patch.object(drive_service, "build", return_value=object()):
+                manager = drive_service.GoogleDriveManager(token_path)
+
+            manager.creds = credentials
+            manager.service = object()
+            credentials.expired = True
+            credentials.valid = False
+
+            def mark_refreshed(_request):
+                credentials.expired = False
+                credentials.valid = True
+
+            credentials.refresh.side_effect = mark_refreshed
+
+            self.assertTrue(manager.is_authenticated())
+            credentials.refresh.assert_called_once()
+            self.assertTrue(token_path.is_file())
+
+    def test_authentication_retries_after_startup_refresh_failure(self):
+        credentials = MagicMock()
+        credentials.expired = True
+        credentials.valid = False
+        credentials.refresh_token = "test-only-refresh-token"
+        credentials.to_json.return_value = '{"token":"refreshed-test-token"}'
+
+        def mark_refreshed(_request):
+            credentials.expired = False
+            credentials.valid = True
+
+        refresh_attempts = 0
+
+        def refresh_with_transient_failure(request):
+            nonlocal refresh_attempts
+            refresh_attempts += 1
+            if refresh_attempts == 1:
+                raise RuntimeError("temporary network failure")
+            mark_refreshed(request)
+
+        credentials.refresh.side_effect = refresh_with_transient_failure
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(
+                drive_service.GoogleDriveManager,
+                "_load_token_info",
+                return_value={"token": "expired-test-token"},
+            ), patch.object(
+                drive_service.Credentials,
+                "from_authorized_user_info",
+                return_value=credentials,
+            ), patch.object(drive_service, "build", return_value=object()):
+                manager = drive_service.GoogleDriveManager(
+                    Path(temp_dir) / "oauth_token.dpapi"
+                )
+
+            self.assertTrue(manager.is_authenticated())
+            self.assertEqual(credentials.refresh.call_count, 2)
+
     def test_round_trip_protects_token_at_rest_on_windows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             token_path = Path(temp_dir) / "oauth_token.dpapi"
