@@ -8,8 +8,10 @@ build/
 !MapleClassicReporter.spec
 
 # Local application data and evidence
-data/recordings/
-data/config/
+data/
+*.db
+*.sqlite
+*.sqlite3
 *.dpapi
 
 # OAuth credentials from older project layouts
