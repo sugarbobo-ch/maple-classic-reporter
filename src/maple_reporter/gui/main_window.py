@@ -30,6 +30,7 @@ from maple_reporter.gui.preview_modal import ReportPreviewModal
 from maple_reporter.gui.playwright_error_dialog import show_playwright_error_dialog
 from maple_reporter.gui.evidence_capture_controller import EvidenceCaptureController
 from maple_reporter.gui.history_controller import HistoryController
+from maple_reporter.gui.quick_links_controller import QuickLinksController
 from maple_reporter.gui.replay_controller import ReplayController
 from maple_reporter.gui.settings_controller import SettingsController
 from maple_reporter.gui.submission_controller import SubmissionController
@@ -85,6 +86,7 @@ class MainWindow(QMainWindow):
         self.settings_controller = SettingsController()
         self.cfg = self.settings_controller.config
         self.history_controller = HistoryController()
+        self.quick_links_controller = QuickLinksController(self.cfg)
         self.capture_controller = EvidenceCaptureController()
         self.replay_controller = ReplayController(self)
         self.hotkey_manager = GlobalHotkeyManager(self)
@@ -449,6 +451,20 @@ class MainWindow(QMainWindow):
         row_n.addWidget(self.txt_note, 2)
         g3_layout.addLayout(row_n)
 
+        row_submission = QHBoxLayout()
+        self.chk_form_submit_headless = QCheckBox("背景靜默送出檢舉")
+        self.chk_form_submit_headless.setToolTip(
+            "啟用時由 Playwright 在背景填寫官方表單；關閉時開啟可見瀏覽器。"
+        )
+        self.chk_dev_mode = QCheckBox("開發者模式 (Dry-Run)")
+        self.chk_dev_mode.setToolTip(
+            "啟用時不會真正送出官方表單，只記錄測試歷史並開啟表單網址。"
+        )
+        row_submission.addWidget(self.chk_form_submit_headless)
+        row_submission.addWidget(self.chk_dev_mode)
+        row_submission.addStretch()
+        g3_layout.addLayout(row_submission)
+
         row_wl = QHBoxLayout()
         row_wl.addWidget(QLabel("ID 白名單（以逗號分隔）："))
         self.txt_whitelist = QLineEdit()
@@ -457,6 +473,51 @@ class MainWindow(QMainWindow):
         g3_layout.addLayout(row_wl)
 
         control_layout.addWidget(g3)
+
+        quick_links_group = QGroupBox("快捷連結")
+        quick_links_layout = QVBoxLayout(quick_links_group)
+        self.table_quick_links = QTableWidget()
+        self.table_quick_links.setColumnCount(2)
+        self.table_quick_links.setHorizontalHeaderLabels(["名稱", "URL"])
+        self.table_quick_links.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.table_quick_links.setMinimumHeight(130)
+        self.table_quick_links.cellDoubleClicked.connect(
+            lambda row, _column: self.open_quick_link(row)
+        )
+        quick_links_layout.addWidget(self.table_quick_links)
+
+        quick_link_actions = QHBoxLayout()
+        self.btn_add_quick_link = QPushButton("新增")
+        self.btn_add_quick_link.clicked.connect(self.add_quick_link)
+        self.btn_edit_quick_link = QPushButton("編輯")
+        self.btn_edit_quick_link.clicked.connect(self.edit_quick_link)
+        self.btn_delete_quick_link = QPushButton("刪除")
+        self.btn_delete_quick_link.clicked.connect(self.delete_quick_link)
+        self.btn_move_quick_link_up = QPushButton("上移")
+        self.btn_move_quick_link_up.clicked.connect(
+            lambda: self.move_quick_link(-1)
+        )
+        self.btn_move_quick_link_down = QPushButton("下移")
+        self.btn_move_quick_link_down.clicked.connect(
+            lambda: self.move_quick_link(1)
+        )
+        self.btn_open_quick_link = QPushButton("開啟")
+        self.btn_open_quick_link.clicked.connect(self.open_selected_quick_link)
+        for button in (
+            self.btn_add_quick_link,
+            self.btn_edit_quick_link,
+            self.btn_delete_quick_link,
+            self.btn_move_quick_link_up,
+            self.btn_move_quick_link_down,
+            self.btn_open_quick_link,
+        ):
+            quick_link_actions.addWidget(button)
+        quick_link_actions.addStretch()
+        quick_links_layout.addLayout(quick_link_actions)
+        control_layout.addWidget(quick_links_group)
+        self.refresh_quick_links()
 
         # Group 3.5: Save Settings Button
         row_save = QHBoxLayout()
@@ -572,6 +633,16 @@ class MainWindow(QMainWindow):
         self.table_history.cellDoubleClicked.connect(self.on_history_cell_clicked)
         history_layout.addWidget(self.table_history)
 
+        history_actions = QHBoxLayout()
+        self.btn_copy_history_url = QPushButton("複製選取連結")
+        self.btn_copy_history_url.clicked.connect(self.copy_selected_history_url)
+        self.btn_clear_history = QPushButton("清空紀錄")
+        self.btn_clear_history.clicked.connect(self.clear_history)
+        history_actions.addStretch()
+        history_actions.addWidget(self.btn_copy_history_url)
+        history_actions.addWidget(self.btn_clear_history)
+        history_layout.addLayout(history_actions)
+
         self.tabs.addTab(tab_history, "歷史紀錄")
 
         # Update GDrive UI Status
@@ -664,6 +735,117 @@ class MainWindow(QMainWindow):
 
     def on_history_cell_clicked(self, row: int, column: int):
         self.history_controller.open_url_from_cell(self.table_history, row, column)
+
+    def copy_selected_history_url(self):
+        row = self.table_history.currentRow()
+        if row < 0 or not self.history_controller.copy_url_from_cell(self.table_history, row):
+            QMessageBox.information(self, "複製連結", "請先選取含有安全 HTTPS 事證連結的紀錄。")
+
+    def clear_history(self):
+        reply = QMessageBox.question(
+            self,
+            "確認清空紀錄",
+            "確定要清空所有歷史紀錄嗎？此操作無法復原。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if self.history_controller.clear():
+            self.refresh_history_table()
+        else:
+            QMessageBox.warning(self, "清空失敗", "無法清除歷史紀錄，請稍後再試。")
+
+    def refresh_quick_links(self):
+        if not hasattr(self, "table_quick_links"):
+            return
+        links = self.quick_links_controller.links()
+        self.table_quick_links.setRowCount(len(links))
+        for row, link in enumerate(links):
+            self.table_quick_links.setItem(row, 0, QTableWidgetItem(str(link.get("title", ""))))
+            self.table_quick_links.setItem(row, 1, QTableWidgetItem(str(link.get("url", ""))))
+
+    def _selected_quick_link_index(self) -> int:
+        if not hasattr(self, "table_quick_links"):
+            return -1
+        return self.table_quick_links.currentRow()
+
+    def _save_quick_links_and_refresh(self, success: bool):
+        if success:
+            self.refresh_quick_links()
+            return True
+        QMessageBox.warning(self, "快捷連結儲存失敗", "無法儲存快捷連結設定，請稍後再試。")
+        return False
+
+    def add_quick_link(self):
+        title, ok = QInputDialog.getText(self, "新增快捷連結", "名稱：")
+        if not ok or not title.strip():
+            return
+        url, ok = QInputDialog.getText(self, "新增快捷連結", "HTTPS URL：")
+        if not ok:
+            return
+        if not self._save_quick_links_and_refresh(
+            self.quick_links_controller.add(title, url)
+        ):
+            return
+
+    def edit_quick_link(self):
+        index = self._selected_quick_link_index()
+        links = self.quick_links_controller.links()
+        if not 0 <= index < len(links):
+            QMessageBox.information(self, "編輯快捷連結", "請先選取要編輯的快捷連結。")
+            return
+        current = links[index]
+        title, ok = QInputDialog.getText(
+            self, "編輯快捷連結", "名稱：", text=str(current.get("title", ""))
+        )
+        if not ok or not title.strip():
+            return
+        url, ok = QInputDialog.getText(
+            self, "編輯快捷連結", "HTTPS URL：", text=str(current.get("url", ""))
+        )
+        if not ok:
+            return
+        self._save_quick_links_and_refresh(
+            self.quick_links_controller.update(
+                index,
+                title,
+                url,
+                icon=str(current.get("icon", "Globe")),
+            )
+        )
+
+    def delete_quick_link(self):
+        index = self._selected_quick_link_index()
+        links = self.quick_links_controller.links()
+        if not 0 <= index < len(links):
+            QMessageBox.information(self, "刪除快捷連結", "請先選取要刪除的快捷連結。")
+            return
+        reply = QMessageBox.question(
+            self,
+            "確認刪除快捷連結",
+            f"確定要刪除「{links[index].get('title', '')}」嗎？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._save_quick_links_and_refresh(self.quick_links_controller.remove(index))
+
+    def move_quick_link(self, delta: int):
+        index = self._selected_quick_link_index()
+        if self.quick_links_controller.move(index, delta):
+            self.refresh_quick_links()
+            self.table_quick_links.selectRow(index + delta)
+
+    def open_quick_link(self, index: int):
+        if not self.quick_links_controller.open(index):
+            QMessageBox.warning(
+                self,
+                "無法開啟快捷連結",
+                "只允許開啟安全的 HTTPS 快捷連結。",
+            )
+
+    def open_selected_quick_link(self):
+        self.open_quick_link(self._selected_quick_link_index())
 
     def update_gdrive_ui(self):
         if self.drive_mgr.is_authenticated():
@@ -1454,7 +1636,15 @@ class MainWindow(QMainWindow):
                 )
             return False
 
-        self.settings_controller.save_model()
+        if not self.settings_controller.save_model():
+            self.load_settings_to_ui()
+            self.configure_global_hotkeys()
+            QMessageBox.warning(
+                self,
+                "設定儲存失敗",
+                "設定未能寫入，已重新載入後端目前值。請檢查權限或磁碟空間。",
+            )
+            return False
         return True
 
     def save_settings(self):
@@ -1466,7 +1656,13 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(2000, lambda: self.btn_save_settings.setText("儲存設定"))
 
     def execute_submission(self, confirmed_data: dict):
+        confirmed_data = dict(confirmed_data)
         self.txt_map.setText(confirmed_data.get("map_name", "維多利亞島"))
+        confirmed_data.setdefault(
+            "form_submit_headless",
+            bool(self.cfg.get("form_submit_headless", True)),
+        )
+        confirmed_data.setdefault("dev_mode", bool(self.cfg.get("dev_mode", False)))
         self._persist_settings(show_hotkey_error=False)
         if not self.submission_controller.submit(confirmed_data):
             QMessageBox.information(self, "送出中", "已有另一筆表單正在送出，請稍候。")

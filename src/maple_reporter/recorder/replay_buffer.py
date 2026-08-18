@@ -9,7 +9,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import Deque, Mapping, Optional
+from typing import Callable, Deque, Mapping, Optional
 
 import av
 import cv2
@@ -174,7 +174,40 @@ def capture_monitor_frame(
 RollingAudioRecorder = LoopbackAudioRecorder
 
 
+def _create_optimized_h264_stream(container, width: int, height: int, fps: int):
+    """Create H.264 video stream trying hardware encoders first with ultrafast CPU fallback."""
+    candidates = [
+        ("h264_nvenc", {"preset": "p1", "tune": "ull"}),
+        ("h264_qsv", {}),
+        ("h264_amf", {}),
+        ("libx264", {"crf": "23", "preset": "ultrafast"}),
+        ("h264", {"crf": "23", "preset": "ultrafast"}),
+    ]
+    for codec, options in candidates:
+        if codec not in getattr(av, "codecs_available", set()):
+            continue
+        try:
+            stream = container.add_stream(codec, rate=fps)
+            stream.width = width
+            stream.height = height
+            stream.pix_fmt = "yuv420p"
+            if options:
+                stream.options = options
+            return stream
+        except Exception as error:
+            LOGGER.debug("Video encoder %s failed to initialize (%s)", codec, error)
+            continue
+
+    stream = container.add_stream("h264", rate=fps)
+    stream.width = width
+    stream.height = height
+    stream.pix_fmt = "yuv420p"
+    stream.options = {"preset": "ultrafast"}
+    return stream
+
+
 class ReplayBufferRecorder(QObject):
+
     """Continuously capture a bounded JPEG ring and save one replay at a time."""
 
     state_changed = Signal(str, float)
@@ -183,8 +216,27 @@ class ReplayBufferRecorder(QObject):
     warning_occurred = Signal(str)
     audio_source_changed = Signal(str)
 
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(
+        self,
+        parent: Optional[QObject] = None,
+        *,
+        state_callback: Optional[Callable[[str, float], None]] = None,
+        replay_saved_callback: Optional[
+            Callable[[str, list[Image.Image]], None]
+        ] = None,
+        error_callback: Optional[Callable[[str], None]] = None,
+        warning_callback: Optional[Callable[[str], None]] = None,
+        audio_source_callback: Optional[Callable[[str], None]] = None,
+    ):
         super().__init__(parent)
+        # PyWebView has no Qt event loop, so cross-thread Qt signals are never
+        # drained there. Plain callbacks keep that frontend informed while the
+        # signals remain available to the native PySide frontend.
+        self._state_callback = state_callback
+        self._replay_saved_callback = replay_saved_callback
+        self._error_callback = error_callback
+        self._warning_callback = warning_callback
+        self._audio_source_callback = audio_source_callback
         self._frames: Deque[BufferedFrame] = deque()
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -219,9 +271,38 @@ class ReplayBufferRecorder(QObject):
             return self._buffer_seconds
 
     def _emit_state(self, state: ReplayState, duration: float) -> None:
+        safe_duration = max(0.0, float(duration))
         with self._lock:
             self._state = state
-        self.state_changed.emit(state.value, max(0.0, float(duration)))
+        self._invoke_callback(self._state_callback, state.value, safe_duration)
+        self.state_changed.emit(state.value, safe_duration)
+
+    @staticmethod
+    def _invoke_callback(callback: Optional[Callable], *args) -> None:
+        if callback is None:
+            return
+        try:
+            callback(*args)
+        except Exception as error:
+            LOGGER.warning("回放事件回呼執行失敗 (%s)", type(error).__name__)
+
+    def _emit_error(self, message: str) -> None:
+        self._invoke_callback(self._error_callback, message)
+        self.error_occurred.emit(message)
+
+    def _emit_warning(self, message: str) -> None:
+        self._invoke_callback(self._warning_callback, message)
+        self.warning_occurred.emit(message)
+
+    def _emit_audio_source(self, source_name: str) -> None:
+        self._invoke_callback(self._audio_source_callback, source_name)
+        self.audio_source_changed.emit(source_name)
+
+    def _emit_replay_saved(
+        self, file_path: str, keyframes: list[Image.Image]
+    ) -> None:
+        self._invoke_callback(self._replay_saved_callback, file_path, keyframes)
+        self.replay_saved.emit(file_path, keyframes)
 
     def start(
         self,
@@ -233,18 +314,18 @@ class ReplayBufferRecorder(QObject):
     ) -> bool:
         bounds = find_window_bounds(window_title)
         if not bounds:
-            self.error_occurred.emit("找不到目標遊戲視窗，請重新整理後再試一次。")
+            self._emit_error("找不到目標遊戲視窗，請重新整理後再試一次。")
             return False
 
         left, top, width, height = bounds
         width -= width % 2
         height -= height % 2
         if width < 2 or height < 2:
-            self.error_occurred.emit("目標遊戲視窗大小無法錄製。")
+            self._emit_error("目標遊戲視窗大小無法錄製。")
             return False
 
         if self._save_thread and self._save_thread.is_alive():
-            self.error_occurred.emit("上一段回放仍在儲存中，請稍候再啟動。")
+            self._emit_error("上一段回放仍在儲存中，請稍候再啟動。")
             return False
 
         with self._lock:
@@ -263,8 +344,8 @@ class ReplayBufferRecorder(QObject):
                 self._buffer_seconds,
                 sample_rate=DEFAULT_SAMPLE_RATE,
                 device_id=audio_device_id,
-                error_callback=self.warning_occurred.emit,
-                source_callback=self.audio_source_changed.emit,
+                error_callback=self._emit_warning,
+                source_callback=self._emit_audio_source,
             )
             self._audio.start()
         else:
@@ -329,7 +410,7 @@ class ReplayBufferRecorder(QObject):
         end_time = frames[-1].captured_at
         audio_data = self._audio.snapshot(start_time, end_time) if self._audio else None
         if self._audio and not has_audio_signal(audio_data):
-            self.warning_occurred.emit(
+            self._emit_warning(
                 "這段緩衝沒有偵測到系統聲音。請確認遊戲正在播放聲音，"
                 "並在重新啟動緩衝前選擇正確的音訊輸出來源。"
             )
@@ -449,7 +530,7 @@ class ReplayBufferRecorder(QObject):
                 self._stop_event.set()
             if was_running:
                 self._emit_state(ReplayState.ERROR, 0.0)
-                self.error_occurred.emit(f"緩衝錄影已停止：{error}")
+                self._emit_error(f"緩衝錄影已停止：{error}")
         finally:
             if screen is not None:
                 try:
@@ -469,7 +550,7 @@ class ReplayBufferRecorder(QObject):
             if has_audio_signal(audio_data) and not merge_audio_into_mp4(
                 file_path, audio_data, sample_rate=DEFAULT_SAMPLE_RATE
             ):
-                self.warning_occurred.emit(
+                self._emit_warning(
                     "影片已儲存，但系統聲音無法合併到影片中。"
                 )
             saved_payload = (file_path, keyframes)
@@ -483,7 +564,7 @@ class ReplayBufferRecorder(QObject):
                         os.path.basename(file_path),
                         type(cleanup_error).__name__,
                     )
-            self.error_occurred.emit(f"無法儲存最近的錄影片段：{error}")
+            self._emit_error(f"無法儲存最近的錄影片段：{error}")
         finally:
             with self._lock:
                 self._saving = False
@@ -498,7 +579,7 @@ class ReplayBufferRecorder(QObject):
             )
             self._emit_state(state, duration if running else 0.0)
         if saved_payload:
-            self.replay_saved.emit(*saved_payload)
+            self._emit_replay_saved(*saved_payload)
 
     def _encode_video(self, frames: list[BufferedFrame]) -> tuple[str, list[Image.Image]]:
         if not frames:
@@ -521,11 +602,7 @@ class ReplayBufferRecorder(QObject):
         container = None
         try:
             container = av.open(file_path, mode="w")
-            stream = container.add_stream("h264", rate=self._fps)
-            stream.width = width
-            stream.height = height
-            stream.pix_fmt = "yuv420p"
-            stream.options = {"crf": "23", "preset": "veryfast"}
+            stream = _create_optimized_h264_stream(container, width=width, height=height, fps=self._fps)
 
             start_time = frames[0].captured_at
             duration = max(0.0, frames[-1].captured_at - start_time)

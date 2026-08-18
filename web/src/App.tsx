@@ -1,0 +1,1009 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import Header from './components/Header';
+import AlertBanner from './components/AlertBanner';
+import QuickSettings from './components/QuickSettings';
+import ActionCards from './components/ActionCards';
+import QuickLinks from './components/QuickLinks';
+import QuickLinkModal from './components/QuickLinkModal';
+import StatusBar from './components/StatusBar';
+import SettingsView from './components/SettingsView';
+import HistoryView from './components/HistoryView';
+import ReportFlowModal from './components/ReportFlowModal';
+import WindowResizeHandles from './components/WindowResizeHandles';
+import { useToast, usePyWebViewEvents, useAppConfig } from './hooks';
+import {
+  WindowItem,
+  AudioDeviceItem,
+  HistoryRecord,
+  AppConfig,
+  OcrResultData,
+  QuickLinkItem,
+  ViewType,
+  StatusState,
+  SubmissionStatusData,
+  SanctionSyncStatus,
+} from './types';
+import { normalizeSafeHttpsUrl } from './utils';
+import { DEFAULT_MOCK_HISTORY } from './constants/presets';
+import './styles/app.css';
+
+const PREFERRED_WINDOW_TITLE = '新楓之谷：經典版';
+
+function choosePreferredWindow(windows: WindowItem[], savedTitle = ''): string {
+  if (!windows || windows.length === 0) return PREFERRED_WINDOW_TITLE;
+
+  // 1. Exact match for "新楓之谷：經典版"
+  const exact = windows.find((window) => window.title.trim() === PREFERRED_WINDOW_TITLE);
+  if (exact) return exact.title;
+
+  // 2. Contains "新楓之谷：經典版"
+  const containsClassic = windows.find((window) => window.title.includes(PREFERRED_WINDOW_TITLE));
+  if (containsClassic) return containsClassic.title;
+
+  // 3. Related "新楓之谷"
+  const related = windows.find((window) => window.title.includes('新楓之谷'));
+  if (related) return related.title;
+
+  // 4. Related "MapleStory" / "Maple" (case-insensitive)
+  const maple = windows.find((window) => window.title.toLowerCase().includes('maple'));
+  if (maple) return maple.title;
+
+  // 5. Previously saved title if still open
+  const saved = windows.find((window) => window.title === savedTitle);
+  if (saved) return saved.title;
+
+  // 6. First scanned window
+  return windows[0].title;
+}
+
+function normalizeOcrResult(
+  data: Partial<OcrResultData>,
+  previous: OcrResultData,
+  config: Pick<AppConfig, 'default_map' | 'ocr_autofill_map'>
+): OcrResultData {
+  const source = data.map_name_source;
+  const mapName = String(data.map_name || previous.map_name || config.default_map || '').trim();
+  const explicitOcrMap = source === 'default' ? '' : String(data.ocr_map_name || '').trim();
+  const legacyMapName = String(data.map_name || '').trim();
+  const legacyOcrMap =
+    source === 'ocr'
+      ? legacyMapName
+      : source === 'default'
+        ? ''
+        : config.ocr_autofill_map !== false && legacyMapName !== String(config.default_map || '').trim()
+          ? legacyMapName
+          : '';
+  const ocrMapName = explicitOcrMap || legacyOcrMap;
+
+  return {
+    ...previous,
+    ...data,
+    suspect_ids:
+      Array.isArray(data.suspect_ids) && data.suspect_ids.length > 0
+        ? data.suspect_ids
+        : previous.suspect_ids,
+    map_name: mapName,
+    ocr_map_name: ocrMapName,
+    map_name_source: source || (ocrMapName ? 'ocr' : mapName ? 'default' : undefined),
+    media_path: data.media_path || previous.media_path,
+    media_type: data.media_type || previous.media_type,
+  };
+}
+
+export default function App() {
+  const [currentView, setCurrentView] = useState<ViewType>('home');
+  const [settingsTab, setSettingsTab] = useState('general');
+  const { toast } = useToast();
+  const { config, setConfig, updateConfig, updateConfigBatch, isDevMode, saveError, clearSaveError } = useAppConfig();
+  const [gdriveAuthenticated, setGdriveAuthenticated] = useState<boolean | null>(null);
+  const [isAuthenticatingDrive, setIsAuthenticatingDrive] = useState(false);
+
+  const [windows, setWindows] = useState<WindowItem[]>([
+    { title: '新楓之谷：經典版', width: 1920, height: 1080 },
+  ]);
+
+  const [audioDevices, setAudioDevices] = useState<AudioDeviceItem[]>([
+    { id: '', name: '系統預設 (Realtek Digital Output)' },
+  ]);
+
+  const [history, setHistory] = useState<HistoryRecord[]>(DEFAULT_MOCK_HISTORY);
+  const [sanctionSyncStatus, setSanctionSyncStatus] = useState<SanctionSyncStatus | null>(null);
+  const [isCheckingSanctions, setIsCheckingSanctions] = useState<boolean>(false);
+  const [lastCompleteSyncAt, setLastCompleteSyncAt] = useState<string | null>(null);
+
+  // Status & modal states
+  const [statusState, setStatusState] = useState<StatusState>('idle');
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [countdown, setCountdown] = useState(0);
+  const [replayTime, setReplayTime] = useState(0);
+
+  // Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalStage, setModalStage] = useState<'progress' | 'form'>('progress');
+  const modalStageRef = useRef(modalStage);
+  modalStageRef.current = modalStage;
+  const [modalProgress, setModalProgress] = useState(0);
+  const [modalStatusText, setModalStatusText] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatusData | null>(null);
+  const [ocrResults, setOcrResults] = useState<OcrResultData>({
+    suspect_ids: [],
+    map_name: '',
+    media_path: '',
+    media_type: 'video',
+  });
+
+  // Quick Link In-place Modal State
+  const [quickLinkModalOpen, setQuickLinkModalOpen] = useState(false);
+  const [editingQuickLink, setEditingQuickLink] = useState<QuickLinkItem | null>(null);
+
+  // PyWebView Bridge Event Subscriptions
+  usePyWebViewEvents({
+    RECORDING_COUNTDOWN: (data: { remaining: number; percent: number }) => {
+      setStatusState('recording');
+      setCountdown(data.remaining);
+    },
+    RECORDING_PROGRESS: (data: { elapsed: number; total: number; percent: number }) => {
+      setStatusState('recording');
+      setCountdown(0);
+      setRecordingTime(data.elapsed);
+    },
+    RECORDING_FINISHED: (data?: { file_path?: string }) => {
+      setStatusState('idle');
+      setRecordingTime(0);
+      setSubmissionStatus(null);
+      if (modalStageRef.current !== 'form') {
+        setModalStage('progress');
+        setModalProgress(35);
+        setModalStatusText('錄影已完成，正在解析關鍵影格...');
+      }
+      if (data?.file_path) {
+        setOcrResults((prev) => ({
+          ...prev,
+          media_path: data.file_path || prev.media_path,
+          media_type: 'video',
+        }));
+      }
+      setModalOpen(true);
+    },
+    RECORDING_CANCELED: () => {
+      setStatusState('idle');
+      setRecordingTime(0);
+      setCountdown(0);
+      toast.info('錄影已取消');
+    },
+    RECORDING_ERROR: (data: { message: string }) => {
+      setStatusState('idle');
+      setRecordingTime(0);
+      setCountdown(0);
+      toast.error('錄影失敗', data.message);
+      setModalOpen(false);
+    },
+    REPLAY_STATE_CHANGED: (data: { state: string; duration: number; total: number }) => {
+      if (['warming', 'ready', 'saving'].includes(data.state)) {
+        setStatusState('replaying');
+      } else {
+        setStatusState('idle');
+      }
+      setReplayTime(Math.floor(data.duration));
+    },
+    REPLAY_SAVED: (data?: { file_path?: string }) => {
+      setSubmissionStatus(null);
+      if (modalStageRef.current !== 'form') {
+        setModalStage('progress');
+        setModalProgress(40);
+        setModalStatusText('已儲存循環錄影，正在解析關鍵影格...');
+      }
+      if (data?.file_path) {
+        setOcrResults((prev) => ({
+          ...prev,
+          media_path: data.file_path || prev.media_path,
+          media_type: 'video',
+        }));
+      }
+      setModalOpen(true);
+    },
+    REPLAY_ERROR: (data: { message: string }) => {
+      toast.error('循環錄影錯誤', data.message);
+      setModalOpen(false);
+    },
+    OCR_STATUS: (data: { status: string; percent: number; step?: string }) => {
+      if (modalStageRef.current !== 'form') {
+        setModalProgress(data.percent || 50);
+        if (data.status) {
+          setModalStatusText(data.status);
+        }
+      }
+    },
+    OCR_RESULT: (data: OcrResultData) => {
+      setOcrResults((prev) => normalizeOcrResult(data, prev, config));
+      setSubmissionStatus(null);
+      setModalProgress(100);
+      setModalStatusText('辨識完成');
+      setModalStage('form');
+      setModalOpen(true);
+    },
+    SUBMISSION_STATUS: (data: SubmissionStatusData) => {
+      if (!data?.message) return;
+      setSubmissionStatus({
+        step: data.step,
+        status: data.status || 'progress',
+        message: data.message,
+      });
+      setModalStatusText(data.message);
+    },
+    GLOBAL_HOTKEY_TRIGGERED: (data: { action: string }) => {
+      toast.info(
+        '快捷鍵已觸發',
+        data.action === 'save_replay' ? '正在儲存循環錄影片段' : '正在執行錄影'
+      );
+    },
+    SANCTION_SYNC_STARTED: (data: any) => {
+      setSanctionSyncStatus(data);
+      setIsCheckingSanctions(true);
+    },
+    SANCTION_SYNC_PROGRESS: (data: any) => {
+      setSanctionSyncStatus(data);
+      setIsCheckingSanctions(true);
+    },
+    SANCTION_SYNC_COMPLETED: (data: any) => {
+      const summary = data?.summary;
+      const historyList = data?.history;
+      setIsCheckingSanctions(false);
+      setSanctionSyncStatus(null);
+      if (Array.isArray(historyList)) {
+        setHistory(historyList);
+      }
+      if (summary?.last_complete_sync_at) {
+        setLastCompleteSyncAt(summary.last_complete_sync_at);
+      }
+
+      // Toast summary decisions
+      const newlyBanned = summary?.newly_banned_count || 0;
+      const changedToUnbanned = summary?.changed_to_unbanned_count || 0;
+      const checkedCount = summary?.checked_record_count || 0;
+
+      if (sanctionSyncStatus?.trigger === 'manual') {
+        toast.success(
+          '制裁狀態檢查完成',
+          `已檢查 ${checkedCount} 筆紀錄，新增 ${newlyBanned} 筆制裁，解除 ${changedToUnbanned} 筆`
+        );
+      } else if (newlyBanned > 0) {
+        toast.info(
+          '制裁名單已更新',
+          `新增 ${newlyBanned} 筆制裁命中`
+        );
+      }
+    },
+    SANCTION_SYNC_FAILED: (data: any) => {
+      setIsCheckingSanctions(false);
+      setSanctionSyncStatus(null);
+      if (Array.isArray(data?.history)) {
+        setHistory(data.history);
+      }
+      toast.warning(
+        '制裁狀態同步未完成',
+        data?.message || '部分公告未能成功下載，已保留既有結果'
+      );
+    },
+  });
+
+  // Initialize PyWebView bridge API connection
+  const initPyWebView = useCallback(async () => {
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        const initData = await window.pywebview.api.get_initial_data();
+        if (initData) {
+          const initialWindows = initData.windows || [];
+          const initialSelectedTitle = choosePreferredWindow(
+            initialWindows,
+            initData.config?.selected_window_title
+          );
+          if (initData.config || initialSelectedTitle) {
+            setConfig((prev) => ({
+              ...prev,
+              ...initData.config,
+              ...(initialSelectedTitle ? { selected_window_title: initialSelectedTitle } : {}),
+            }));
+          }
+          if (initialWindows.length > 0) setWindows(initialWindows);
+          if (initData.audio_devices && initData.audio_devices.length > 0) setAudioDevices(initData.audio_devices);
+          if (initData.history) setHistory(initData.history);
+          setGdriveAuthenticated(Boolean(initData.gdrive_authenticated));
+          if (initData.sanction_sync_status) {
+            setSanctionSyncStatus(initData.sanction_sync_status);
+            setIsCheckingSanctions(Boolean(initData.sanction_sync_status.running));
+          }
+          if (initData.last_complete_sync_at) {
+            setLastCompleteSyncAt(initData.last_complete_sync_at);
+          }
+          if (initData.replay_state && ['warming', 'ready', 'saving'].includes(initData.replay_state)) {
+            setStatusState('replaying');
+            setReplayTime(Math.floor(initData.replay_duration || 0));
+          }
+
+          // Trigger startup sanction sync once if applicable
+          if (window.pywebview?.api?.start_sanction_sync) {
+            window.pywebview.api.start_sanction_sync('startup').then((res) => {
+              if (res?.started && res?.status) {
+                setSanctionSyncStatus(res.status);
+                setIsCheckingSanctions(true);
+              }
+            }).catch(() => {
+              // Ignore startup sync initiation failures
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('PyWebView API initialization error:', e);
+      }
+    }
+  }, [setConfig]);
+
+  useEffect(() => {
+    if (saveError) {
+      toast.error('設定儲存失敗', saveError);
+      clearSaveError();
+    }
+  }, [saveError, clearSaveError, toast]);
+
+  useEffect(() => {
+    if (window.pywebview) {
+      initPyWebView();
+    } else {
+      window.addEventListener('pywebviewready', initPyWebView);
+    }
+    return () => window.removeEventListener('pywebviewready', initPyWebView);
+  }, [initPyWebView]);
+
+  useEffect(() => {
+    if (currentView === 'history' && window.pywebview?.api?.get_history) {
+      window.pywebview.api.get_history().then((records) => {
+        if (Array.isArray(records)) {
+          setHistory(records);
+        }
+      }).catch((e) => {
+        console.warn('Failed to refresh history on entering history view:', e);
+      });
+    }
+  }, [currentView]);
+
+  // Action Triggers
+  const handleCaptureScreenshot = async () => {
+    setSubmissionStatus(null);
+    setModalStage('progress');
+    setModalProgress(30);
+    setModalStatusText('正在擷取遊戲畫面並進行辨識...');
+    setModalOpen(true);
+
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        const result = await window.pywebview.api.capture_screenshot('window');
+        if (result && result.status === 'success') {
+          setOcrResults((prev) => normalizeOcrResult(result, prev, config));
+          setModalProgress(100);
+          setModalStatusText('辨識完成');
+          setModalStage('form');
+          return;
+        } else if (result && result.status === 'error') {
+          toast.error('截圖失敗', result.message || '無法截取遊戲視窗');
+          setModalOpen(false);
+          return;
+        }
+      } catch (e: any) {
+        toast.error('截圖辨識發生異常', e?.message || String(e));
+        setModalOpen(false);
+        return;
+      }
+    }
+
+    // Mock fallback when not in pywebview
+    setTimeout(() => {
+      setOcrResults((prev) => normalizeOcrResult({
+          suspect_ids: ['Player01', 'Player02'],
+          map_name: '地鐵一號線｜地區01',
+          ocr_map_name: '地鐵一號線｜地區01',
+          map_name_source: 'ocr',
+          media_path: 'recordings/evidence_mock.png',
+          media_type: 'image',
+        }, prev, config));
+      setModalProgress(100);
+      setModalStage('form');
+    }, 800);
+  };
+
+  const handleRecordVideo = async () => {
+    if (statusState === 'recording') {
+      if (window.pywebview && window.pywebview.api) {
+        await window.pywebview.api.cancel_recording();
+      }
+      setStatusState('idle');
+      return;
+    }
+
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        setStatusState('recording');
+        setRecordingTime(0);
+        await window.pywebview.api.start_recording(
+          config.record_duration_sec,
+          config.record_fps,
+          config.record_countdown_sec || 0,
+          config.record_audio !== false,
+          config.audio_output_device_id || ''
+        );
+      } catch (e: any) {
+        toast.error('錄影啟動失敗', e?.message || String(e));
+        setStatusState('idle');
+      }
+    } else {
+      // Mock flow
+      setStatusState('recording');
+      setRecordingTime(0);
+      let sec = 0;
+      const interval = setInterval(() => {
+        sec += 1;
+        setRecordingTime(sec);
+        if (sec >= (config.record_duration_sec || 8)) {
+          clearInterval(interval);
+          setStatusState('idle');
+          setModalStage('progress');
+          setModalProgress(50);
+          setModalOpen(true);
+          setTimeout(() => {
+            setOcrResults((prev) => normalizeOcrResult({
+                suspect_ids: ['AutoBot88', 'PlayerX'],
+                map_name: '隱密之地：幽靈船',
+                ocr_map_name: '隱密之地：幽靈船',
+                map_name_source: 'ocr',
+                media_path: 'recordings/mock_video.mp4',
+                media_type: 'video',
+              }, prev, config));
+            setModalProgress(100);
+            setModalStage('form');
+          }, 800);
+        }
+      }, 1000);
+    }
+  };
+
+  const handleToggleReplay = async () => {
+    if (statusState === 'replaying') {
+      if (window.pywebview && window.pywebview.api) {
+        await window.pywebview.api.stop_replay();
+      }
+      setStatusState('idle');
+      toast.info('已停止循環錄影');
+    } else {
+      if (window.pywebview && window.pywebview.api) {
+        const ok = await window.pywebview.api.start_replay(
+          config.selected_window_title,
+          config.record_fps,
+          config.replay_buffer_sec,
+          config.record_audio !== false,
+          config.audio_output_device_id || ''
+        );
+        if (ok) {
+          setStatusState('replaying');
+          toast.info('已啟動循環錄影', `持續保留最近 ${config.replay_buffer_sec || 30} 秒畫面`);
+        } else {
+          toast.error('循環錄影啟動失敗', '請確認遊戲視窗已選取且未最小化');
+        }
+      } else {
+        setStatusState('replaying');
+        setReplayTime(30);
+        toast.info('已啟動循環錄影 (Mock)');
+      }
+    }
+  };
+
+  const handleSkipOcr = () => {
+    setModalStage('form');
+    setModalProgress(100);
+    setModalStatusText('已略過辨識');
+    setOcrResults((prev) => ({
+      ...prev,
+      map_name: prev.map_name || config.default_map || '維多利亞島',
+      ocr_map_name: '',
+      map_name_source: 'default',
+    }));
+  };
+
+  const handleSaveReplay = async () => {
+    setSubmissionStatus(null);
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        const ok = await window.pywebview.api.save_replay();
+        if (!ok) {
+          toast.warning('循環錄影片段尚未就緒', '請稍候幾秒待緩衝累積後再儲存');
+        } else {
+          setModalStage('progress');
+          setModalProgress(35);
+          setModalStatusText('已儲存循環錄影，正在解析關鍵影格...');
+          setModalOpen(true);
+        }
+      } catch (e: any) {
+        toast.error('儲存循環錄影失敗', e?.message || String(e));
+      }
+    } else {
+      setModalStage('progress');
+      setModalProgress(35);
+      setModalStatusText('正在解析模擬事證檔案...');
+      setModalOpen(true);
+      setTimeout(() => {
+        setOcrResults((prev) => normalizeOcrResult({
+            suspect_ids: ['ReplayPlayer01'],
+            map_name: '維多利亞島',
+            map_name_source: 'default',
+            media_path: 'recordings/mock_replay.mp4',
+            media_type: 'video',
+          }, prev, config));
+        setModalProgress(100);
+        setModalStage('form');
+      }, 700);
+    }
+  };
+
+  const handleSelectFile = async () => {
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        const filePath = await window.pywebview.api.select_local_file();
+        if (filePath) {
+          setSubmissionStatus(null);
+          setModalStage('progress');
+          setModalProgress(25);
+          setModalStatusText('已選取事證檔案，正在解析影格...');
+          setModalOpen(true);
+          const res = await window.pywebview.api.process_imported_file(filePath);
+          if (res && res.status === 'success') {
+            setOcrResults((prev) => normalizeOcrResult(res, prev, config));
+            setModalProgress(100);
+            setModalStatusText('辨識完成');
+            setModalStage('form');
+          } else {
+            toast.error('檔案辨識失敗', res?.message || '無法解析該檔案');
+            setModalOpen(false);
+          }
+        }
+      } catch (e: any) {
+        toast.error('檔案選取錯誤', e?.message || String(e));
+      }
+    } else {
+      setModalStage('progress');
+      setModalProgress(40);
+      setModalStatusText('正在解析模擬事證檔案...');
+      setModalOpen(true);
+      setTimeout(() => {
+        setOcrResults((prev) => normalizeOcrResult({
+            suspect_ids: ['ImportedSuspect99'],
+            map_name: '天空之城：散步路 II',
+            ocr_map_name: '天空之城：散步路 II',
+            map_name_source: 'ocr',
+            media_path: 'recordings/imported_demo.mp4',
+            media_type: 'video',
+          }, prev, config));
+        setModalProgress(100);
+        setModalStatusText('辨識完成');
+        setModalStage('form');
+      }, 700);
+    }
+  };
+
+  const handleOpenUrl = (url: string) => {
+    if (!url) return;
+    const targetUrl = normalizeSafeHttpsUrl(url);
+    if (!targetUrl) {
+      toast.warning('無法開啟連結', '只允許安全的 HTTPS 網址。');
+      return;
+    }
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.open_external_url(targetUrl);
+    } else {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleClearHistory = async (): Promise<boolean> => {
+    if (!window.pywebview?.api?.clear_history) {
+      toast.warning('目前無法清空歷史紀錄', '請使用桌面版程式操作。');
+      return false;
+    }
+
+    try {
+      const cleared = await window.pywebview.api.clear_history();
+      if (!cleared) {
+        toast.error('清空歷史紀錄失敗', '本機歷史檔案沒有成功更新。');
+        return false;
+      }
+
+      const initData = await window.pywebview.api.get_initial_data();
+      setHistory(initData?.history || []);
+      toast.success('歷史紀錄已清空');
+      return true;
+    } catch (error: unknown) {
+      toast.error(
+        '清空歷史紀錄失敗',
+        error instanceof Error ? error.message : String(error)
+      );
+      return false;
+    }
+  };
+
+  const handleCheckSanctions = async (): Promise<void> => {
+    if (isCheckingSanctions) return;
+    setIsCheckingSanctions(true);
+
+    if (window.pywebview?.api?.start_sanction_sync) {
+      try {
+        const res = await window.pywebview.api.start_sanction_sync('manual');
+        if (res && res.status) {
+          setSanctionSyncStatus(res.status);
+        }
+      } catch (err: unknown) {
+        setIsCheckingSanctions(false);
+        toast.error(
+          '啟動制裁檢查失敗',
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+    } else {
+      // Mock flow for browser preview
+      setSanctionSyncStatus({
+        running: true,
+        trigger: 'manual',
+        phase: 'fetching',
+        current: 1,
+        total: 2,
+        message: '正在檢查官方制裁公告 (Mock)…',
+      });
+      setTimeout(() => {
+        setIsCheckingSanctions(false);
+        setSanctionSyncStatus(null);
+        setLastCompleteSyncAt(new Date().toISOString());
+        toast.success('制裁狀態檢查完成 (Mock)', '已比對最新官方制裁公告名單');
+      }, 1200);
+    }
+  };
+
+  const handleSubmitReport = async (formData: Record<string, unknown>) => {
+    if (isSubmittingReport) return;
+    setIsSubmittingReport(true);
+    const evidencePath =
+      (typeof formData.file_path === 'string' && formData.file_path) ||
+      (typeof formData.media_path === 'string' && formData.media_path) ||
+      ocrResults.media_path;
+    const submittingMessage = '正在送出檢舉…';
+    setSubmissionStatus({ step: 'starting', status: 'progress', message: submittingMessage });
+    setModalStatusText(submittingMessage);
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        const res = await window.pywebview.api.submit_report({
+          ...formData,
+          file_path: evidencePath,
+          upload_destination: config.upload_destination || 'gdrive',
+        });
+        if (res && res.status === 'success') {
+          setSubmissionStatus({
+            step: 'completed',
+            status: 'success',
+            message: res.message || '檢舉事證已成功提交！',
+          });
+          toast.success('檢舉事證已成功提交！', res.message || '已自動加入歷史紀錄');
+          const initData = await window.pywebview.api.get_initial_data();
+          if (initData && initData.history) setHistory(initData.history);
+          setModalOpen(false);
+        } else {
+          const message = res?.message || '請確認網路與帳號授權狀態';
+          toast.error('送出失敗', message);
+          setSubmissionStatus({ step: 'failed', status: 'error', message });
+          setModalStatusText(message);
+        }
+      } catch (e: any) {
+        const message = e?.message || '送出發生錯誤，請稍後重試';
+        toast.error('送出表單異常', message);
+        setSubmissionStatus({ step: 'failed', status: 'error', message });
+        setModalStatusText(message);
+      } finally {
+        setIsSubmittingReport(false);
+      }
+    } else {
+      setSubmissionStatus({
+        step: 'completed',
+        status: 'success',
+        message: '檢舉事證已成功提交！(Mock)',
+      });
+      toast.success('檢舉事證已成功提交！', '已自動加入歷史紀錄並執行上傳 (Mock)');
+      setIsSubmittingReport(false);
+      setModalOpen(false);
+    }
+  };
+
+  const handleRefreshWindows = useCallback(async (silent = false) => {
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        const list = await window.pywebview.api.get_windows();
+        if (list) {
+          setWindows(list);
+          const preferredTitle = choosePreferredWindow(list, config.selected_window_title);
+          if (preferredTitle && preferredTitle !== config.selected_window_title) {
+            await updateConfig('selected_window_title', preferredTitle);
+          }
+        }
+        if (!silent) {
+          toast.info('已重新整理視窗清單', `找到 ${list?.length || 0} 個可選視窗`);
+        }
+      } catch {
+        if (!silent) toast.error('重新整理視窗失敗');
+      }
+    } else {
+      if (!silent) toast.info('已重新整理視窗清單');
+    }
+  }, [config.selected_window_title, updateConfig, toast]);
+
+  const handleRefreshAudio = useCallback(async (silent = false) => {
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        const list = await window.pywebview.api.get_audio_devices();
+        if (list) setAudioDevices(list);
+        if (!silent) toast.info('已重新整理音訊裝置清單');
+      } catch {
+        if (!silent) toast.error('重新整理音訊裝置失敗');
+      }
+    } else {
+      if (!silent) toast.info('已重新整理音訊裝置清單');
+    }
+  }, [toast]);
+
+  // Silently refresh windows and audio devices when application gains focus
+  useEffect(() => {
+    const handleFocus = () => {
+      handleRefreshWindows(true);
+      handleRefreshAudio(true);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [handleRefreshWindows, handleRefreshAudio]);
+
+  const handleAuthenticateDrive = async () => {
+    if (isAuthenticatingDrive) return;
+    if (!(window.pywebview && window.pywebview.api)) {
+      toast.info('正在連線驗證 Google Drive (Mock)...');
+      return;
+    }
+
+    setIsAuthenticatingDrive(true);
+    toast.info('正在開啟系統瀏覽器進行 Google 授權驗證...');
+    try {
+      const res = await window.pywebview.api.authenticate_gdrive();
+      let authenticated = Boolean(res?.is_authenticated);
+      try {
+        authenticated = await window.pywebview.api.check_gdrive_auth();
+      } catch {
+        // Keep the authoritative value returned by authenticate_gdrive when the
+        // follow-up check is unavailable.
+      }
+      setGdriveAuthenticated(authenticated);
+      if (authenticated) {
+        toast.success('Google Drive 授權成功！');
+      } else {
+        toast.error('Google Drive 授權失敗', res?.message || '尚未取得有效授權');
+      }
+    } catch (e: any) {
+      setGdriveAuthenticated(false);
+      toast.error('Google Drive 授權異常', e?.message || String(e));
+    } finally {
+      setIsAuthenticatingDrive(false);
+    }
+  };
+
+  const handleOpenDriveFolder = async () => {
+    if (window.pywebview && window.pywebview.api) {
+      const url = await window.pywebview.api.get_gdrive_folder_url(config.gdrive_folder_name);
+      window.pywebview.api.open_external_url(url);
+    } else {
+      window.open('https://drive.google.com/', '_blank');
+    }
+  };
+
+  const handleClearRecordings = async () => {
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.clear_all_recordings();
+      if (res && res.success) {
+        toast.success('本機錄影清理完成', `已刪除 ${res.count} 個暫存檔案`);
+      }
+    }
+  };
+
+  const handleSaveQuickLink = (linkData: QuickLinkItem) => {
+    const existing = config.quick_links || [];
+    let updated: QuickLinkItem[];
+    if (editingQuickLink) {
+      updated = existing.map((l) => (l.id === linkData.id ? linkData : l));
+    } else {
+      updated = [...existing, linkData];
+    }
+    updateConfig('quick_links', updated);
+    setQuickLinkModalOpen(false);
+    setEditingQuickLink(null);
+    toast.success(editingQuickLink ? '快捷連結已更新' : '已新增快捷連結');
+  };
+
+  const handleCancelRecording = async () => {
+    if (window.pywebview && window.pywebview.api) {
+      await window.pywebview.api.cancel_recording();
+    }
+    setStatusState('idle');
+    setRecordingTime(0);
+    setCountdown(0);
+    toast.info('錄影已取消');
+  };
+
+  const handleStopReplay = async () => {
+    if (window.pywebview && window.pywebview.api) {
+      await window.pywebview.api.stop_replay();
+    }
+    setStatusState('idle');
+    setReplayTime(0);
+    toast.info('已停止循環錄影');
+  };
+
+  const alertUnconfigured =
+    (config.upload_destination === 'discord' && !config.discord_webhook_url) ||
+    (config.upload_destination === 'gdrive' && gdriveAuthenticated === false);
+  const configurationWarning =
+    config.upload_destination === 'gdrive'
+      ? '尚未授權 Google Drive，檢舉事證目前無法上傳。'
+      : '尚未設定 Discord Webhook，檢舉事證目前無法上傳。';
+
+  return (
+    <div className="app-container">
+      <WindowResizeHandles />
+      <Header
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        alertUnconfigured={alertUnconfigured}
+        isDevMode={isDevMode}
+      />
+
+      <main className="main-content">
+        {alertUnconfigured && (
+          <AlertBanner
+            message={configurationWarning}
+            onStartSettings={() => setCurrentView('settings')}
+          />
+        )}
+
+        {currentView === 'home' && (
+          <>
+            <QuickSettings
+              config={config}
+              windows={windows}
+              audioDevices={audioDevices}
+              onUpdateConfig={updateConfig}
+              onUpdateConfigBatch={updateConfigBatch}
+              onRefreshWindows={handleRefreshWindows}
+              onRefreshAudio={handleRefreshAudio}
+            />
+
+            <QuickLinks
+              quickLinks={config.quick_links}
+              onOpenLink={handleOpenUrl}
+              onManageLinks={() => {
+                setSettingsTab('quicklinks');
+                setCurrentView('settings');
+              }}
+              onAddCustomLink={() => {
+                setEditingQuickLink(null);
+                setQuickLinkModalOpen(true);
+              }}
+            />
+
+            <ActionCards
+              onCaptureScreenshot={handleCaptureScreenshot}
+              onRecordVideo={handleRecordVideo}
+              onToggleReplay={handleToggleReplay}
+              onSelectFile={handleSelectFile}
+              isReplaying={statusState === 'replaying'}
+              isRecording={statusState === 'recording' || countdown > 0}
+              recordingLabel={countdown > 0 ? `倒數 ${countdown}s` : `錄製中 ${recordingTime}s`}
+            />
+          </>
+        )}
+
+        {currentView === 'settings' && (
+          <SettingsView
+            config={config}
+            windows={windows}
+            audioDevices={audioDevices}
+            initialTab={settingsTab}
+            gdriveAuthenticated={gdriveAuthenticated}
+            gdriveAuthLoading={isAuthenticatingDrive}
+            onUpdateConfig={updateConfig}
+            onUpdateConfigBatch={updateConfigBatch}
+            onBack={() => setCurrentView('home')}
+            onOpenDriveFolder={handleOpenDriveFolder}
+            onAuthenticateDrive={handleAuthenticateDrive}
+            onRefreshWindows={handleRefreshWindows}
+            onRefreshAudio={handleRefreshAudio}
+            onClearRecordings={handleClearRecordings}
+          />
+        )}
+
+        {currentView === 'history' && (
+          /* Keep backend history authoritative for both the history view and form suggestions. */
+          <HistoryView
+            history={history}
+            onBack={() => setCurrentView('home')}
+            onClearHistory={handleClearHistory}
+            onOpenUrl={handleOpenUrl}
+            onCheckSanctions={handleCheckSanctions}
+            isCheckingSanctions={isCheckingSanctions}
+            sanctionSyncStatus={sanctionSyncStatus}
+            lastCompleteSyncAt={lastCompleteSyncAt}
+          />
+        )}
+      </main>
+
+      <StatusBar
+        statusState={statusState}
+        recordingTime={recordingTime}
+        totalRecordingDuration={config.record_duration_sec || 8}
+        countdown={countdown}
+        replayTime={replayTime}
+        maxReplayBuffer={config.replay_buffer_sec || 30}
+        targetWindowTitle={config.selected_window_title || '新楓之谷：經典版'}
+        audioDevice={audioDevices.find((a) => a.id === config.audio_output_device_id)?.name || '系統預設'}
+        quality={`${config.record_fps || 30} FPS`}
+        onCancelRecording={handleCancelRecording}
+        onStopReplay={handleStopReplay}
+        onSaveReplay={handleSaveReplay}
+      />
+
+      {modalOpen && (
+        <ReportFlowModal
+          stage={modalStage}
+          progressPercent={modalProgress}
+          progressStatus={modalStatusText}
+          isSubmitting={isSubmittingReport}
+          submissionStatus={submissionStatus}
+          ocrResults={ocrResults}
+          config={config}
+          history={history}
+          onClose={() => {
+            setModalOpen(false);
+            setModalProgress(0);
+            setModalStatusText('');
+            setSubmissionStatus(null);
+          }}
+          onSkipOcr={handleSkipOcr}
+          onSubmitReport={handleSubmitReport}
+          onOpenFilePath={(p) => {
+            if (window.pywebview && window.pywebview.api) {
+              window.pywebview.api.open_media_file(p);
+            }
+          }}
+          onOpenFileLocation={(p) => {
+            if (window.pywebview && window.pywebview.api) {
+              window.pywebview.api.open_file_location(p);
+            }
+          }}
+          onUpdateWhitelist={(newWhitelist) => {
+            updateConfig('whitelist', newWhitelist);
+            toast.success('白名單已更新');
+          }}
+        />
+      )}
+
+      {quickLinkModalOpen && (
+        <QuickLinkModal
+          linkToEdit={editingQuickLink}
+          onSave={handleSaveQuickLink}
+          onClose={() => {
+            setQuickLinkModalOpen(false);
+            setEditingQuickLink(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}

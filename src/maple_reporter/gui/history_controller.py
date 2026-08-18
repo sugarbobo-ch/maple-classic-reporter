@@ -6,9 +6,9 @@ import logging
 import webbrowser
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QTableWidgetItem
+from PySide6.QtWidgets import QApplication, QTableWidgetItem
 
-from maple_reporter.utils.config import add_history_entry, load_history
+from maple_reporter.utils.config import add_history_entry, clear_history, load_history
 from maple_reporter.utils.urls import is_safe_https_url
 
 
@@ -52,6 +52,31 @@ class HistoryController:
             webbrowser.open(url)
         except OSError as error:
             LOGGER.warning("開啟歷史事證網址失敗 (%s)", type(error).__name__)
+            return False
+        return True
+
+    def copy_url_from_cell(self, table, row: int, column: int = 4) -> bool:
+        """Copy a safe evidence URL from the selected history row."""
+        if column != 4:
+            return False
+        item = table.item(row, column)
+        if not item:
+            return False
+        url = item.text().strip()
+        if not is_safe_https_url(url):
+            return False
+        clipboard = QApplication.clipboard()
+        if clipboard is None:
+            return False
+        clipboard.setText(url)
+        return True
+
+    def clear(self) -> bool:
+        """Clear persisted history and report whether persistence succeeded."""
+        try:
+            clear_history()
+        except OSError as error:
+            LOGGER.warning("清除歷史紀錄失敗 (%s)", type(error).__name__)
             return False
         return True
 

@@ -24,13 +24,21 @@ class SubmitThread(QThread):
 
     def run(self) -> None:
         try:
+            if self.data.get("dev_mode") is True:
+                self.finished_signal.emit(
+                    True,
+                    "Developer mode: SurveyCake submission skipped.",
+                    None,
+                )
+                return
+
             success, message = submit_gamania_report(
                 suspect_id=self.data["suspect_id"],
                 server_name=self.data["server_name"],
                 map_name=self.data["map_name"],
                 note=self.data["note"],
                 evidence_url=self.data.get("evidence_url", ""),
-                headless=False,
+                headless=bool(self.data.get("form_submit_headless", False)),
             )
         except PlaywrightBrowserError as error:
             self.finished_signal.emit(False, error.details.summary, error)

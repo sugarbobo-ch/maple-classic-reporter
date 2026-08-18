@@ -10,6 +10,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -176,13 +177,22 @@ class ProtectedTokenStore:
         output = DPAPI_HEADER + protected if os.name == "nt" else protected
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-        temporary_path = self.path.with_name(f".{self.path.name}.tmp")
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent
+        )
+        temporary_path = Path(temporary_name)
         try:
-            temporary_path.write_bytes(output)
+            with os.fdopen(file_descriptor, "wb") as stream:
+                stream.write(output)
+                stream.flush()
+                os.fsync(stream.fileno())
             os.replace(temporary_path, self.path)
         finally:
             if temporary_path.exists():
-                temporary_path.unlink()
+                try:
+                    temporary_path.unlink()
+                except OSError:
+                    pass
 
     def delete(self) -> None:
         try:
@@ -236,13 +246,22 @@ class ProtectedSecretStore:
 
         protected = SECRET_DPAPI_HEADER + _protect_with_dpapi(value.encode("utf-8"))
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = self.path.with_name(f".{self.path.name}.tmp")
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent
+        )
+        temporary_path = Path(temporary_name)
         try:
-            temporary_path.write_bytes(protected)
+            with os.fdopen(file_descriptor, "wb") as stream:
+                stream.write(protected)
+                stream.flush()
+                os.fsync(stream.fileno())
             os.replace(temporary_path, self.path)
         finally:
             if temporary_path.exists():
-                temporary_path.unlink()
+                try:
+                    temporary_path.unlink()
+                except OSError:
+                    pass
 
     def delete(self) -> None:
         try:

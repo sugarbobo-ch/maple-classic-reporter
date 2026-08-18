@@ -50,6 +50,8 @@ if not CHROMIUM_DIRECTORY.name.startswith("chromium-"):
 
 datas = [
     (str(PROJECT_ROOT / "assets" / "icon.png"), "assets"),
+    (str(PROJECT_ROOT / "assets" / "icon.ico"), "assets"),
+    (str(PROJECT_ROOT / "web" / "dist"), "web/dist"),
     (str(PROJECT_ROOT / "src" / "maple_reporter" / "ocr" / "data"), "maple_reporter/ocr/data"),
     (str(OAUTH_CLIENT_CONFIG), "."),
     (str(PLAYWRIGHT_DRIVER / "package"), "playwright/driver/package"),

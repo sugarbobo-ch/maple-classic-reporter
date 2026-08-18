@@ -1,0 +1,64 @@
+import React from 'react';
+import { LucideIcon } from 'lucide-react';
+import Tooltip from './Tooltip';
+import { Placement } from '../../hooks';
+
+export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  icon: LucideIcon;
+  size?: 'sm' | 'md' | 'lg';
+  variant?:
+    'default' | 'primary' | 'secondary' | 'outline' | 'danger' | 'success' | 'ghost' | 'plain';
+  active?: boolean;
+  tooltip?: string;
+  tooltipPlacement?: Placement;
+  iconSize?: number;
+}
+
+export default function IconButton({
+  icon: Icon,
+  size = 'md',
+  variant = 'default',
+  active = false,
+  tooltip,
+  tooltipPlacement = 'bottom',
+  iconSize,
+  className = '',
+  disabled = false,
+  type = 'button',
+  title,
+  onClick,
+  ...props
+}: IconButtonProps) {
+  const computedIconSize = iconSize || (size === 'sm' ? 14 : size === 'lg' ? 20 : 16);
+
+  const variantClass =
+    variant === 'default' ? 'ui-btn-icon' : `ui-btn ui-btn-${variant} ui-btn-icon`;
+  const sizeClass = size === 'sm' ? 'ui-btn-sm' : size === 'lg' ? 'ui-btn-lg' : '';
+  const activeClass = active ? 'active' : '';
+
+  // Use tooltip prop, fallback to title
+  const effectiveTooltip = tooltip || title;
+
+  const buttonElement = (
+    <button
+      type={type}
+      className={`${variantClass} ${sizeClass} ${activeClass} ${className}`.trim()}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={effectiveTooltip || undefined}
+      {...props}
+    >
+      <Icon size={computedIconSize} />
+    </button>
+  );
+
+  if (effectiveTooltip) {
+    return (
+      <Tooltip content={effectiveTooltip} placement={tooltipPlacement}>
+        {buttonElement}
+      </Tooltip>
+    );
+  }
+
+  return buttonElement;
+}

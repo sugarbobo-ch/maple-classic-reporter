@@ -1,32 +1,109 @@
 import unittest
+import json
 import os
 import sys
+import tempfile
 import time
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from PIL import Image
 
 sys.path.insert(0, os.path.abspath("src"))
 
-from maple_reporter.utils.config import load_config, save_config
+from maple_reporter.utils import config as config_module
 from maple_reporter.ocr.win_ocr import (
     recognize_map_name_from_image_list,
     recognize_text_from_image,
 )
-from maple_reporter.recorder.window_recorder import get_active_window_titles
+from maple_reporter.recorder.window_recorder import get_active_window_titles, get_active_windows
 from maple_reporter.ocr.map_catalog import normalize_map_name, resolve_map_name
 from maple_reporter.ocr.win_ocr import _clean_map_ocr_text
 
+TEST_CONFIG_FILE = Path(__file__).parent / "fixtures" / "config.json"
+
+
+def load_test_config():
+    return json.loads(TEST_CONFIG_FILE.read_text(encoding="utf-8"))
+
+
 class TestMapleReporter(unittest.TestCase):
     def test_config(self):
-        cfg = load_config()
+        cfg = load_test_config()
         self.assertIn("default_server", cfg)
         self.assertNotIn("gemini_api_key", cfg)
         self.assertTrue(cfg["ocr_autofill_id"])
-        self.assertTrue(cfg["ocr_autofill_map"])
+        self.assertIsInstance(cfg["ocr_autofill_map"], bool)
+
+    def test_ocr_autofill_map_switch_persists_without_user_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            config_dir = temp_root / "config"
+
+            with (
+                patch.object(config_module, "CONFIG_DIR", config_dir),
+                patch.object(config_module, "CONFIG_FILE", config_dir / "config.json"),
+                patch.object(
+                    config_module,
+                    "LEGACY_CONFIG_FILE",
+                    temp_root / "legacy-config.json",
+                ),
+                patch.object(config_module, "RECORDINGS_DIR", temp_root / "recordings"),
+                patch.object(config_module, "_load_secret", return_value=None),
+                patch.object(config_module, "_save_secret", return_value=True),
+                patch.object(config_module, "_delete_secret"),
+                patch.object(config_module, "_delete_removed_config_secret"),
+            ):
+                config_dir.mkdir(parents=True)
+                (config_dir / "config.json").write_text(
+                    TEST_CONFIG_FILE.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+
+                self.assertTrue(config_module.load_config()["ocr_autofill_map"])
+                for enabled in (True, False, True):
+                    candidate = load_test_config()
+                    candidate["ocr_autofill_map"] = enabled
+                    config_module.save_config(candidate)
+
+                    loaded = config_module.load_config()
+                    self.assertEqual(loaded["ocr_autofill_map"], enabled)
 
     def test_window_list(self):
         titles = get_active_window_titles()
         self.assertIsInstance(titles, list)
+
+    def test_window_list_reports_client_dimensions_and_priority(self):
+        windows = [
+            SimpleNamespace(
+                title="其他視窗",
+                visible=True,
+                isMinimized=False,
+                _hWnd=101,
+                width=800,
+                height=600,
+            ),
+            SimpleNamespace(
+                title="新楓之谷：經典版",
+                visible=True,
+                isMinimized=False,
+                _hWnd=102,
+                width=640,
+                height=480,
+            ),
+        ]
+        with patch(
+            "maple_reporter.recorder.window_recorder.gw.getAllWindows",
+            return_value=windows,
+        ), patch(
+            "maple_reporter.recorder.window_recorder.get_client_area_bounds",
+            side_effect=[(10, 20, 800, 600), (30, 40, 1366, 768)],
+        ):
+            result = get_active_windows()
+
+        self.assertEqual(result[0]["title"], "新楓之谷：經典版")
+        self.assertEqual(result[0]["width"], 1366)
+        self.assertEqual(result[0]["height"], 768)
 
     def test_ocr_mock_image(self):
         img = Image.new("RGB", (100, 30), color="white")
@@ -119,12 +196,17 @@ class TestMapleReporter(unittest.TestCase):
 
     def test_record_short_video_cancel(self):
         from maple_reporter.recorder.window_recorder import record_short_video
-        file_path, keyframes = record_short_video(
-            "non_existent_window_1234567",
-            duration_sec=3,
-            fps=15,
-            cancel_checker=lambda: True
-        )
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "maple_reporter.recorder.window_recorder.get_recordings_dir",
+            return_value=Path(temp_dir),
+        ):
+            file_path, keyframes = record_short_video(
+                "non_existent_window_1234567",
+                duration_sec=3,
+                fps=15,
+                cancel_checker=lambda: True,
+            )
         self.assertIsNone(file_path)
         self.assertEqual(keyframes, [])
 
@@ -136,48 +218,55 @@ class TestMapleReporter(unittest.TestCase):
         target_duration = 2
         fps = 15
         start = time.time()
-        with patch(
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
             "maple_reporter.recorder.window_recorder.find_window_bounds",
             return_value=(0, 0, 320, 240),
+        ), patch(
+            "maple_reporter.recorder.window_recorder.get_recordings_dir",
+            return_value=Path(temp_dir),
         ):
+            Path(temp_dir).mkdir(parents=True, exist_ok=True)
             file_path, keyframes = record_short_video(
                 "test-window",
                 duration_sec=target_duration,
                 fps=fps,
                 record_audio=False,
             )
-        elapsed = time.time() - start
-        self.assertIsNotNone(file_path)
-        self.assertTrue(os.path.exists(file_path))
+            elapsed = time.time() - start
+            self.assertIsNotNone(file_path)
+            self.assertTrue(os.path.exists(file_path))
 
-        cap = cv2.VideoCapture(file_path)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        video_fps = cap.get(cv2.CAP_PROP_FPS)
-        cap.release()
+            cap = cv2.VideoCapture(file_path)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            video_fps = cap.get(cv2.CAP_PROP_FPS)
+            cap.release()
 
-        recorded_video_duration = frame_count / video_fps
-        # Verify video duration is close to actual elapsed real time (within 0.3s)
-        self.assertAlmostEqual(recorded_video_duration, target_duration, delta=0.4)
-        self.assertAlmostEqual(recorded_video_duration, elapsed, delta=0.4)
+            recorded_video_duration = frame_count / video_fps
+            # Verify video duration is close to actual elapsed real time (within 0.3s)
+            self.assertAlmostEqual(recorded_video_duration, target_duration, delta=0.4)
+            self.assertAlmostEqual(recorded_video_duration, elapsed, delta=0.4)
 
-        if os.path.exists(file_path):
-            os.remove(file_path)
+            self.assertTrue(str(file_path).startswith(temp_dir))
 
     def test_auto_delete_config_and_recordings_cleanup(self):
-        from maple_reporter.utils.config import load_config, get_recordings_dir
-        cfg = load_config()
+        from maple_reporter.utils.config import get_recordings_dir
+
+        cfg = load_test_config()
         self.assertIn("auto_delete_after_upload", cfg)
         self.assertIn("record_audio", cfg)
         self.assertNotIn("recording_prompt_enabled", cfg)
 
-        rec_dir = get_recordings_dir()
-        test_file = rec_dir / f"test_dummy_{int(time.time())}.txt"
-        test_file.write_text("test")
-        self.assertTrue(test_file.exists())
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            config_module, "RECORDINGS_DIR", Path(temp_dir)
+        ):
+            rec_dir = get_recordings_dir()
+            test_file = rec_dir / f"test_dummy_{int(time.time())}.txt"
+            test_file.write_text("test")
+            self.assertTrue(test_file.exists())
 
-        # Cleanup dummy file
-        test_file.unlink()
-        self.assertFalse(test_file.exists())
+            # Cleanup dummy file
+            test_file.unlink()
+            self.assertFalse(test_file.exists())
 
     def test_audio_merge_helper(self):
         import cv2
@@ -185,37 +274,43 @@ class TestMapleReporter(unittest.TestCase):
         from maple_reporter.recorder.window_recorder import merge_audio_into_mp4
         from maple_reporter.utils.config import get_recordings_dir
 
-        rec_dir = get_recordings_dir()
-        vpath = str(rec_dir / f"test_v_merge_{int(time.time())}.mp4")
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            config_module, "RECORDINGS_DIR", Path(temp_dir)
+        ):
+            rec_dir = get_recordings_dir()
+            vpath = str(rec_dir / f"test_v_merge_{int(time.time())}.mp4")
 
-        # Create 1 second video using PyAV for cross-platform CI compatibility
-        import av
-        container = av.open(vpath, mode='w')
-        stream = container.add_stream('h264', rate=20)
-        stream.width = 320
-        stream.height = 240
-        stream.pix_fmt = 'yuv420p'
+            # Create 1 second video using PyAV for cross-platform CI compatibility
+            import av
 
-        for i in range(20):
-            img = np.full((240, 320, 3), (i * 10) % 255, dtype=np.uint8)
-            frame = av.VideoFrame.from_ndarray(img, format='bgr24')
-            frame = frame.reformat(format='yuv420p')
-            for packet in stream.encode(frame):
+            container = av.open(vpath, mode="w")
+            stream = container.add_stream("h264", rate=20)
+            stream.width = 320
+            stream.height = 240
+            stream.pix_fmt = "yuv420p"
+
+            for i in range(20):
+                img = np.full((240, 320, 3), (i * 10) % 255, dtype=np.uint8)
+                frame = av.VideoFrame.from_ndarray(img, format="bgr24")
+                frame = frame.reformat(format="yuv420p")
+                for packet in stream.encode(frame):
+                    container.mux(packet)
+            for packet in stream.encode():
                 container.mux(packet)
-        for packet in stream.encode():
-            container.mux(packet)
-        container.close()
+            container.close()
 
-        sr = 44100
-        t = np.linspace(0, 1, sr)
-        audio_data = np.column_stack((0.3 * np.sin(2 * np.pi * 440 * t), 0.3 * np.sin(2 * np.pi * 440 * t))).astype(np.float32)
+            sr = 44100
+            t = np.linspace(0, 1, sr)
+            audio_data = np.column_stack(
+                (
+                    0.3 * np.sin(2 * np.pi * 440 * t),
+                    0.3 * np.sin(2 * np.pi * 440 * t),
+                )
+            ).astype(np.float32)
 
-        res = merge_audio_into_mp4(vpath, audio_data, sample_rate=sr)
-        self.assertTrue(res)
-        self.assertTrue(os.path.exists(vpath))
-
-        if os.path.exists(vpath):
-            os.remove(vpath)
+            res = merge_audio_into_mp4(vpath, audio_data, sample_rate=sr)
+            self.assertTrue(res)
+            self.assertTrue(os.path.exists(vpath))
 
     def test_version_string_matches_pyproject(self):
         import re

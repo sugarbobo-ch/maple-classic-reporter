@@ -25,6 +25,7 @@ dependencies = [
     "pyinstaller>=6.3.0",
     "av>=10.0.0",
     "soundcard>=0.4.0",
+    "pywebview>=5.0.0",
 ]
 
 [project.scripts]
@@ -32,3 +33,8 @@ maple-reporter = "maple_reporter.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/maple_reporter"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

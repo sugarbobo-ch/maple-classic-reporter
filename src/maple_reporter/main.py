@@ -1,5 +1,6 @@
 import sys
 import subprocess
+import json
 from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QProgressDialog
@@ -128,21 +129,83 @@ def _ensure_playwright_chromium(app: QApplication) -> bool:
         return _install_playwright_chromium(app, error)
 
 
+def run_bundle_smoke_test() -> int:
+    """Validate a frozen onedir bundle without opening the GUI or services."""
+    if not is_frozen():
+        print("Bundle smoke test requires a PyInstaller executable.", file=sys.stderr)
+        return 2
+
+    root = get_frozen_root()
+    if root is None:
+        print("PyInstaller resource root is unavailable.", file=sys.stderr)
+        return 2
+
+    required_files = {
+        "React entrypoint": root / "web" / "dist" / "index.html",
+        "application icon": root / "assets" / "icon.png",
+        "PyInstaller icon": root / "assets" / "icon.ico",
+        "Playwright driver": root / "playwright" / "driver" / "node.exe",
+        "OAuth client": root / "google_oauth_client.json",
+    }
+    missing = [f"{label}: {path}" for label, path in required_files.items() if not path.is_file()]
+    if missing:
+        print("Bundle smoke test failed; missing files:", file=sys.stderr)
+        print("\n".join(f"- {item}" for item in missing), file=sys.stderr)
+        return 1
+
+    try:
+        oauth_config = json.loads(required_files["OAuth client"].read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        print(f"Bundle smoke test failed; OAuth client is invalid: {error}", file=sys.stderr)
+        return 1
+    if not isinstance(oauth_config, dict) or not isinstance(oauth_config.get("installed"), dict):
+        print("Bundle smoke test failed; OAuth client has no installed configuration.", file=sys.stderr)
+        return 1
+
+    try:
+        chromium = resolve_chromium_executable()
+    except Exception as error:
+        print(f"Bundle smoke test failed; bundled Chromium is unavailable: {error}", file=sys.stderr)
+        return 1
+    if not chromium.is_file():
+        print(f"Bundle smoke test failed; Chromium executable is missing: {chromium}", file=sys.stderr)
+        return 1
+
+    print(f"Bundle smoke test passed: {root}")
+    print(f"Chromium: {chromium}")
+    return 0
+
+
+from maple_reporter.gui.webview_app import (
+    enable_per_monitor_v2_dpi_awareness,
+    run_webview_app,
+    set_windows_app_user_model_id,
+)
+
+
 def main():
-    app = QApplication(sys.argv)
-    app.setApplicationName("MapleStory Classic Auto Reporter")
-    icon = QIcon(str(get_application_icon_path()))
-    app.setWindowIcon(icon)
+    if "--smoke-test" in sys.argv:
+        sys.exit(run_bundle_smoke_test())
 
-    # The normal frozen path uses the Chromium bundled into the executable.
-    # A cache install is only a fallback for an incomplete/corrupt package.
-    _ensure_playwright_chromium(app)
+    enable_per_monitor_v2_dpi_awareness()
+    set_windows_app_user_model_id()
+    if "--pyside" in sys.argv:
+        app = QApplication(sys.argv)
+        app.setApplicationName("MapleStory Classic Auto Reporter")
+        icon = QIcon(str(get_application_icon_path()))
+        app.setWindowIcon(icon)
 
-    window = MainWindow()
-    window.setWindowIcon(icon)
-    window.show()
+        _ensure_playwright_chromium(app)
 
-    sys.exit(app.exec())
+        window = MainWindow()
+        window.setWindowIcon(icon)
+        window.show()
+
+        sys.exit(app.exec())
+    else:
+        # Default: Run PyWebView + React GUI app
+        run_webview_app()
 
 if __name__ == "__main__":
     main()
+

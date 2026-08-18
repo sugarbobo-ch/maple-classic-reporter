@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import logging
 from typing import List, Optional, Tuple, Callable
@@ -20,19 +21,46 @@ from maple_reporter.recorder.audio_capture import (
 
 LOGGER = logging.getLogger(__name__)
 
-# Enable Per-Monitor DPI Awareness safely if not already set by Qt
-try:
-    # 0 = Unaware, 1 = System Aware, 2 = Per Monitor Aware
-    res = ctypes.windll.shcore.GetProcessDpiAwareness(0, ctypes.byref(ctypes.c_int()))
-except Exception as error:
+PRIMARY_GAME_WINDOW_TITLE = "新楓之谷：經典版"
+RELATED_GAME_WINDOW_TITLE_KEYWORD = "新楓之谷"
+_WINDOW_DIMENSION_SUFFIX = re.compile(
+    r"\s+\(\s*\d+\s*[x×]\s*\d+\s*\)\s*$", re.IGNORECASE
+)
+
+
+def _enable_per_monitor_dpi_awareness() -> None:
+    """Make Windows client coordinates line up with MSS physical pixels."""
+    if os.name != "nt":
+        return
+
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-    except Exception as setup_error:
-        LOGGER.debug(
-            "無法設定 Windows DPI awareness (%s, %s)",
-            type(error).__name__,
-            type(setup_error).__name__,
-        )
+        set_context = ctypes.windll.user32.SetProcessDpiAwarenessContext
+        set_context.argtypes = [ctypes.c_void_p]
+        set_context.restype = wintypes.BOOL
+        if set_context(ctypes.c_void_p(-3)):  # PER_MONITOR_AWARE
+            return
+    except (AttributeError, OSError, OverflowError, TypeError, ValueError):
+        pass
+
+    try:
+        current_awareness = ctypes.c_int()
+        get_awareness = ctypes.windll.shcore.GetProcessDpiAwareness
+        if (
+            get_awareness(0, ctypes.byref(current_awareness)) == 0
+            and current_awareness.value == 2
+        ):
+            return
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PER_MONITOR_DPI_AWARE
+    except (AttributeError, OSError, OverflowError, TypeError, ValueError) as error:
+        LOGGER.debug("無法設定 Windows DPI awareness (%s)", type(error).__name__)
+
+
+_enable_per_monitor_dpi_awareness()
+
+
+def normalize_window_title_keyword(window_title_keyword: str) -> str:
+    """Remove the UI-only ``(widthxheight)`` suffix from saved titles."""
+    return _WINDOW_DIMENSION_SUFFIX.sub("", (window_title_keyword or "").strip()).strip()
 
 def get_accurate_window_bounds(hwnd) -> Optional[Tuple[int, int, int, int]]:
     """Get exact window bounds excluding DWM drop shadow padding."""
@@ -73,16 +101,94 @@ def get_client_area_bounds(hwnd) -> Optional[Tuple[int, int, int, int]]:
         LOGGER.debug("讀取 Windows client area 失敗 (%s)", type(error).__name__)
     return get_accurate_window_bounds(hwnd)
 
+def _window_title_priority(title: str) -> int:
+    normalized = normalize_window_title_keyword(title).casefold()
+    if normalized == PRIMARY_GAME_WINDOW_TITLE.casefold():
+        return 0
+    if RELATED_GAME_WINDOW_TITLE_KEYWORD.casefold() in normalized:
+        return 1
+    if "maple" in normalized:
+        return 2
+    return 3
+
+
+def order_window_candidates(windows: List[dict]) -> List[dict]:
+    """Order windows with the exact Classic title first, then related titles."""
+    return sorted(
+        windows,
+        key=lambda window: (
+            _window_title_priority(str(window.get("title", ""))),
+            str(window.get("title", "")).casefold(),
+        ),
+    )
+
+
+def select_preferred_window_title(windows: List[dict], saved_title: str = "") -> str:
+    """Choose the exact Classic title before other MapleStory windows."""
+    if not windows:
+        return ""
+
+    for window in windows:
+        title = str(window.get("title", ""))
+        if normalize_window_title_keyword(title).casefold() == PRIMARY_GAME_WINDOW_TITLE.casefold():
+            return title
+
+    for window in windows:
+        title = str(window.get("title", ""))
+        if RELATED_GAME_WINDOW_TITLE_KEYWORD.casefold() in title.casefold():
+            return title
+
+    normalized_saved_title = normalize_window_title_keyword(saved_title).casefold()
+    if normalized_saved_title:
+        for window in windows:
+            title = str(window.get("title", ""))
+            if normalize_window_title_keyword(title).casefold() == normalized_saved_title:
+                return title
+
+    return str(windows[0].get("title", ""))
+
+
+def get_active_windows() -> List[dict]:
+    """Return visible windows with their actual client-area dimensions."""
+    windows: List[dict] = []
+    seen_titles: set[str] = set()
+
+    for window in gw.getAllWindows():
+        title = str(getattr(window, "title", "") or "").strip()
+        if not title or not getattr(window, "visible", False):
+            continue
+        if getattr(window, "isMinimized", False):
+            continue
+
+        hwnd = getattr(window, "_hWnd", None)
+        bounds = get_client_area_bounds(hwnd) if hwnd else None
+        if bounds and bounds[2] > 100 and bounds[3] > 100:
+            width, height = int(bounds[2]), int(bounds[3])
+        else:
+            try:
+                width, height = int(window.width), int(window.height)
+            except (AttributeError, TypeError, ValueError):
+                continue
+
+        if width <= 100 or height <= 100:
+            continue
+
+        title_key = title.casefold()
+        if title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        windows.append({"title": title, "width": width, "height": height})
+
+    return order_window_candidates(windows)
+
+
 def get_active_window_titles() -> List[str]:
-    """Return a list of visible window titles."""
-    titles = []
-    for w in gw.getAllWindows():
-        if w.title and w.visible and w.width > 100 and w.height > 100:
-            titles.append(w.title)
-    return sorted(list(set(titles)))
+    """Return a priority-ordered list of visible window titles."""
+    return [window["title"] for window in get_active_windows()]
 
 def focus_window(window_title_keyword: str) -> bool:
     """Bring the target window to the foreground."""
+    window_title_keyword = normalize_window_title_keyword(window_title_keyword)
     if not window_title_keyword:
         return False
     visible_windows = [
@@ -128,6 +234,7 @@ def find_window_bounds(window_title_keyword: str) -> Optional[Tuple[int, int, in
     Find accurate window bounding box (left, top, width, height) by exact title or keyword.
     Prioritizes exact title match over substring match to avoid selecting browser/IDE windows.
     """
+    window_title_keyword = normalize_window_title_keyword(window_title_keyword)
     if not window_title_keyword:
         return None
 

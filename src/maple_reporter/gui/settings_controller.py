@@ -53,6 +53,10 @@ class SettingsController:
         window.chk_auto_delete.setChecked(
             self.config.get("auto_delete_after_upload", False)
         )
+        window.chk_form_submit_headless.setChecked(
+            self.config.get("form_submit_headless", True)
+        )
+        window.chk_dev_mode.setChecked(self.config.get("dev_mode", False))
         window.chk_record_audio.setChecked(self.config.get("record_audio", True))
         window.chk_ocr_id.setChecked(self.config.get("ocr_autofill_id", True))
         window.chk_ocr_map.setChecked(self.config.get("ocr_autofill_map", True))
@@ -124,6 +128,8 @@ class SettingsController:
             if value.strip()
         ]
         self.config["auto_delete_after_upload"] = window.chk_auto_delete.isChecked()
+        self.config["form_submit_headless"] = window.chk_form_submit_headless.isChecked()
+        self.config["dev_mode"] = window.chk_dev_mode.isChecked()
         self.config["record_audio"] = window.chk_record_audio.isChecked()
         self.config["ocr_autofill_id"] = window.chk_ocr_id.isChecked()
         self.config["ocr_autofill_map"] = window.chk_ocr_map.isChecked()
@@ -146,12 +152,21 @@ class SettingsController:
         return self.config
 
     def save_from_window(self, window) -> dict[str, Any]:
-        config = self.collect_from_window(window)
-        save_config(config)
-        return config
+        self.collect_from_window(window)
+        self.save_model()
+        return self.config
 
-    def save_model(self) -> None:
-        save_config(self.config)
+    def save_model(self) -> bool:
+        """Persist settings and restore the last backend state on failure."""
+
+        try:
+            save_config(self.config)
+        except Exception:
+            reloaded = load_config()
+            self.config.clear()
+            self.config.update(reloaded)
+            return False
+        return True
 
     def mark_onboarding_completed(self) -> None:
         self.config["onboarding_completed"] = True

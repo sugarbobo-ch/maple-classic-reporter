@@ -23,6 +23,21 @@ if (Test-Path -LiteralPath $bundleRoot) {
 
 Push-Location $projectRoot
 try {
+    Push-Location (Join-Path $projectRoot "web")
+    try {
+        & npm ci --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) {
+            throw "React dependency installation failed with exit code $LASTEXITCODE."
+        }
+
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "React production build failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        Pop-Location
+    }
+
     & uv sync --frozen
     if ($LASTEXITCODE -ne 0) {
         throw "Locked dependency sync failed with exit code $LASTEXITCODE."

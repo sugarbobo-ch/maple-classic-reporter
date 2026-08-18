@@ -18,3 +18,10 @@ client_secrets.json
 # Release-only OAuth client resource (embedded into the release bundle, never committed)
 build_secrets/
 google_oauth_client.json
+
+# Node & Frontend
+node_modules/
+web/node_modules/
+web/dist/
+.pnpm-store/
+*.local

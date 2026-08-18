@@ -167,6 +167,19 @@ class TestRefactorBoundaries(unittest.TestCase):
                 self.assertEqual(config.load_history()[0]["status"], "成功")
                 self.assertEqual(list(config_dir.glob("*.tmp")), [])
 
+    def test_clear_history_replaces_persisted_history_with_an_empty_list(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_dir = root / "config"
+            history_file = config_dir / "history.json"
+            with patch.object(config, "CONFIG_DIR", config_dir), patch.object(
+                config, "HISTORY_FILE", history_file
+            ), patch.object(config, "RECORDINGS_DIR", root / "recordings"):
+                config.add_history_entry({"status": "成功"})
+                config.clear_history()
+                self.assertEqual(config.load_history(), [])
+                self.assertEqual(list(config_dir.glob("*.tmp")), [])
+
     def test_replay_state_machine_names_are_explicit(self):
         self.assertEqual(
             [state.value for state in ReplayState],

@@ -2,6 +2,8 @@
 
 ## Current Release
 
+> **Window behavior work:** For mixed-DPI dragging, cursor anchors, maximize/restore, frameless resize, or Windows Snap changes, read [`docs/WINDOW_DPI_DRAG_BEHAVIOR.md`](docs/WINDOW_DPI_DRAG_BEHAVIOR.md) before editing. Its behavior contract and hardware acceptance matrix are mandatory.
+
 - **Version**: `1.3.0`
 - **Windows release**: `MapleClassicReporter-v1.3.0-windows-x64.zip`
 - **Tutorial & Forum Post**: [巴哈姆特詳細教學文章](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)

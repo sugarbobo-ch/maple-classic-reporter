@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import cv2
+import numpy as np
 from PIL import Image
 
 from maple_reporter.recorder.window_recorder import record_short_video
@@ -61,18 +62,30 @@ class EvidenceCaptureController:
         keyframes: list[Image.Image] = []
         capture = cv2.VideoCapture(file_path)
         try:
-            fps = capture.get(cv2.CAP_PROP_FPS) or 20
-            step = max(1, int(fps * 1.5))
-            frame_index = 0
-            while capture.isOpened():
-                ok, frame = capture.read()
-                if not ok:
-                    break
-                if frame_index % step == 0:
-                    keyframes.append(
-                        Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                    )
-                frame_index += 1
+            total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            if total_frames > 0:
+                target_count = min(6, total_frames)
+                target_indices = np.linspace(0, total_frames - 1, num=target_count, dtype=int)
+                for idx in target_indices:
+                    capture.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+                    ok, frame = capture.read()
+                    if ok and frame is not None:
+                        keyframes.append(
+                            Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        )
+            else:
+                fps = capture.get(cv2.CAP_PROP_FPS) or 20
+                step = max(1, int(fps * 2))
+                frame_index = 0
+                while capture.isOpened() and len(keyframes) < 6:
+                    ok, frame = capture.read()
+                    if not ok:
+                        break
+                    if frame_index % step == 0:
+                        keyframes.append(
+                            Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        )
+                    frame_index += 1
         finally:
             capture.release()
         return keyframes

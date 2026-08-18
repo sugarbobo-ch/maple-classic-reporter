@@ -8,7 +8,7 @@ stable.
 from __future__ import annotations
 
 import logging
-from typing import List
+from typing import Callable, List, Optional
 
 import numpy as np
 from PIL import Image
@@ -65,6 +65,23 @@ def _ocr_result(engine, image: Image.Image):
     return result
 
 
+def _downscale_for_ocr(image: Image.Image, max_dim: int = 1920) -> tuple[Image.Image, float]:
+    """Downscale large images for faster full-frame OCR and return the scale factor."""
+    w, h = image.size
+    if max_dim <= 0 or (w <= max_dim and h <= max_dim):
+        return image, 1.0
+    if w >= h:
+        new_w = max_dim
+        scale = max_dim / float(w)
+        new_h = max(1, int(h * scale))
+    else:
+        new_h = max_dim
+        scale = max_dim / float(h)
+        new_w = max(1, int(w * scale))
+    return image.resize((new_w, new_h), Image.Resampling.BILINEAR), scale
+
+
+
 def _is_map_label(text: str) -> bool:
     return any(label in text for label in _MAP_LABELS)
 
@@ -99,14 +116,23 @@ def _select_map_line(lines: list[tuple[str, float]]) -> str:
     return candidate_lines[0][0]
 
 
-def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
+def recognize_map_name_from_image_list(
+    pil_images: List[Image.Image],
+    on_progress: Optional[Callable[[int, int], None]] = None,
+) -> str:
     """Recognize the mini-map title and vote across keyframes."""
 
     if not HAS_RAPID_OCR or RAPID_OCR_ENGINE is None:
         return ""
 
     detections: list[str] = []
-    for image in pil_images:
+    total_frames = len(pil_images)
+    for frame_index, image in enumerate(pil_images, 1):
+        if on_progress:
+            try:
+                on_progress(frame_index, total_frames)
+            except Exception:
+                pass
         if image.mode != "RGB":
             image = image.convert("RGB")
         try:
@@ -131,8 +157,7 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
             for bbox, raw_text, score in sorted_results:
                 text = _clean_map_ocr_text(raw_text)
                 center_y = _bbox_cy(bbox)
-                # OCR boxes can be close together on small captures.  The
-                # previous 12px gap skipped the only map row in that case.
+                # OCR boxes can be close together on small captures.
                 if center_y <= label_y + 2 or is_map_noise(text, _MAP_NOISE):
                     continue
                 if score < 0.40 or not (2 <= len(text) <= 22):
@@ -141,6 +166,10 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
             actual_text = _select_map_line(lines)
             if actual_text:
                 detections.append(actual_text)
+                match, sim = best_map_name_match(actual_text)
+                if match and sim >= 0.85:
+                    return match
+                return actual_text
             continue
 
         for bbox, raw_text, score in sorted_results:
@@ -150,13 +179,15 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
             if 2 <= len(text) <= 22:
                 candidate = resolve_map_name(text)
                 if candidate:
-                    detections.append(candidate)
-                    break
+                    return candidate
+
+        if detections:
+            return detections[0]
 
     # Hidden mini-maps may show a transition banner elsewhere. Only accept a
     # strict offline catalogue match in that fallback region.
-    if not detections:
-        for image in pil_images:
+    if not detections and len(pil_images) > 0:
+        for image in pil_images[:2]:
             if image.mode != "RGB":
                 image = image.convert("RGB")
             try:
@@ -174,7 +205,7 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
                     candidate, similarity = best_map_name_match(text)
                     if candidate and similarity >= 0.88:
                         detections.append(candidate)
-                        break
+                        return candidate
             except Exception as error:
                 LOGGER.debug("RapidOCR 全畫面地圖候選失敗 (%s)", type(error).__name__)
 
@@ -182,12 +213,21 @@ def recognize_map_name_from_image_list(pil_images: List[Image.Image]) -> str:
 
 
 def recognize_candidates_from_image_list(
-    pil_images: List[Image.Image], detected_map_name: str = ""
+    pil_images: List[Image.Image],
+    detected_map_name: str = "",
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> List[str]:
     """Extract, filter, and rank player ID candidates from keyframes."""
 
     observations: list[CandidateObservation] = []
-    for frame_index, image in enumerate(pil_images):
+    total_frames = len(pil_images)
+    for frame_index, raw_image in enumerate(pil_images, 1):
+        if on_progress:
+            try:
+                on_progress(frame_index, total_frames)
+            except Exception:
+                pass
+        image, scale = _downscale_for_ocr(raw_image, max_dim=1920)
         if image.mode != "RGB":
             image = image.convert("RGB")
         width, height = image.size
@@ -227,20 +267,23 @@ def recognize_candidates_from_image_list(
             if not in_guild_or_medal_zone(center_x, center_y):
                 observations.append(CandidateObservation(text, score, frame_index))
 
+        # Windows OCR fallback on game view region without expensive micro-patch loop
         if not observations and HAS_WINSDK and width > 150 and height > 150:
-            image_array = np.asarray(image)
-            patch_w, patch_h = int(width * 0.18), int(height * 0.12)
-            step_x, step_y = int(patch_w * 0.5), int(patch_h * 0.5)
-            start_y, end_y = int(height * 0.15), int(height * _BOTTOM_UI_CROP_Y)
-            start_x, end_x = int(width * 0.05), int(width * 0.95)
-            for y in range(start_y, end_y, max(20, step_y)):
-                for x in range(start_x, end_x, max(30, step_x)):
-                    patch = image_array[y : min(height, y + patch_h), x : min(width, x + patch_w)]
-                    if patch.shape[0] < 20 or patch.shape[1] < 40:
-                        continue
-                    text = recognize_text_from_image(Image.fromarray(patch)).strip()
-                    if is_valid_suspect_id(text):
-                        observations.append(CandidateObservation(text, 0.8, frame_index))
+            try:
+                crop_box = (
+                    int(width * 0.05),
+                    int(height * 0.15),
+                    int(width * 0.95),
+                    int(height * _BOTTOM_UI_CROP_Y),
+                )
+                cropped_img = image.crop(crop_box)
+                full_text = recognize_text_from_image(cropped_img)
+                for line in full_text.splitlines():
+                    cand = normalize_ocr_text(line.strip())
+                    if cand and is_valid_suspect_id(cand) and cand != detected_map_name:
+                        observations.append(CandidateObservation(cand, 0.75, frame_index))
+            except Exception as error:
+                LOGGER.debug("Windows OCR 備用語法失敗 (%s)", type(error).__name__)
 
     return rank_candidate_observations(observations)
 

@@ -31,9 +31,11 @@ class TestSecurityBoundaries(unittest.TestCase):
             config_file = root / "config" / "config.json"
             with patch.object(config, "CONFIG_DIR", config_file.parent), patch.object(
                 config, "CONFIG_FILE", config_file
-            ), patch.object(
-                config, "RECORDINGS_DIR", root / "recordings"
-            ):
+            ), patch.object(config, "RECORDINGS_DIR", root / "recordings"), patch.object(
+                config, "_load_secret", return_value=None
+            ), patch.object(config, "_save_secret", return_value=True), patch.object(
+                config, "_delete_secret"
+            ), patch.object(config, "_delete_removed_config_secret"):
                 config.save_config(
                     {
                         "record_audio": False,

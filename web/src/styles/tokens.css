@@ -1,0 +1,128 @@
+:root {
+  /* Maple Classic Warm Light Mode Palette */
+
+  /* Primary Accent: Tailwind Amber */
+  --color-primary: #d97706; /* amber-600 */
+  --color-primary-hover: #b45309; /* amber-700 */
+  --color-primary-light: #f0ebe4; /* soft neutral stone (zero yellow) */
+  --color-primary-text: #ffffff;
+
+  /* Neutral Background & Surface: Warm Maple Stone */
+  --color-bg: #faf8f5; /* warm stone-50 */
+  --color-surface: #f4efea; /* warm stone-100 */
+  --color-surface-hover: #ebe4dc; /* warm stone-200 */
+  --color-surface-card: #ffffff;
+
+  /* Text & Typography: Warm Stone */
+  --color-text: #292524; /* stone-800 */
+  --color-text-heading: #78350f; /* amber-900 */
+  --color-text-secondary: #78716c; /* stone-500 */
+  --color-brown: #92400e; /* amber-800 */
+
+  /* Borders & Dividers */
+  --color-border: #e0d7cb;
+  --color-border-strong: #a8a29e; /* stone-400 */
+  --color-wood-light: #d6cebe;
+
+  /* Status Colors */
+  --color-status-success: #059669; /* emerald-600 */
+  --color-status-success-hover: #047857; /* emerald-700 */
+  --color-status-success-bg: #ecfdf5; /* emerald-50 */
+
+  --color-status-important: #0284c7; /* sky-600 */
+  --color-status-important-bg: #f0f9ff; /* sky-50 */
+
+  --color-danger: #dc2626; /* red-600 */
+  --color-danger-hover: #b91c1c; /* red-700 */
+  --color-danger-bg: #fef2f2; /* red-50 */
+  --color-status-danger: var(--color-danger);
+
+  --color-warning: #d97706; /* amber-600 */
+  --color-warning-bg: #fffbeb; /* amber-50 */
+  --color-status-warning: var(--color-warning);
+
+  /* Maple Classic Solid Color Tokens (Badges & Tags) */
+  --color-maple-red: #a32820; /* 「活動」標籤 / 類別 */
+  --color-maple-green: #4b7a24; /* 「更新」標籤 / 成功 / 完成 / 已連線 */
+  --color-maple-blue: #154d85; /* 「重要」標籤 / 資訊提示 */
+  --color-maple-white: #ffffff; /* 標籤與按鈕文字 */
+
+  --color-category-event: #a32820;
+  --color-on-dark: #ffffff;
+
+  /* Tooltip Colors */
+  --color-tooltip-bg: #1c1917; /* warm stone-900 */
+  --color-tooltip-text: #faf8f5; /* warm stone-50 */
+  --color-tooltip-border: rgba(255, 255, 255, 0.1);
+
+  /* Focus Ring */
+  --color-focus-ring: rgba(217, 119, 6, 0.25); /* warm amber focus */
+
+  /* Unified Sizing Scale */
+  --size-sm: 28px;
+  --size-md: 36px;
+  --size-lg: 44px;
+
+  /* Spacing system (8px base) */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-xxl: 32px;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  /* Font */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', sans-serif;
+}
+
+[data-theme='dark'] {
+  /* Maple Classic Dark Mode Palette (Soft, Low-Saturation Warm Woods & Amber) */
+  --color-primary: #cb7831; /* soft muted maple amber */
+  --color-primary-hover: #b36422; /* darker warm amber */
+  --color-primary-light: rgba(203, 120, 49, 0.18);
+  --color-primary-text: #ffffff;
+
+  --color-bg: #1c1917; /* dark warm wood base */
+  --color-surface: #26221f; /* warm dark container */
+  --color-surface-hover: #332d29; /* subtle warm wood hover */
+  --color-surface-card: #201c19; /* warm inner card */
+
+  --color-text: #eae4dc; /* soft parchment text */
+  --color-text-heading: #e2cbb0; /* soft warm beige title (low saturation, not bright yellow) */
+  --color-text-secondary: #a3978b; /* muted warm gray */
+  --color-brown: #c49a6c;
+
+  --color-border: #3d352e; /* subtle warm wood border */
+  --color-border-strong: #544940;
+  --color-wood-light: #423931;
+
+  --color-status-success: #34d399; /* soft emerald */
+  --color-status-success-hover: #10b981;
+  --color-status-success-bg: rgba(52, 211, 153, 0.15);
+
+  --color-status-important: #38bdf8; /* soft sky */
+  --color-status-important-bg: rgba(56, 189, 248, 0.15);
+
+  --color-danger: #f87171; /* soft coral red */
+  --color-danger-hover: #ef4444;
+  --color-danger-bg: rgba(248, 113, 113, 0.15);
+  --color-status-danger: var(--color-danger);
+
+  --color-warning: #d99b43; /* soft warm gold (low saturation) */
+  --color-warning-bg: rgba(217, 155, 67, 0.15);
+  --color-status-warning: var(--color-warning);
+
+  /* Tooltip Colors (Warm Stone / Dark Wood, no deep slate blue) */
+  --color-tooltip-bg: #332d28; /* warm stone/wood dark surface */
+  --color-tooltip-text: #f5f0eb;
+  --color-tooltip-border: #544940;
+
+  /* Focus Ring */
+  --color-focus-ring: rgba(203, 120, 49, 0.35); /* warm muted amber focus */
+}

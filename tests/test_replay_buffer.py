@@ -192,6 +192,34 @@ class TestReplayBuffer(unittest.TestCase):
 
         self.assertEqual(sum(reference() is not None for reference in references), 0)
 
+    def test_saved_callback_runs_from_worker_without_a_qt_event_loop(self):
+        """The default pywebview UI has no Qt loop to drain queued signals."""
+        saved = []
+        recorder = ReplayBufferRecorder(
+            replay_saved_callback=lambda file_path, keyframes: saved.append(
+                (file_path, keyframes)
+            )
+        )
+        recorder._running = True
+        recorder._frames = deque(
+            [BufferedFrame(1.0, b"first"), BufferedFrame(2.0, b"second")]
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = str(Path(temporary_dir) / "replay.mp4")
+
+            def encode(_frames):
+                Path(output).touch()
+                return output, [Image.new("RGB", (2, 2))]
+
+            with patch.object(recorder, "_encode_video", side_effect=encode):
+                self.assertTrue(recorder.save_replay())
+                recorder._save_thread.join(timeout=2.0)
+
+            self.assertEqual(len(saved), 1)
+            self.assertEqual(saved[0][0], output)
+            self.assertEqual(len(saved[0][1]), 1)
+
     def test_capture_bounds_are_clipped_to_the_virtual_desktop(self):
         clipped = _clip_monitor_to_virtual_screen(
             {"left": -2100, "top": -20, "width": 900, "height": 700},

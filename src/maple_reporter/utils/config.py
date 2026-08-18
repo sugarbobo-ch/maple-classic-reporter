@@ -3,6 +3,8 @@ import logging
 import os
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -13,6 +15,7 @@ from maple_reporter.gdrive.token_store import (
 
 
 LOGGER = logging.getLogger(__name__)
+_CONFIG_LOCK = threading.RLock()
 
 
 def get_base_dir() -> Path:
@@ -65,15 +68,41 @@ HISTORY_FILE = CONFIG_DIR / "history.json"
 LEGACY_CONFIG_FILE = LEGACY_CONFIG_DIR / "config.json"
 LEGACY_HISTORY_FILE = LEGACY_CONFIG_DIR / "history.json"
 
+DEFAULT_QUICK_LINKS = [
+    {
+        "id": "official-report",
+        "title": "外掛檢舉頁面",
+        "url": "https://forms.gamania.com/s/eLGg4",
+        "icon": "ShieldAlert",
+        "isDefault": True,
+    },
+    {
+        "id": "official-site",
+        "title": "新楓之谷官方網站",
+        "url": "https://maplestory.beanfun.com/",
+        "icon": "Globe",
+        "isDefault": False,
+    },
+    {
+        "id": "gamer-forum",
+        "title": "巴哈姆特 楓之谷哈啦板",
+        "url": "https://forum.gamer.com.tw/B.php?bsn=7650",
+        "icon": "MessageSquare",
+        "isDefault": False,
+    },
+]
+
 DEFAULT_CONFIG: Dict[str, Any] = {
     "default_server": "雪吉拉",
     "default_map": "維多利亞島",
     "default_note": "自動打怪/外掛行為",
+    "recording_preset": "balanced",
+    "has_initialized_defaults": False,
     "record_duration_sec": 8,
     "record_fps": 20,
     "record_countdown_sec": 3,
-    "replay_buffer_sec": 30,
-    "selected_window_title": "新楓之谷",
+    "replay_buffer_sec": 20,
+    "selected_window_title": "新楓之谷：經典版",
     "gdrive_token_file": str(get_default_token_path()),
     "gdrive_folder_name": "MapleClassic_Reports",
     "discord_webhook_url": "",
@@ -90,6 +119,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "global_hotkeys_enabled": True,
     "save_replay_hotkey": "Ctrl+Shift+F9",
     "record_video_hotkey": "Ctrl+Shift+F10",
+    "form_submit_headless": True,
+    "dev_mode": False,
+    "auto_check_sanction_status": True,
+    "quick_links": DEFAULT_QUICK_LINKS,
 }
 
 def ensure_config_dir() -> Path:
@@ -128,7 +161,15 @@ def _write_json_atomic(path: Path, value: object) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary_path, path)
+        # On Windows, replace might race if an AV scanner or process briefly holds the file.
+        for attempt in range(5):
+            try:
+                os.replace(temporary_path, path)
+                break
+            except (PermissionError, OSError):
+                if attempt == 4:
+                    raise
+                time.sleep(0.02 * (attempt + 1))
         # Directory fsync is useful on POSIX. Opening a directory handle on
         # Windows can keep a temporary test/application directory undeletable,
         # while the completed file fsync above already protects the payload.
@@ -188,83 +229,94 @@ def _delete_removed_config_secret(name: str) -> None:
         LOGGER.warning("刪除已移除的受保護設定失敗 (%s: %s)", name, type(error).__name__)
 
 def load_config() -> Dict[str, Any]:
-    ensure_config_dir()
-    source_path = CONFIG_FILE if CONFIG_FILE.exists() else LEGACY_CONFIG_FILE
-    if not source_path.exists():
-        save_config(DEFAULT_CONFIG)
-        source_path = CONFIG_FILE
-    try:
-        with open(source_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-            if not isinstance(cfg, dict):
-                raise TypeError("config root must be an object")
-            merged = DEFAULT_CONFIG.copy()
-            merged.update(cfg)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
-        return DEFAULT_CONFIG.copy()
+    with _CONFIG_LOCK:
+        ensure_config_dir()
+        source_path = CONFIG_FILE if CONFIG_FILE.exists() else LEGACY_CONFIG_FILE
+        if not source_path.exists():
+            save_config(DEFAULT_CONFIG)
+            source_path = CONFIG_FILE
+        try:
+            with open(source_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                if not isinstance(cfg, dict):
+                    raise TypeError("config root must be an object")
+                merged = DEFAULT_CONFIG.copy()
+                merged.update(cfg)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            return DEFAULT_CONFIG.copy()
 
-    for name in _REMOVED_CONFIG_KEYS:
-        merged.pop(name, None)
+        for name in _REMOVED_CONFIG_KEYS:
+            merged.pop(name, None)
 
-    # Secrets are migrated out of the legacy JSON file on first read. They are
-    # never written back to JSON. Removed feature secrets are deleted instead
-    # of being loaded into the application model.
-    sanitized = dict(cfg) if isinstance(cfg, dict) else {}
-    changed = False
-    for name in _REMOVED_CONFIG_KEYS:
-        if name in sanitized:
-            sanitized.pop(name, None)
-            changed = True
-        _delete_removed_config_secret(name)
+        # Secrets are migrated out of the legacy JSON file on first read. They are
+        # never written back to JSON. Removed feature secrets are deleted instead
+        # of being loaded into the application model.
+        sanitized = dict(cfg) if isinstance(cfg, dict) else {}
+        changed = False
+        for name in _REMOVED_CONFIG_KEYS:
+            if name in sanitized:
+                sanitized.pop(name, None)
+                changed = True
+            _delete_removed_config_secret(name)
 
-    for name in _SECRET_CONFIG_KEYS:
-        legacy_value = sanitized.get(name, "")
-        stored_value = _load_secret(name)
-        if stored_value is None and isinstance(legacy_value, str) and legacy_value:
-            if _save_secret(name, legacy_value):
-                stored_value = legacy_value
-        if stored_value is None:
-            merged[name] = ""
-        else:
-            merged[name] = stored_value
-        if name in sanitized and (stored_value is not None or not legacy_value):
-            sanitized.pop(name, None)
-            changed = True
+        for name in _SECRET_CONFIG_KEYS:
+            legacy_value = sanitized.get(name, "")
+            stored_value = _load_secret(name)
+            if stored_value is None and isinstance(legacy_value, str) and legacy_value:
+                if _save_secret(name, legacy_value):
+                    stored_value = legacy_value
+            if stored_value is None:
+                merged[name] = ""
+            else:
+                merged[name] = stored_value
+            if name in sanitized and (stored_value is not None or not legacy_value):
+                sanitized.pop(name, None)
+                changed = True
 
-    migration_blocked = any(
-        name in sanitized and bool(sanitized.get(name))
-        for name in _SECRET_CONFIG_KEYS
-    )
-    if changed and source_path == CONFIG_FILE and not migration_blocked:
-        # Only remove plaintext values after the protected copy succeeded.
-        _write_json_atomic(CONFIG_FILE, sanitized)
-    elif source_path == LEGACY_CONFIG_FILE:
-        # Copy ordinary settings into the protected per-user location. Remove
-        # migrated secrets from the legacy file only after DPAPI persistence.
-        if not migration_blocked:
+        migration_blocked = any(
+            name in sanitized and bool(sanitized.get(name))
+            for name in _SECRET_CONFIG_KEYS
+        )
+        if changed and source_path == CONFIG_FILE and not migration_blocked:
+            # Only remove plaintext values after the protected copy succeeded.
             _write_json_atomic(CONFIG_FILE, sanitized)
-            if changed:
-                _write_json_atomic(LEGACY_CONFIG_FILE, sanitized)
-    return merged
+        elif source_path == LEGACY_CONFIG_FILE:
+            # Copy ordinary settings into the protected per-user location. Remove
+            # migrated secrets from the legacy file only after DPAPI persistence.
+            if not migration_blocked:
+                _write_json_atomic(CONFIG_FILE, sanitized)
+                if changed:
+                    _write_json_atomic(LEGACY_CONFIG_FILE, sanitized)
+        return merged
 
 def save_config(cfg: Dict[str, Any]) -> None:
-    ensure_config_dir()
-    serializable = dict(cfg)
-    for name in _REMOVED_CONFIG_KEYS:
-        serializable.pop(name, None)
-        _delete_removed_config_secret(name)
-    for name in _SECRET_CONFIG_KEYS:
-        if name not in serializable:
-            continue
-        value = serializable.pop(name)
-        if value:
-            if not isinstance(value, str) or not _save_secret(name, value.strip()):
-                raise ProtectedTokenStoreError(
-                    f"Could not securely store application secret: {name}"
-                )
-        else:
-            _delete_secret(name)
-    _write_json_atomic(CONFIG_FILE, serializable)
+    with _CONFIG_LOCK:
+        ensure_config_dir()
+        serializable = dict(cfg)
+        for name in _REMOVED_CONFIG_KEYS:
+            serializable.pop(name, None)
+            _delete_removed_config_secret(name)
+        for name in _SECRET_CONFIG_KEYS:
+            if name not in serializable:
+                continue
+            value = serializable.pop(name)
+            if value:
+                if not isinstance(value, str):
+                    raise ProtectedTokenStoreError(
+                        f"Could not securely store application secret: {name}"
+                    )
+                clean_value = value.strip()
+                current_stored = _load_secret(name)
+                if current_stored != clean_value:
+                    if not _save_secret(name, clean_value):
+                        raise ProtectedTokenStoreError(
+                            f"Could not securely store application secret: {name}"
+                        )
+            else:
+                current_stored = _load_secret(name)
+                if current_stored is not None:
+                    _delete_secret(name)
+        _write_json_atomic(CONFIG_FILE, serializable)
 
 def load_history() -> list:
     ensure_config_dir()
@@ -285,3 +337,8 @@ def add_history_entry(entry: dict) -> None:
     history = load_history()
     history.insert(0, entry)
     _write_json_atomic(HISTORY_FILE, history[:100])
+
+
+def clear_history() -> None:
+    """Remove all locally persisted report history entries."""
+    _write_json_atomic(HISTORY_FILE, [])

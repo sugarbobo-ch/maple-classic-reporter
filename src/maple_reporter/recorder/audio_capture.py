@@ -30,7 +30,10 @@ class AudioCaptureError(RuntimeError):
 
 def _load_soundcard():
     try:
+        import warnings
         import soundcard as soundcard_module
+        if hasattr(soundcard_module, "SoundcardRuntimeWarning"):
+            warnings.filterwarnings("ignore", category=soundcard_module.SoundcardRuntimeWarning)
     except Exception as error:  # pragma: no cover - depends on the host image
         raise AudioCaptureError("系統聲音擷取元件無法載入。") from error
     return soundcard_module
@@ -195,7 +198,13 @@ class LoopbackAudioRecorder(threading.Thread):
         start_time: float | None = None,
         end_time: float | None = None,
     ) -> np.ndarray | None:
-        """Copy samples overlapping the requested monotonic-time window."""
+        """Copy samples on the requested monotonic-time window.
+
+        Capture chunks are not guaranteed to be contiguous: an endpoint can
+        open late, return an empty buffer, or pause briefly while Windows is
+        busy. Preserve those gaps as silence so muxing the returned array at
+        timestamp zero does not pull later audio ahead of the video timeline.
+        """
 
         with self._lock:
             chunks = list(self._chunks)
@@ -208,25 +217,47 @@ class LoopbackAudioRecorder(threading.Thread):
             last_start, last_data = chunks[-1]
             end_time = last_start + len(last_data) / self.sample_rate
 
-        selected: list[np.ndarray] = []
+        if end_time <= start_time:
+            return None
+
+        overlapping = []
         for chunk_start, data in chunks:
             chunk_end = chunk_start + (len(data) / self.sample_rate)
             overlap_start = max(start_time, chunk_start)
             overlap_end = min(end_time, chunk_end)
             if overlap_end <= overlap_start:
                 continue
-            first = max(
+            overlapping.append((chunk_start, data, overlap_start, overlap_end))
+
+        if not overlapping:
+            return None
+
+        channels = int(overlapping[0][1].shape[1])
+        sample_count = max(
+            1, int(round((end_time - start_time) * self.sample_rate))
+        )
+        selected = np.zeros((sample_count, channels), dtype=np.float32)
+        for chunk_start, data, overlap_start, overlap_end in overlapping:
+            source_first = max(
                 0, int(round((overlap_start - chunk_start) * self.sample_rate))
             )
-            last = min(
+            source_last = min(
                 len(data), int(round((overlap_end - chunk_start) * self.sample_rate))
             )
-            if last > first:
-                selected.append(data[first:last].copy())
-
-        if not selected:
-            return None
-        return np.vstack(selected)
+            target_first = max(
+                0, int(round((overlap_start - start_time) * self.sample_rate))
+            )
+            copy_count = min(
+                source_last - source_first,
+                sample_count - target_first,
+            )
+            if copy_count <= 0:
+                continue
+            copy_channels = min(channels, int(data.shape[1]))
+            selected[
+                target_first : target_first + copy_count, :copy_channels
+            ] = data[source_first : source_first + copy_count, :copy_channels]
+        return selected
 
     def stop(self, *, clear: bool = True) -> None:
         self._stop_event.set()
@@ -243,8 +274,14 @@ class LoopbackAudioRecorder(threading.Thread):
         start_time: float | None = None,
         end_time: float | None = None,
     ) -> np.ndarray | None:
+        self._stop_event.set()
+        if self.is_alive() and threading.current_thread() is not self:
+            self.join(timeout=2.0)
+        if self.is_alive():
+            LOGGER.warning("音訊錄製執行緒在停止期限內仍未結束")
         data = self.snapshot(start_time, end_time)
-        self.stop(clear=True)
+        with self._lock:
+            self._chunks.clear()
         return data
 
 
@@ -304,7 +341,7 @@ def merge_audio_into_mp4(
         output_video.width = int(input_video.width)
         output_video.height = int(input_video.height)
         output_video.pix_fmt = "yuv420p"
-        output_video.options = {"crf": "23", "preset": "veryfast"}
+        output_video.options = {"crf": "23", "preset": "ultrafast"}
         channels = int(array.shape[1])
         layout = "stereo" if channels == 2 else "mono"
         # Add every output stream before the first packet writes the MP4
