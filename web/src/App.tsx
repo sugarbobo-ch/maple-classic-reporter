@@ -750,6 +750,20 @@ export default function App() {
         setIsSubmittingReport(false);
       }
     } else {
+      const submittedMap = String(formData.map_name || '').trim();
+      const newMockRecord: HistoryRecord = {
+        record_id: `mock-${Date.now()}`,
+        time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        suspect_id: String(formData.suspect_id || ''),
+        server: String(formData.server || '雪吉拉'),
+        map: submittedMap,
+        map_name: submittedMap,
+        upload_status: 'success',
+        status: '模擬成功',
+        note: String(formData.note || ''),
+      };
+      setHistory((prev) => [newMockRecord, ...prev]);
       setSubmissionStatus({
         step: 'completed',
         status: 'success',

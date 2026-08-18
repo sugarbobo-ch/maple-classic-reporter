@@ -72,6 +72,16 @@ export function getPresetIndex(key?: string): number {
 
 export const DEFAULT_MOCK_HISTORY: HistoryRecord[] = [
   {
+    record_id: 'mock-4',
+    timestamp: '2026-08-17 18:02:40',
+    suspect_id: '有1.4了',
+    server: '雪吉拉',
+    map_name: '南部森林訓練場 I',
+    upload_status: 'success',
+    evidence_url: 'https://drive.google.com/file/d/1pL9kM_nO3P4_qR5_sT7_uV9/view',
+    ban_status: 'pending',
+  },
+  {
     record_id: 'mock-1',
     timestamp: '2026-08-13 21:45:10',
     suspect_id: '下次我還要玩',
@@ -99,16 +109,6 @@ export const DEFAULT_MOCK_HISTORY: HistoryRecord[] = [
     map_name: '天空之城：散步路 II',
     upload_status: 'success',
     evidence_url: 'https://drive.google.com/file/d/1vC3zY_wA1B2_cD4_eF6_gH8/view',
-    ban_status: 'pending',
-  },
-  {
-    record_id: 'mock-4',
-    timestamp: '2026-08-17 18:02:40',
-    suspect_id: '有1.4了',
-    server: '雪吉拉',
-    map_name: '南部森林訓練場 I',
-    upload_status: 'success',
-    evidence_url: 'https://drive.google.com/file/d/1pL9kM_nO3P4_qR5_sT7_uV9/view',
     ban_status: 'pending',
   },
 ];

@@ -41,7 +41,7 @@ export function ToastItem({
 
   return (
     <div
-      className={`ui-toast ui-toast-${toast.variant || 'default'} ${isExiting ? 'is-exiting' : ''}`}
+      className={`ui-toast ui-toast-${toast.variant || 'default'} ${toast.description ? 'has-description' : 'is-single-line'} ${isExiting ? 'is-exiting' : ''}`}
       role="status"
     >
       <div className="ui-toast-content">

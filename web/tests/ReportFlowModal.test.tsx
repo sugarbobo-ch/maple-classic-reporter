@@ -165,4 +165,88 @@ describe('ReportFlowModal evidence selection', () => {
     );
     expect(screen.getByTestId('history-map-suggestion-0')).toHaveTextContent('歷史地圖');
   });
+
+  it('orders history maps with the latest first and deduplicates against OCR map', () => {
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="form"
+          config={TEST_CONFIG}
+          ocrResults={{
+            status: 'success',
+            suspect_ids: [],
+            map_name: '幽靈船',
+            ocr_map_name: '幽靈船',
+            map_name_source: 'ocr',
+            media_path: '',
+            media_type: 'image',
+          }}
+          history={[
+            { map_name: '散步路 II', timestamp: '2026-08-01 10:00:00' },
+            { map_name: '幽靈船', timestamp: '2026-08-15 12:00:00' },
+            { map_name: '地鐵一號線', timestamp: '2026-08-17 18:00:00' },
+          ]}
+          onClose={vi.fn()}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    const ocrChip = screen.getByTestId('ocr-map-suggestion');
+    expect(ocrChip).toHaveTextContent('OCR：幽靈船');
+    expect(ocrChip).toHaveClass('active');
+
+    // History options should be sorted newest first (地鐵一號線 from 08-17, then 散步路 II from 08-01), with 幽靈船 excluded since it's already the OCR chip
+    const hist0 = screen.getByTestId('history-map-suggestion-0');
+    expect(hist0).toHaveTextContent('地鐵一號線');
+    const hist1 = screen.getByTestId('history-map-suggestion-1');
+    expect(hist1).toHaveTextContent('散步路 II');
+    expect(screen.queryByTestId('history-map-suggestion-2')).not.toBeInTheDocument();
+
+    // Clicking a history chip should select it
+    fireEvent.click(hist0);
+    expect(screen.getByTestId('report-map-name')).toHaveValue('地鐵一號線');
+    expect(hist0).toHaveClass('active');
+    expect(ocrChip).not.toHaveClass('active');
+  });
+
+  it('limits history map suggestions to the 5 most recent maps', () => {
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="form"
+          config={TEST_CONFIG}
+          ocrResults={{
+            status: 'success',
+            suspect_ids: [],
+            map_name: '',
+            ocr_map_name: '',
+            media_path: '',
+            media_type: 'image',
+          }}
+          history={[
+            { map_name: '地圖 7', timestamp: '2026-08-01 10:00:00' },
+            { map_name: '地圖 6', timestamp: '2026-08-02 10:00:00' },
+            { map_name: '地圖 5', timestamp: '2026-08-03 10:00:00' },
+            { map_name: '地圖 4', timestamp: '2026-08-04 10:00:00' },
+            { map_name: '地圖 3', timestamp: '2026-08-05 10:00:00' },
+            { map_name: '地圖 2', timestamp: '2026-08-06 10:00:00' },
+            { map_name: '地圖 1', timestamp: '2026-08-07 10:00:00' },
+          ]}
+          onClose={vi.fn()}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    // Should list latest 5 maps (地圖 1 through 地圖 5)
+    expect(screen.getByTestId('history-map-suggestion-0')).toHaveTextContent('地圖 1');
+    expect(screen.getByTestId('history-map-suggestion-1')).toHaveTextContent('地圖 2');
+    expect(screen.getByTestId('history-map-suggestion-2')).toHaveTextContent('地圖 3');
+    expect(screen.getByTestId('history-map-suggestion-3')).toHaveTextContent('地圖 4');
+    expect(screen.getByTestId('history-map-suggestion-4')).toHaveTextContent('地圖 5');
+    expect(screen.queryByTestId('history-map-suggestion-5')).not.toBeInTheDocument();
+  });
 });

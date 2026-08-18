@@ -113,13 +113,26 @@ export default function ReportFlowModal({
           : '')
       ).trim()
     : '';
-  const historicalMaps = Array.from(
+  const sortedHistory = [...history].sort((a, b) => {
+    const tA = String(a.time || a.timestamp || '').trim();
+    const tB = String(b.time || b.timestamp || '').trim();
+    if (tA && tB) {
+      return tB.localeCompare(tA);
+    }
+    return 0;
+  });
+  const allHistoricalMaps = Array.from(
     new Set(
-      history
+      sortedHistory
         .map((record) => String(record.map_name || record.map || '').trim())
         .filter(Boolean)
     )
   );
+  const historicalMaps = (
+    ocrMapName
+      ? allHistoricalMaps.filter((m) => m !== ocrMapName)
+      : allHistoricalMaps
+  ).slice(0, 5);
 
   const formatTime = (seconds: number) => {
     if (isNaN(seconds) || seconds < 0) return '00:00.0';
