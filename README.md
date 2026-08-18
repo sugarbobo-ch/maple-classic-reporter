@@ -69,7 +69,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 ```powershell
 Compress-Archive `
   -LiteralPath .\dist\MapleClassicReporter `
-  -DestinationPath .\dist\MapleClassicReporter-v1.3.0-windows-x64.zip `
+  -DestinationPath .\dist\MapleClassicReporter-v2.0.0-pre-windows-x64.zip `
   -CompressionLevel Optimal -Force
 ```
 
