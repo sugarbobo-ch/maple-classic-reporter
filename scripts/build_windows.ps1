@@ -61,5 +61,11 @@ if (-not (Test-Path -LiteralPath $targetExe -PathType Leaf)) {
     throw "PyInstaller completed but the onedir executable was not found: $targetExe"
 }
 
+$configSrc = Join-Path $projectRoot "assets\MapleClassicReporter.exe.config"
+$configDst = Join-Path $bundleRoot "MapleClassicReporter.exe.config"
+if (Test-Path -LiteralPath $configSrc) {
+    Copy-Item -LiteralPath $configSrc -Destination $configDst -Force
+}
+
 Write-Output "Built: $targetExe"
 Write-Output "Distribution folder: $bundleRoot"

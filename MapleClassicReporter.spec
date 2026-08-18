@@ -5,7 +5,7 @@
 import json
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 
 PROJECT_ROOT = Path(SPECPATH).resolve()
@@ -48,9 +48,14 @@ CHROMIUM_DIRECTORY = chromium_executable.parents[1]
 if not CHROMIUM_DIRECTORY.name.startswith("chromium-"):
     raise SystemExit(f"Unexpected Playwright Chromium directory: {CHROMIUM_DIRECTORY}")
 
+clr_datas, clr_binaries, clr_hiddenimports = collect_all("clr_loader")
+pythonnet_datas, pythonnet_binaries, pythonnet_hiddenimports = collect_all("pythonnet")
+webview_datas, webview_binaries, webview_hiddenimports = collect_all("webview")
+
 datas = [
     (str(PROJECT_ROOT / "assets" / "icon.png"), "assets"),
     (str(PROJECT_ROOT / "assets" / "icon.ico"), "assets"),
+    (str(PROJECT_ROOT / "assets" / "MapleClassicReporter.exe.config"), "."),
     (str(PROJECT_ROOT / "web" / "dist"), "web/dist"),
     (str(PROJECT_ROOT / "src" / "maple_reporter" / "ocr" / "data"), "maple_reporter/ocr/data"),
     (str(OAUTH_CLIENT_CONFIG), "."),
@@ -59,13 +64,29 @@ datas = [
     (str(CHROMIUM_DIRECTORY), f"ms-playwright/{CHROMIUM_DIRECTORY.name}"),
 ]
 datas.extend(collect_data_files("rapidocr_onnxruntime"))
+datas.extend(clr_datas)
+datas.extend(pythonnet_datas)
+datas.extend(webview_datas)
+
+binaries = []
+binaries.extend(clr_binaries)
+binaries.extend(pythonnet_binaries)
+binaries.extend(webview_binaries)
+
+hiddenimports = (
+    collect_submodules("playwright")
+    + collect_submodules("windows_capture")
+    + clr_hiddenimports
+    + pythonnet_hiddenimports
+    + webview_hiddenimports
+)
 
 a = Analysis(
     [str(PROJECT_ROOT / "src" / "maple_reporter" / "main.py")],
     pathex=[str(PROJECT_ROOT / "src")],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
-    hiddenimports=collect_submodules("playwright") + collect_submodules("windows_capture"),
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
