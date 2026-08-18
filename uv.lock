@@ -541,6 +541,7 @@ dependencies = [
     { name = "rapidocr-onnxruntime" },
     { name = "requests" },
     { name = "soundcard" },
+    { name = "windows-capture" },
     { name = "winsdk" },
 ]
 
@@ -567,6 +568,7 @@ requires-dist = [
     { name = "rapidocr-onnxruntime", specifier = ">=1.3.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "soundcard", specifier = ">=0.4.0" },
+    { name = "windows-capture", specifier = ">=2.0.1" },
     { name = "winsdk", specifier = ">=1.0.0b9" },
 ]
 
@@ -1584,6 +1586,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+]
+
+[[package]]
+name = "windows-capture"
+version = "2.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "opencv-python" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/85/00/326a51bc2b27bc53e2a3e6d0c8f320af7e65f8315fb0d1d149699ca45995/windows_capture-2.0.1.tar.gz", hash = "sha256:2c2b394f4587b067cf520456f7f64c11b00380851b077a4d061fe5356a9a7645", size = 148413, upload-time = "2026-08-08T16:07:07.162Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/02/cdb3c75e60863e94fbd53c2b3607e61af5d464a4f9301e45897fcb08dbfa/windows_capture-2.0.1-cp39-abi3-win_amd64.whl", hash = "sha256:209c2318e2168802b9afd1005e99499639e8835e71a1e188a3ddc77c7ccc3f04", size = 229121, upload-time = "2026-08-08T16:07:04.283Z" },
 ]
 
 [[package]]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import concurrent.futures
 import ctypes
-import ctypes.wintypes
 import io
 import json
 import logging
@@ -16,17 +15,15 @@ import threading
 import time
 import webbrowser
 from functools import wraps
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import mimetypes
 from pathlib import Path
+import shutil
 from typing import Any
 
 import numpy as np
 import webview
 from PIL import Image
-
-import urllib.parse
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import mimetypes
-import shutil
 
 from maple_reporter.automation.form_filler import submit_gamania_report
 from maple_reporter.automation.playwright_runtime import PlaywrightBrowserError
@@ -55,6 +52,7 @@ from maple_reporter.recorder.replay_buffer import ReplayBufferRecorder
 from maple_reporter.recorder.video_editor import cut_video_segment, get_video_duration
 from maple_reporter.recorder.window_recorder import (
     capture_screenshot as record_capture_screenshot,
+    capture_window_screenshot,
     find_window_bounds,
     focus_window,
     get_active_windows,
@@ -66,12 +64,10 @@ from maple_reporter.sanctions.coordinator import SanctionSyncCoordinator
 from maple_reporter.sanctions.repository import SanctionRepository
 from maple_reporter.utils.config import (
     add_history_entry,
-    clear_history,
     get_recordings_dir,
     get_user_app_data_dir,
     is_owned_recording_path,
     load_config,
-    load_history,
     save_config,
 )
 
@@ -951,7 +947,10 @@ class PyWebViewBridge:
             if not bounds:
                 raise RuntimeError("找不到選取的遊戲視窗，請重新整理視窗清單。")
 
-            img, file_path = record_capture_screenshot(bounds)
+            img, file_path = capture_window_screenshot(win_title)
+            if img is None or not file_path:
+                img, file_path = record_capture_screenshot(bounds)
+
             ocr_res = self._perform_ocr([img])
 
             return {

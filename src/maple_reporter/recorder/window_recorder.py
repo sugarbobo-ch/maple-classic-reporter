@@ -187,38 +187,57 @@ def get_active_window_titles() -> List[str]:
     return [window["title"] for window in get_active_windows()]
 
 def focus_window(window_title_keyword: str) -> bool:
-    """Bring the target window to the foreground."""
+    """Bring the target window to the foreground reliably."""
     window_title_keyword = normalize_window_title_keyword(window_title_keyword)
     if not window_title_keyword:
         return False
-    visible_windows = [
-        w for w in gw.getAllWindows()
-        if w.title and w.visible and not getattr(w, 'isMinimized', False)
-    ]
+
+    all_windows = gw.getAllWindows()
     target_window = None
-    for w in visible_windows:
-        if w.title == window_title_keyword:
+
+    # Pass 1: Exact title
+    for w in all_windows:
+        if getattr(w, "title", "") == window_title_keyword:
             target_window = w
             break
+
+    # Pass 2: Case-insensitive exact
     if not target_window:
-        for w in visible_windows:
-            if w.title.strip().lower() == window_title_keyword.strip().lower():
+        for w in all_windows:
+            if str(getattr(w, "title", "")).strip().casefold() == window_title_keyword.casefold():
                 target_window = w
                 break
+
+    # Pass 3: Substring
     if not target_window:
-        for w in visible_windows:
-            if "maplestory classic auto reporter" in w.title.lower():
+        for w in all_windows:
+            title = str(getattr(w, "title", "")).casefold()
+            if "maplestory classic auto reporter" in title:
                 continue
-            if window_title_keyword.lower() in w.title.lower():
+            if window_title_keyword.casefold() in title:
                 target_window = w
                 break
 
     if target_window:
-        hwnd = getattr(target_window, '_hWnd', None)
-        if hwnd:
+        hwnd = getattr(target_window, "_hWnd", None)
+        if hwnd and ctypes.windll.user32.IsWindow(hwnd):
             try:
-                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                if ctypes.windll.user32.IsIconic(hwnd):
+                    ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                else:
+                    ctypes.windll.user32.ShowWindow(hwnd, 5)  # SW_SHOW
+
+                # Bypass Windows foreground lock
+                current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+                target_tid = ctypes.windll.user32.GetWindowThreadProcessId(hwnd, None)
+                if current_tid != target_tid:
+                    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+
+                ctypes.windll.user32.BringWindowToTop(hwnd)
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
+
+                if current_tid != target_tid:
+                    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
                 return True
             except Exception as error:
                 LOGGER.debug("設定目標視窗為前景失敗 (%s)", type(error).__name__)
@@ -278,6 +297,31 @@ def find_window_bounds(window_title_keyword: str) -> Optional[Tuple[int, int, in
     return None
 
 from maple_reporter.utils.config import get_recordings_dir
+
+def capture_window_screenshot(
+    window_title_keyword: str,
+) -> Tuple[Optional[Image.Image], Optional[str]]:
+    """
+    Capture an occlusion-free screenshot of the target window using WGC or MSS fallback.
+    Returns (PIL Image, filepath to saved png inside recordings folder).
+    """
+    from maple_reporter.recorder.window_capture import UnifiedWindowCapture
+
+    capture = UnifiedWindowCapture()
+    bgr, _ = capture.grab_single_frame(window_title_keyword)
+    if bgr is None:
+        bounds = find_window_bounds(window_title_keyword)
+        if not bounds:
+            return None, None
+        return capture_screenshot(bounds)
+
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    img = Image.fromarray(rgb)
+    rec_dir = str(get_recordings_dir())
+    file_path = os.path.join(rec_dir, f"maple_evidence_{int(time.time())}.png")
+    img.save(file_path)
+    return img, file_path
+
 
 def capture_screenshot(region: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Image.Image, str]:
     """
@@ -361,6 +405,11 @@ def record_short_video(
             LOGGER.warning("無法啟動短片音訊擷取 (%s)", type(error).__name__)
             audio_thread = None
 
+    from maple_reporter.recorder.window_capture import UnifiedWindowCapture
+
+    video_capture = UnifiedWindowCapture()
+    video_capture.start_stream(window_title_keyword, fps=fps)
+
     monitor = {"left": left, "top": top, "width": width, "height": height}
     rec_dir = str(get_recordings_dir())
     file_path = os.path.join(
@@ -369,26 +418,30 @@ def record_short_video(
     capture_start = time.monotonic()
     out = None
     cancelled = False
+    screen = None
 
     try:
-        with mss.MSS() as screen:
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            out = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
-            if not out.isOpened():
-                raise RuntimeError("無法建立 MP4 影片檔案。")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
+        if not out.isOpened():
+            raise RuntimeError("無法建立 MP4 影片檔案。")
 
-            last_keyframe_time = -2.0
-            written_frames = 0
-            while True:
-                elapsed = time.monotonic() - capture_start
-                if elapsed >= duration_sec:
-                    break
+        last_keyframe_time = -2.0
+        written_frames = 0
+        while True:
+            elapsed = time.monotonic() - capture_start
+            if elapsed >= duration_sec:
+                break
 
-                if cancel_checker and cancel_checker():
-                    cancelled = True
-                    break
+            if cancel_checker and cancel_checker():
+                cancelled = True
+                break
 
+            frame_bgr, _ = video_capture.get_latest_frame()
+            if frame_bgr is None:
                 try:
+                    if screen is None:
+                        screen = mss.MSS()
                     sct_img = screen.grab(monitor)
                     frame = np.asarray(sct_img)
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
@@ -396,29 +449,29 @@ def record_short_video(
                     LOGGER.debug("螢幕影格擷取失敗，使用黑畫面 (%s)", type(error).__name__)
                     frame_bgr = np.zeros((height, width, 3), dtype=np.uint8)
 
-                if frame_bgr.shape[:2] != (height, width):
-                    frame_bgr = cv2.resize(
-                        frame_bgr, (width, height), interpolation=cv2.INTER_AREA
-                    )
+            if frame_bgr.shape[:2] != (height, width):
+                frame_bgr = cv2.resize(
+                    frame_bgr, (width, height), interpolation=cv2.INTER_AREA
+                )
 
-                target_frame_count = int(elapsed * fps) + 1
-                frames_to_write = max(1, target_frame_count - written_frames)
-                for _ in range(frames_to_write):
-                    out.write(frame_bgr)
-                written_frames += frames_to_write
+            target_frame_count = int(elapsed * fps) + 1
+            frames_to_write = max(1, target_frame_count - written_frames)
+            for _ in range(frames_to_write):
+                out.write(frame_bgr)
+            written_frames += frames_to_write
 
-                if elapsed - last_keyframe_time >= 2.0:
-                    last_keyframe_time = elapsed
-                    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                    keyframes.append(Image.fromarray(frame_rgb))
+            if elapsed - last_keyframe_time >= 2.0:
+                last_keyframe_time = elapsed
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                keyframes.append(Image.fromarray(frame_rgb))
 
-                if progress_callback:
-                    progress_callback(min(1.0, elapsed / max(1, duration_sec)))
+            if progress_callback:
+                progress_callback(min(1.0, elapsed / max(1, duration_sec)))
 
-                next_target_time = capture_start + (written_frames / fps)
-                sleep_time = max(0.0, next_target_time - time.monotonic())
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
+            next_target_time = capture_start + (written_frames / fps)
+            sleep_time = max(0.0, next_target_time - time.monotonic())
+            if sleep_time > 0:
+                time.sleep(sleep_time)
     except Exception as error:
         LOGGER.warning("短片錄製失敗 (%s)", type(error).__name__)
         if audio_thread:
@@ -429,6 +482,12 @@ def record_short_video(
             LOGGER.debug("清理錄影取消檔案失敗 (%s)", type(error).__name__)
         return None, []
     finally:
+        video_capture.stop_stream()
+        if screen is not None:
+            try:
+                screen.close()
+            except Exception:
+                pass
         if out is not None:
             out.release()
 

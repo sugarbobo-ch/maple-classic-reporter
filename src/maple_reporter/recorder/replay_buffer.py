@@ -22,7 +22,6 @@ from maple_reporter.recorder.audio_capture import (
     DEFAULT_SAMPLE_RATE,
     LoopbackAudioRecorder,
     get_audio_output_devices,
-    get_default_audio_output_name,
     has_audio_signal,
     merge_audio_into_mp4,
 )
@@ -351,6 +350,7 @@ class ReplayBufferRecorder(QObject):
         else:
             self._audio = None
 
+        self._window_title = window_title
         self._capture_thread = threading.Thread(
             target=self._capture_loop,
             name="maple-replay-capture",
@@ -448,6 +448,7 @@ class ReplayBufferRecorder(QObject):
             bounds = self._bounds
             fps = self._fps
             buffer_seconds = self._buffer_seconds
+            window_title = getattr(self, "_window_title", "")
         if bounds is None:
             return
 
@@ -459,8 +460,12 @@ class ReplayBufferRecorder(QObject):
         consecutive_failures = 0
         screen = None
 
+        from maple_reporter.recorder.window_capture import UnifiedWindowCapture
+
+        video_capture = UnifiedWindowCapture(fallback_callback=self._emit_warning)
+        video_capture.start_stream(window_title, fps=fps)
+
         try:
-            screen = mss.MSS()
             while not self._stop_event.is_set():
                 now = time.monotonic()
                 if now < next_capture:
@@ -468,39 +473,47 @@ class ReplayBufferRecorder(QObject):
                     continue
                 next_capture = max(next_capture + interval, now)
 
-                try:
-                    bgr, used_fallback = capture_monitor_frame(screen, monitor)
-                    consecutive_failures = 0
-                except ReplayCaptureError as error:
-                    consecutive_failures += 1
-                    if consecutive_failures >= 10:
-                        raise ReplayCaptureError(
-                            "無法持續擷取遊戲畫面。請確認遊戲視窗未最小化，"
-                            "且仍位於已連接的螢幕上，再重新啟動回放緩衝。"
-                        ) from error
+                bgr, captured_at = video_capture.get_latest_frame()
+                if bgr is None:
                     try:
-                        screen.close()
-                    except Exception as close_error:
-                        LOGGER.debug(
-                            "重建 MSS 前關閉擷取器失敗 (%s)",
-                            type(close_error).__name__,
+                        if screen is None:
+                            screen = mss.MSS()
+                        bgr, used_fallback = capture_monitor_frame(screen, monitor)
+                        captured_at = time.monotonic()
+                        consecutive_failures = 0
+                    except ReplayCaptureError as error:
+                        consecutive_failures += 1
+                        if consecutive_failures >= 10:
+                            raise ReplayCaptureError(
+                                "無法持續擷取遊戲畫面。請確認遊戲視窗未最小化，"
+                                "且仍位於已連接的螢幕上，再重新啟動回放緩衝。"
+                            ) from error
+                        try:
+                            if screen is not None:
+                                screen.close()
+                        except Exception as close_error:
+                            LOGGER.debug(
+                                "重建 MSS 前關閉擷取器失敗 (%s)",
+                                type(close_error).__name__,
+                            )
+                        screen = mss.MSS()
+                        next_capture = time.monotonic() + min(
+                            1.0, consecutive_failures * 0.15
                         )
-                    screen = mss.MSS()
-                    next_capture = time.monotonic() + min(
-                        1.0, consecutive_failures * 0.15
-                    )
-                    continue
+                        continue
 
-                if used_fallback:
-                    # Refresh the MSS context after a display-mode change.
-                    try:
-                        screen.close()
-                    except Exception as close_error:
-                        LOGGER.debug(
-                            "切換 Pillow 擷取後關閉 MSS 失敗 (%s)",
-                            type(close_error).__name__,
-                        )
-                    screen = mss.MSS()
+                    if used_fallback:
+                        try:
+                            if screen is not None:
+                                screen.close()
+                        except Exception as close_error:
+                            LOGGER.debug(
+                                "切換 Pillow 擷取後關閉 MSS 失敗 (%s)",
+                                type(close_error).__name__,
+                            )
+                        screen = mss.MSS()
+                else:
+                    consecutive_failures = 0
 
                 if bgr.shape[1] != width or bgr.shape[0] != height:
                     bgr = cv2.resize(bgr, (width, height), interpolation=cv2.INTER_AREA)
@@ -510,7 +523,6 @@ class ReplayBufferRecorder(QObject):
                 if not ok:
                     continue
 
-                captured_at = time.monotonic()
                 duration, saving = self._append_frame(captured_at, encoded.tobytes())
                 if not self.is_running:
                     break
@@ -532,6 +544,7 @@ class ReplayBufferRecorder(QObject):
                 self._emit_state(ReplayState.ERROR, 0.0)
                 self._emit_error(f"緩衝錄影已停止：{error}")
         finally:
+            video_capture.stop_stream()
             if screen is not None:
                 try:
                     screen.close()
