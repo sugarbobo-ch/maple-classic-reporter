@@ -20,7 +20,7 @@ import numpy as np
 
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_SAMPLE_RATE = 44_100
+DEFAULT_SAMPLE_RATE = 48_000
 _SILENCE_THRESHOLD = 1e-5
 
 
@@ -356,6 +356,7 @@ def merge_audio_into_mp4(
         if has_audio:
             output_audio = output_container.add_stream("aac", rate=int(sample_rate))
             output_audio.layout = layout
+            output_audio.bit_rate = 320_000
 
         frame_index = 0
         for decoded_frame in input_container.decode(input_video):
@@ -375,6 +376,10 @@ def merge_audio_into_mp4(
         input_container = None
 
         if has_audio and output_audio is not None and array is not None:
+            # Soft-limiter & peak normalization to prevent digital distortion / clipping
+            peak = float(np.max(np.abs(array))) if len(array) > 0 else 0.0
+            if peak > 0.95:
+                array = np.ascontiguousarray(array * (0.95 / peak))
             samples_per_frame = 1024
             interleaved = np.ascontiguousarray(array.T, dtype=np.float32)
             for offset in range(0, interleaved.shape[1], samples_per_frame):

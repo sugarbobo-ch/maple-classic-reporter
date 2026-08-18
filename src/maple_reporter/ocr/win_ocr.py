@@ -41,7 +41,7 @@ LOGGER = logging.getLogger(__name__)
 _MAP_LABELS = ("小地圖", "小地畫", "小地图", "小地画")
 _MAP_NOISE = [*_MAP_LABELS, "NEWS", "NEW", "Pup", "Pdn", "HP", "MP", "EXP", "LV"]
 _GUILD_MEDAL_EXCLUSION_PX = 60
-_BOTTOM_UI_CROP_Y = 0.78
+_BOTTOM_UI_CROP_Y = 0.91
 
 
 def recognize_text_from_image(pil_image: Image.Image) -> str:
@@ -236,36 +236,64 @@ def recognize_candidates_from_image_list(
 
         if HAS_RAPID_OCR and RAPID_OCR_ENGINE:
             try:
-                results = _ocr_result(RAPID_OCR_ENGINE, image) or []
-                for bbox, raw_text, score in results:
-                    text = normalize_ocr_text(raw_text)
-                    xs = [float(point[0]) for point in bbox]
-                    ys = [float(point[1]) for point in bbox]
-                    center_x = sum(xs) / len(xs)
-                    center_y = sum(ys) / len(ys)
-                    y_bottom = max(ys)
-                    if not is_snippet:
-                        if center_x < width * 0.32 and center_y < height * 0.22:
+                # Slices for gameplay candidate extraction
+                scan_regions: list[tuple[int, int, int, int, float]] = [
+                    (0, 0, width, height, 1.0),
+                ]
+                if not is_snippet and (width <= 1600 or height <= 900):
+                    scan_regions.extend([
+                        (0, 0, int(width * 0.55), int(height * 0.55), 1.3),
+                        (int(width * 0.45), 0, width, int(height * 0.55), 1.3),
+                        (0, int(height * 0.40), int(width * 0.55), int(height * _BOTTOM_UI_CROP_Y), 1.5),
+                        (int(width * 0.45), int(height * 0.40), width, int(height * _BOTTOM_UI_CROP_Y), 1.3),
+                    ])
+
+                for x1, y1, x2, y2, scan_scale in scan_regions:
+                    sub = image.crop((x1, y1, x2, y2))
+                    if scan_scale != 1.0:
+                        sub = sub.resize(
+                            (int(sub.width * scan_scale), int(sub.height * scan_scale)),
+                            Image.Resampling.LANCZOS,
+                        )
+                    results = _ocr_result(RAPID_OCR_ENGINE, sub) or []
+                    for bbox, raw_text, score in results:
+                        text = normalize_ocr_text(raw_text)
+                        xs = [float(point[0]) / scan_scale + x1 for point in bbox]
+                        ys = [float(point[1]) / scan_scale + y1 for point in bbox]
+                        center_x = sum(xs) / len(xs)
+                        center_y = sum(ys) / len(ys)
+                        y_bottom = max(ys)
+                        if not is_snippet:
+                            if center_x < width * 0.15 and center_y < height * 0.20:
+                                continue
+                            if center_y > height * _BOTTOM_UI_CROP_Y:
+                                continue
+                        if detected_map_name and detected_map_name in text:
                             continue
-                        if center_y > height * _BOTTOM_UI_CROP_Y:
-                            continue
-                    if detected_map_name and detected_map_name in text:
-                        continue
-                    if score >= (0.25 if is_snippet else 0.35) and is_valid_suspect_id(text):
-                        frame_entries.append((text, center_x, center_y, y_bottom, float(score)))
+                        if score >= (0.25 if is_snippet else 0.35) and is_valid_suspect_id(text):
+                            frame_entries.append((text, center_x, center_y, y_bottom, float(score)))
             except Exception as error:
                 LOGGER.debug("RapidOCR 玩家候選辨識失敗 (%s)", type(error).__name__)
 
         def in_guild_or_medal_zone(center_x: float, center_y: float) -> bool:
             for _, id_x, _, id_bottom, _ in frame_entries:
                 if center_y > id_bottom and center_y <= id_bottom + _GUILD_MEDAL_EXCLUSION_PX:
-                    if abs(center_x - id_x) <= width * 0.30:
+                    if abs(center_x - id_x) <= width * 0.15:
                         return True
             return False
 
         for text, center_x, center_y, _, score in frame_entries:
             if not in_guild_or_medal_zone(center_x, center_y):
                 observations.append(CandidateObservation(text, score, frame_index))
+                # Disambiguate common pixel font rendering confusions
+                if "凱" in text or "凯" in text:
+                    cand_pa = text.replace("凱", "趴").replace("凯", "趴")
+                    if is_valid_suspect_id(cand_pa):
+                        observations.append(CandidateObservation(cand_pa, score + 0.05, frame_index))
+                if any(kw in text for kw in ("間門", "同門", "閒門")):
+                    cand_door = text.replace("間門", "開門").replace("同門", "開門").replace("閒門", "開門")
+                    if is_valid_suspect_id(cand_door):
+                        observations.append(CandidateObservation(cand_door, score + 0.05, frame_index))
 
         # Windows OCR fallback on game view region without expensive micro-patch loop
         if not observations and HAS_WINSDK and width > 150 and height > 150:
