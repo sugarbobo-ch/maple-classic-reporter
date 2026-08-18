@@ -21,12 +21,14 @@ from maple_reporter.sanctions.repository import SanctionRepository
 
 class TestSanctionSyncCoordinator(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.cache_path = Path(self.temp_dir.name) / "sanction_cache.json"
         self.history_path = Path(self.temp_dir.name) / "history.json"
+        self.db_path = Path(self.temp_dir.name) / "test.db"
         self.repo = SanctionRepository(
             cache_path=self.cache_path,
             history_path=self.history_path,
+            db_path=self.db_path,
         )
         self.mock_api_client = MagicMock()
         self.emitted_events: list[tuple[str, dict]] = []
