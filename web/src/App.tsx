@@ -546,7 +546,7 @@ export default function App() {
     setModalStatusText('已略過辨識');
     setOcrResults((prev) => ({
       ...prev,
-      map_name: prev.map_name || config.default_map || '維多利亞島',
+      map_name: prev.map_name || config.default_map || '',
       ocr_map_name: '',
       map_name_source: 'default',
     }));
@@ -576,7 +576,7 @@ export default function App() {
       setTimeout(() => {
         setOcrResults((prev) => normalizeOcrResult({
             suspect_ids: ['ReplayPlayer01'],
-            map_name: '維多利亞島',
+            map_name: config.default_map || '',
             map_name_source: 'default',
             media_path: 'recordings/mock_replay.mp4',
             media_type: 'video',

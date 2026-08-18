@@ -25,16 +25,13 @@ def _frontend_api_calls() -> set[str]:
 
 
 def _bridge_methods() -> set[str]:
-    tree = ast.parse(BRIDGE_SOURCE.read_text(encoding="utf-8"))
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == "PyWebViewBridge":
-            return {
-                item.name
-                for item in node.body
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and not item.name.startswith("_")
-            }
-    raise AssertionError("PyWebViewBridge class not found")
+    from maple_reporter.gui.pywebview_bridge import PyWebViewBridge
+
+    return {
+        name
+        for name in dir(PyWebViewBridge)
+        if callable(getattr(PyWebViewBridge, name)) and not name.startswith("_")
+    }
 
 
 class TestWebViewBridgeContract(unittest.TestCase):

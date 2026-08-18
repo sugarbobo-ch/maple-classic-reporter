@@ -8,6 +8,7 @@ export interface SuspectSelectorProps {
   ocrResults: OcrResultData;
   existingWhitelist: string[];
   selectedForWhitelist: string[];
+  idOcrEnabled?: boolean;
   onSuspectIdChange: (val: string) => void;
   onPasteClipboard: () => void;
   onToggleWhitelistChip: (id: string) => void;
@@ -22,6 +23,7 @@ export default function SuspectSelector({
   ocrResults,
   existingWhitelist,
   selectedForWhitelist,
+  idOcrEnabled = true,
   onSuspectIdChange,
   onPasteClipboard,
   onToggleWhitelistChip,
@@ -29,6 +31,25 @@ export default function SuspectSelector({
   onCancelWhitelistMode,
   onFinishWhitelistMode,
 }: SuspectSelectorProps) {
+  const getSubtext = () => {
+    if (whitelistMode) {
+      return '選擇白名單：點選要排除的名稱；加入後，往後辨識將自動略過。';
+    }
+    if (!idOcrEnabled) {
+      return ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0
+        ? 'OCR 辨識結果：已關閉自動填入，點選下方名稱可帶入角色 ID。'
+        : '（已關閉自動辨識角色 ID，請手動輸入）';
+    }
+    if (ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0) {
+      return suspectId
+        ? 'OCR 辨識結果：已自動填入首選角色 ID，點選下方名稱可快速替換。'
+        : 'OCR 辨識結果：點選下方名稱即可帶入角色 ID。';
+    }
+    return '';
+  };
+
+  const subtext = getSubtext();
+
   return (
     <div className="step-block">
       <div className="step-title-row">
@@ -51,20 +72,22 @@ export default function SuspectSelector({
 
       {/* Suggestions Chips Area */}
       <div style={{ marginTop: '2px' }}>
-        <div
-          style={{
-            fontSize: '0.78rem',
-            color: whitelistMode
-              ? 'var(--color-status-success)'
-              : 'var(--color-text-secondary)',
-            marginBottom: '6px',
-            fontWeight: whitelistMode ? 700 : 400,
-          }}
-        >
-          {whitelistMode
-            ? '選擇白名單：點選要排除的名稱；加入後，往後辨識將自動略過。'
-            : 'OCR 辨識結果：點選名稱即可帶入角色 ID（尚未自動選取）。'}
-        </div>
+        {subtext && (
+          <div
+            style={{
+              fontSize: '0.78rem',
+              color: whitelistMode
+                ? 'var(--color-status-success)'
+                : !idOcrEnabled
+                  ? 'var(--color-status-warning)'
+                  : 'var(--color-text-secondary)',
+              marginBottom: '6px',
+              fontWeight: whitelistMode ? 700 : 400,
+            }}
+          >
+            {subtext}
+          </div>
+        )}
 
         <div className={`chip-group ${whitelistMode ? 'whitelist-mode' : ''}`}>
           {ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0 ? (
@@ -103,7 +126,9 @@ export default function SuspectSelector({
             })
           ) : (
             <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-              (未辨識到角色 ID，請手動輸入)
+              {!idOcrEnabled
+                ? '(已關閉自動辨識角色 ID，請手動輸入)'
+                : '(未辨識到角色 ID，請手動輸入)'}
             </span>
           )}
         </div>

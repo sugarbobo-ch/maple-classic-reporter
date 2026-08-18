@@ -41,10 +41,7 @@ class ReportPreviewModal(QDialog):
         self.ocr_thread = ocr_thread
         self.discord_webhook_url = discord_webhook_url.strip()
         self.upload_destination = upload_destination
-        self.default_map_name = (
-            str(data.get("default_map_name") or "維多利亞島").strip()
-            or "維多利亞島"
-        )
+        self.default_map_name = str(data.get("default_map_name") or "").strip()
         self._map_name_user_edited = False
         self.upload_thread = None
         self.pending_data = None

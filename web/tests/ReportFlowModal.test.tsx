@@ -249,4 +249,38 @@ describe('ReportFlowModal evidence selection', () => {
     expect(screen.getByTestId('history-map-suggestion-4')).toHaveTextContent('地圖 5');
     expect(screen.queryByTestId('history-map-suggestion-5')).not.toBeInTheDocument();
   });
+
+  it('auto-fills the top non-whitelisted suspect candidate into the input', () => {
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="form"
+          config={{
+            ...TEST_CONFIG,
+            ocr_autofill_id: true,
+            whitelist: ['whitelisted_player'],
+          }}
+          ocrResults={{
+            status: 'success',
+            suspect_ids: ['whitelisted_player', 'target_suspect', 'another_player'],
+            map_name: '',
+            ocr_map_name: '',
+            media_path: '',
+            media_type: 'video',
+          }}
+          onClose={vi.fn()}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    const suspectInput = screen.getByTestId('report-suspect-id');
+    expect(suspectInput).toHaveValue('target_suspect');
+
+    // Clicking another candidate should update the input
+    fireEvent.click(screen.getByText('another_player'));
+    expect(suspectInput).toHaveValue('another_player');
+  });
 });
+

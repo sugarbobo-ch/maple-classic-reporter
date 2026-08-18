@@ -3,7 +3,7 @@ import { AppConfig } from '../types';
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
   default_server: '雪吉拉',
-  default_map: '維多利亞島',
+  default_map: '',
   default_note: '自動打怪/外掛行為',
   selected_window_title: '新楓之谷：經典版 (1920x1080)',
   record_duration_sec: 8,

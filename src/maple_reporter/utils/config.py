@@ -94,7 +94,7 @@ DEFAULT_QUICK_LINKS = [
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "default_server": "雪吉拉",
-    "default_map": "維多利亞島",
+    "default_map": "",
     "default_note": "自動打怪/外掛行為",
     "recording_preset": "balanced",
     "has_initialized_defaults": False,

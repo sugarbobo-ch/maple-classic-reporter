@@ -270,7 +270,7 @@ export default function HistoryView({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 600, color: 'var(--color-text-heading)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span>🌐</span> 官方懲處公告診斷：
+            官方懲處公告診斷：
           </span>
           {isCheckingSanctions ? (
             <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>

@@ -30,7 +30,7 @@ class SettingsController:
 
         window.refresh_window_list()
         window.combo_server.setCurrentText(self.config.get("default_server", "雪吉拉"))
-        window.txt_map.setText(self.config.get("default_map", "維多利亞島"))
+        window.txt_map.setText(self.config.get("default_map", ""))
         window.load_templates()
         window.spin_duration.setValue(self.config.get("record_duration_sec", 8))
         fps_index = window.combo_fps.findData(self.config.get("record_fps", 20))

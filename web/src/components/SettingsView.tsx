@@ -105,7 +105,7 @@ export default function SettingsView({
   const [whitelistInput, setWhitelistInput] = useState('');
 
   // Local text input states for debouncing
-  const [defaultMap, setDefaultMap] = useState(config.default_map || '維多利亞島');
+  const [defaultMap, setDefaultMap] = useState(config.default_map || '');
   const [defaultNote, setDefaultNote] = useState(config.default_note || '自動打怪/外掛行為');
   const [gdriveFolder, setGdriveFolder] = useState(config.gdrive_folder_name || 'MapleClassic_Reports');
   const [discordWebhook, setDiscordWebhook] = useState(config.discord_webhook_url || '');

@@ -1,5 +1,6 @@
 import { AlertCircle, Zap } from 'lucide-react';
 import { RadioGroup, Input, Textarea, Switch } from '../ui';
+import { ViolationTemplateItem } from '../../types';
 
 export interface ReportFormSectionProps {
   server: string;
@@ -9,6 +10,7 @@ export interface ReportFormSectionProps {
   mapOcrEnabled: boolean;
   ocrMapName: string;
   historicalMaps: string[];
+  templates?: ViolationTemplateItem[];
   onServerChange: (val: string) => void;
   onMapNameChange: (val: string) => void;
   onNoteChange: (val: string) => void;
@@ -23,6 +25,7 @@ export default function ReportFormSection({
   mapOcrEnabled,
   ocrMapName,
   historicalMaps,
+  templates = [],
   onServerChange,
   onMapNameChange,
   onNoteChange,
@@ -145,6 +148,35 @@ export default function ReportFormSection({
             </span>
           }
         />
+        {templates && templates.length > 0 && (
+          <div style={{ marginTop: '8px' }}>
+            <div
+              style={{
+                fontSize: '0.78rem',
+                color: 'var(--color-text-secondary)',
+                marginBottom: '4px',
+              }}
+            >
+              常用違規範本（點選即可帶入）：
+            </div>
+            <div className="chip-group" data-testid="violation-template-chips">
+              {templates.map((tpl, idx) => {
+                const text = tpl.content || tpl.name;
+                const isActive = note.trim() === text.trim();
+                return (
+                  <div
+                    key={`${tpl.name}-${idx}`}
+                    className={`chip ${isActive ? 'active' : ''}`}
+                    onClick={() => onNoteChange(text)}
+                    data-testid={`template-chip-${idx}`}
+                  >
+                    {tpl.name}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Submission Mode: Background Headless Switch */}

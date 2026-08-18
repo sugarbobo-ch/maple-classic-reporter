@@ -63,9 +63,32 @@ class EvidenceCaptureController:
         capture = cv2.VideoCapture(file_path)
         try:
             total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = capture.get(cv2.CAP_PROP_FPS) or 20
+            safe_fps = max(1.0, float(fps))
+            duration = total_frames / safe_fps if total_frames > 0 else 0.0
+            is_replay = "replay" in Path(file_path).name.lower()
+
             if total_frames > 0:
-                target_count = min(6, total_frames)
-                target_indices = np.linspace(0, total_frames - 1, num=target_count, dtype=int)
+                if is_replay and duration >= 4.0:
+                    tail_sec = min(5.0, duration * 0.6)
+                    tail_start_frame = int(round((duration - tail_sec) * safe_fps))
+                    head_indices = (
+                        np.linspace(0, max(0, tail_start_frame - 1), num=4, dtype=int)
+                        if tail_start_frame > 0
+                        else []
+                    )
+                    tail_indices = np.linspace(
+                        tail_start_frame, total_frames - 1, num=8, dtype=int
+                    )
+                    target_indices = sorted(
+                        list(set(list(head_indices) + list(tail_indices)))
+                    )
+                else:
+                    target_count = min(12, total_frames)
+                    target_indices = np.linspace(
+                        0, total_frames - 1, num=target_count, dtype=int
+                    )
+
                 for idx in target_indices:
                     capture.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
                     ok, frame = capture.read()
@@ -74,10 +97,9 @@ class EvidenceCaptureController:
                             Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                         )
             else:
-                fps = capture.get(cv2.CAP_PROP_FPS) or 20
-                step = max(1, int(fps * 2))
+                step = max(1, int(safe_fps * 1.5))
                 frame_index = 0
-                while capture.isOpened() and len(keyframes) < 6:
+                while capture.isOpened() and len(keyframes) < 12:
                     ok, frame = capture.read()
                     if not ok:
                         break

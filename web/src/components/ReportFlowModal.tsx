@@ -41,7 +41,7 @@ export default function ReportFlowModal({
   },
   config = {
     default_server: '雪吉拉',
-    default_map: '維多利亞島',
+    default_map: '',
     default_note: '自動打怪/外掛行為',
     selected_window_title: '新楓之谷：經典版 (1920x1080)',
     record_duration_sec: 8,
@@ -65,8 +65,18 @@ export default function ReportFlowModal({
   onOpenFileLocation,
   onUpdateWhitelist,
 }: ReportFlowModalProps) {
-  // Form State
-  const [suspectId, setSuspectId] = useState('');
+  const existingWhitelist = Array.isArray(config.whitelist) ? config.whitelist : [];
+
+  // Form State - auto-populate suspect ID from OCR candidate if enabled
+  const initialSuspectId =
+    config.ocr_autofill_id !== false &&
+    Array.isArray(ocrResults.suspect_ids) &&
+    ocrResults.suspect_ids.length > 0
+      ? ocrResults.suspect_ids.find((id) => !existingWhitelist.includes(id)) ||
+        ocrResults.suspect_ids[0] ||
+        ''
+      : '';
+  const [suspectId, setSuspectId] = useState(initialSuspectId);
   const [server, setServer] = useState(config.default_server || '雪吉拉');
   const [mapName, setMapName] = useState(ocrResults.map_name || '');
   const [note, setNote] = useState(config.default_note || '自動打怪/外掛行為');
@@ -99,7 +109,6 @@ export default function ReportFlowModal({
   // Clipboard hook
   const { read: readClipboard } = useClipboard();
 
-  const existingWhitelist = Array.isArray(config.whitelist) ? config.whitelist : [];
   const mapOcrEnabled = config.ocr_autofill_map !== false;
   const legacyMapName = ocrResults.map_name.trim();
   const ocrMapName = mapOcrEnabled
@@ -146,6 +155,18 @@ export default function ReportFlowModal({
     if (ocrResults) {
       if (ocrResults.map_name) {
         setMapName(ocrResults.map_name);
+      }
+      if (
+        config.ocr_autofill_id !== false &&
+        Array.isArray(ocrResults.suspect_ids) &&
+        ocrResults.suspect_ids.length > 0
+      ) {
+        const topCandidate =
+          ocrResults.suspect_ids.find((id) => !existingWhitelist.includes(id)) ||
+          ocrResults.suspect_ids[0];
+        if (topCandidate) {
+          setSuspectId((prev) => prev || topCandidate);
+        }
       }
       const activePath = ocrResults.media_path;
       if (activePath) {
@@ -505,6 +526,7 @@ export default function ReportFlowModal({
             ocrResults={ocrResults}
             existingWhitelist={existingWhitelist}
             selectedForWhitelist={selectedForWhitelist}
+            idOcrEnabled={config.ocr_autofill_id !== false}
             onSuspectIdChange={setSuspectId}
             onPasteClipboard={handlePasteClipboard}
             onToggleWhitelistChip={handleToggleWhitelistChip}
@@ -522,6 +544,7 @@ export default function ReportFlowModal({
             mapOcrEnabled={mapOcrEnabled}
             ocrMapName={ocrMapName}
             historicalMaps={historicalMaps}
+            templates={config.violation_templates || []}
             onServerChange={setServer}
             onMapNameChange={setMapName}
             onNoteChange={setNote}

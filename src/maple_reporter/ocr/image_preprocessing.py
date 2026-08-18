@@ -7,20 +7,27 @@ from typing import Iterable
 from PIL import Image
 
 
-def normalize_ocr_text(text: str) -> str:
-    """Remove OCR whitespace while preserving user-visible characters."""
+try:
+    from opencc import OpenCC
 
-    return str(text or "").strip().replace(" ", "")
+    _TO_TRADITIONAL = OpenCC("s2twp")
+except ImportError:
+    _TO_TRADITIONAL = None
+
+
+def normalize_ocr_text(text: str) -> str:
+    """Remove OCR whitespace and normalize to Traditional Chinese."""
+
+    value = str(text or "").strip().replace(" ", "")
+    if _TO_TRADITIONAL:
+        value = _TO_TRADITIONAL.convert(value)
+    return value
 
 
 def clean_map_ocr_text(text: str) -> str:
-    """Correct recurring MapleStory mini-map glyph substitutions only."""
+    """Clean mini-map OCR text using OpenCC conversion."""
 
-    value = normalize_ocr_text(text)
-    value = value.replace("訓辣", "訓練").replace("訓場", "訓練場")
-    if value.endswith(("!", "！")):
-        value = f"{value[:-1]}Ⅰ"
-    return value
+    return normalize_ocr_text(text)
 
 
 def crop_minimap_region(image: Image.Image) -> Image.Image:

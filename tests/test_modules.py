@@ -164,8 +164,8 @@ class TestMapleReporter(unittest.TestCase):
         self.assertIsNone(resolve_map_name("這不是新楓之谷地圖"))
         self.assertIsNone(resolve_map_name("小地国"))
 
-    def test_minimap_map_text_cleans_training_ground_and_roman_numeral(self):
-        self.assertEqual(_clean_map_ocr_text("南部森林訓辣場！"), "南部森林訓練場Ⅰ")
+    def test_minimap_map_text_converts_simplified_to_traditional(self):
+        self.assertEqual(_clean_map_ocr_text("维多利亚"), "維多利亞")
 
     def test_minimap_map_name_accepts_a_single_detected_map_line(self):
         def bbox(y):

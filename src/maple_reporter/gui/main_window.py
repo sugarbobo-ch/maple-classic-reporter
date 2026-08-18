@@ -434,7 +434,7 @@ class MainWindow(QMainWindow):
         row_s.addWidget(self.combo_server)
 
         row_s.addWidget(QLabel("預設地圖名稱:"))
-        self.txt_map = QLineEdit("維多利亞島")
+        self.txt_map = QLineEdit("")
         row_s.addWidget(self.txt_map, 1)
         g3_layout.addLayout(row_s)
 
@@ -1657,7 +1657,7 @@ class MainWindow(QMainWindow):
 
     def execute_submission(self, confirmed_data: dict):
         confirmed_data = dict(confirmed_data)
-        self.txt_map.setText(confirmed_data.get("map_name", "維多利亞島"))
+        self.txt_map.setText(confirmed_data.get("map_name", ""))
         confirmed_data.setdefault(
             "form_submit_headless",
             bool(self.cfg.get("form_submit_headless", True)),
