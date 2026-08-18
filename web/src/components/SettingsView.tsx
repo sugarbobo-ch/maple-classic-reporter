@@ -136,6 +136,22 @@ export default function SettingsView({
   // Hotkey direct capture state
   const [listeningForHotkey, setListeningForHotkey] = useState<'save_replay' | 'record_video' | null>(null);
 
+  const handleHotkeyChange = (
+    key: 'save_replay_hotkey' | 'record_video_hotkey',
+    newShortcut: string
+  ) => {
+    const otherKey = key === 'save_replay_hotkey' ? 'record_video_hotkey' : 'save_replay_hotkey';
+    const otherShortcut = config[otherKey] || (key === 'save_replay_hotkey' ? 'Ctrl+Shift+F10' : 'Ctrl+Shift+F9');
+    if (newShortcut.trim().toLowerCase() === otherShortcut.trim().toLowerCase()) {
+      const otherLabel = key === 'save_replay_hotkey' ? '開始一般錄影' : '儲存循環錄影';
+      toast.error('快捷鍵重複衝突', `「${newShortcut}」已被「${otherLabel}」使用，無法重複設定！請選擇其他按鍵。`);
+      return false;
+    }
+    onUpdateConfig(key, newShortcut);
+    toast.success(`快捷鍵已設定為：${newShortcut}`);
+    return true;
+  };
+
   useEffect(() => {
     if (!listeningForHotkey) return;
 
@@ -189,8 +205,7 @@ export default function SettingsView({
       if (keyName) {
         const fullShortcut = `Ctrl+Shift+${keyName}`;
         const configKey = listeningForHotkey === 'save_replay' ? 'save_replay_hotkey' : 'record_video_hotkey';
-        onUpdateConfig(configKey, fullShortcut);
-        toast.success(`快捷鍵已設定為：${fullShortcut}`);
+        handleHotkeyChange(configKey, fullShortcut);
         setListeningForHotkey(null);
       }
     };
@@ -199,7 +214,7 @@ export default function SettingsView({
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [listeningForHotkey, onUpdateConfig, toast]);
+  }, [listeningForHotkey, config, onUpdateConfig, toast]);
 
   useEffect(() => {
     if (config.violation_templates && config.violation_templates.length > 0) {
@@ -719,6 +734,7 @@ export default function SettingsView({
               saveReplayKey={saveReplayKey}
               recordVideoKey={recordVideoKey}
               onUpdateConfig={onUpdateConfig}
+              onUpdateHotkey={handleHotkeyChange}
               onSetListeningForHotkey={setListeningForHotkey}
             />
           )}

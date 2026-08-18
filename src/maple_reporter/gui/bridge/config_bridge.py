@@ -112,6 +112,18 @@ class ConfigBridgeMixin:
         with self._safe_config_lock:
             try:
                 current_config = mod.load_config()
+                # Validate hotkey conflicts
+                if key == "save_replay_hotkey":
+                    other_hk = str(current_config.get("record_video_hotkey", "")).strip().lower()
+                    if other_hk and str(value).strip().lower() == other_hk:
+                        LOGGER.warning("拒絕重複快捷鍵設定: %s 與 record_video_hotkey 衝突", value)
+                        return False
+                elif key == "record_video_hotkey":
+                    other_hk = str(current_config.get("save_replay_hotkey", "")).strip().lower()
+                    if other_hk and str(value).strip().lower() == other_hk:
+                        LOGGER.warning("拒絕重複快捷鍵設定: %s 與 save_replay_hotkey 衝突", value)
+                        return False
+
                 candidate_config = dict(current_config)
                 candidate_config[key] = value
                 mod.save_config(candidate_config)
@@ -143,6 +155,13 @@ class ConfigBridgeMixin:
                 current_config = mod.load_config()
                 candidate_config = dict(current_config)
                 candidate_config.update(new_config)
+
+                # Validate hotkey conflicts
+                save_hk = str(candidate_config.get("save_replay_hotkey", "")).strip().lower()
+                rec_hk = str(candidate_config.get("record_video_hotkey", "")).strip().lower()
+                if save_hk and rec_hk and save_hk == rec_hk:
+                    LOGGER.warning("拒絕儲存設定: save_replay_hotkey 與 record_video_hotkey 重複衝突")
+                    return False
                 mod.save_config(candidate_config)
                 self.config = candidate_config
                 self._init_hotkeys()

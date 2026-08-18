@@ -9,6 +9,7 @@ export interface HotkeysTabProps {
   saveReplayKey: string;
   recordVideoKey: string;
   onUpdateConfig: (key: keyof AppConfig, value: unknown) => void;
+  onUpdateHotkey?: (key: 'save_replay_hotkey' | 'record_video_hotkey', value: string) => void;
   onSetListeningForHotkey: (val: 'save_replay' | 'record_video' | null) => void;
 }
 
@@ -19,6 +20,7 @@ export default function HotkeysTab({
   saveReplayKey,
   recordVideoKey,
   onUpdateConfig,
+  onUpdateHotkey,
   onSetListeningForHotkey,
 }: HotkeysTabProps) {
   const handleToggle = (key: keyof AppConfig) => {
@@ -89,7 +91,14 @@ export default function HotkeysTab({
                 disabled={config.global_hotkeys_enabled === false}
                 options={hotkeyKeyOptions}
                 value={saveReplayKey}
-                onChange={(val) => onUpdateConfig('save_replay_hotkey', `Ctrl+Shift+${val}`)}
+                onChange={(val) => {
+                  const shortcut = `Ctrl+Shift+${val}`;
+                  if (onUpdateHotkey) {
+                    onUpdateHotkey('save_replay_hotkey', shortcut);
+                  } else {
+                    onUpdateConfig('save_replay_hotkey', shortcut);
+                  }
+                }}
               />
             </div>
           </div>
@@ -136,7 +145,14 @@ export default function HotkeysTab({
                 disabled={config.global_hotkeys_enabled === false}
                 options={hotkeyKeyOptions}
                 value={recordVideoKey}
-                onChange={(val) => onUpdateConfig('record_video_hotkey', `Ctrl+Shift+${val}`)}
+                onChange={(val) => {
+                  const shortcut = `Ctrl+Shift+${val}`;
+                  if (onUpdateHotkey) {
+                    onUpdateHotkey('record_video_hotkey', shortcut);
+                  } else {
+                    onUpdateConfig('record_video_hotkey', shortcut);
+                  }
+                }}
               />
             </div>
           </div>
