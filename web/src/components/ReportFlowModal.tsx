@@ -1,23 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  FolderOpen,
-  Clipboard,
-  Check,
-  ArrowRight,
-  ShieldCheck,
-  Film,
-  Image as ImageIcon,
-  FileCheck,
-  AlertCircle,
-  ExternalLink,
-  Zap,
-  Scissors,
-  RotateCcw,
-  Clock,
-} from 'lucide-react';
-import { Dialog, Button, Input, Textarea, RadioGroup, Badge, Switch } from './ui';
+import { ArrowRight, FileCheck } from 'lucide-react';
+import { Dialog, Button, Badge } from './ui';
 import { useClipboard } from '../hooks';
 import { AppConfig, HistoryRecord, OcrResultData, SubmissionStatusData } from '../types';
+import {
+  ProgressStage,
+  MediaPreviewSection,
+  SuspectSelector,
+  ReportFormSection,
+} from './report-flow';
 
 export interface ReportFlowModalProps {
   stage?: 'progress' | 'form';
@@ -266,29 +257,32 @@ export default function ReportFlowModal({
           }
           setTrimFeedback({
             type: 'success',
-            message: `剪輯成功！已刪除該區段，剩餘長度：${formatTime(res.duration || 0)}`,
+            message: `剪輯成功！已刪除該區段，新長度為 ${formatTime(res.duration || 0)}`,
           });
         } else {
-          setTrimFeedback({ type: 'error', message: res.error || '剪輯處理失敗' });
+          setTrimFeedback({ type: 'error', message: res.error || '剪輯失敗' });
         }
       } else {
-        // Mock fallback
+        // Fallback for browser mock mode
         setTimeout(() => {
-          setOriginalBackupPath(currentMediaPath);
+          if (!originalBackupPath) setOriginalBackupPath(currentMediaPath + '.backup.mp4');
+          setTrimFeedback({
+            type: 'success',
+            message: `（模擬）成功剪輯片段！刪除 ${(cutEnd - cutStart).toFixed(1)} 秒。`,
+          });
           setCutStart(0);
           setCutEnd(0);
-          setTrimFeedback({ type: 'success', message: '已刪除選定區段 (Mock 模擬)' });
           setIsTrimming(false);
         }, 600);
+        return;
       }
-    } catch (e: any) {
-      setTrimFeedback({ type: 'error', message: e?.message || '剪輯處理發生異常' });
-    } finally {
-      setIsTrimming(false);
+    } catch (err: any) {
+      setTrimFeedback({ type: 'error', message: err?.message || String(err) });
     }
+    setIsTrimming(false);
   };
 
-  // Restore original video
+  // Restore original video before trimming
   const handleRestoreOriginal = async () => {
     if (!originalBackupPath) return;
     setIsTrimming(true);
@@ -314,25 +308,27 @@ export default function ReportFlowModal({
         } else {
           setTrimFeedback({ type: 'error', message: res.error || '還原失敗' });
         }
+      } else {
+        setOriginalBackupPath(null);
+        setTrimFeedback({ type: 'success', message: '（模擬）已成功還原為原始錄影影片！' });
       }
-    } catch (e: any) {
-      setTrimFeedback({ type: 'error', message: e?.message || '還原處理異常' });
-    } finally {
-      setIsTrimming(false);
+    } catch (err: any) {
+      setTrimFeedback({ type: 'error', message: err?.message || String(err) });
+    }
+    setIsTrimming(false);
+  };
+
+  const handlePasteClipboard = async () => {
+    const text = await readClipboard();
+    if (text) {
+      setSuspectId(text.trim());
     }
   };
 
-  // Paste from clipboard using hook
-  const handlePasteClipboard = async () => {
-    const text = await readClipboard();
-    if (text) setSuspectId(text.trim());
-  };
-
-  // Toggle whitelist chip selection
   const handleToggleWhitelistChip = (id: string) => {
     if (existingWhitelist.includes(id)) return;
     if (selectedForWhitelist.includes(id)) {
-      setSelectedForWhitelist(selectedForWhitelist.filter((item) => item !== id));
+      setSelectedForWhitelist(selectedForWhitelist.filter((i) => i !== id));
     } else {
       setSelectedForWhitelist([...selectedForWhitelist, id]);
     }
@@ -340,10 +336,9 @@ export default function ReportFlowModal({
 
   const handleFinishWhitelistMode = () => {
     if (selectedForWhitelist.length > 0) {
-      const updated = [...existingWhitelist, ...selectedForWhitelist];
-      onUpdateWhitelist(updated);
-      if (selectedForWhitelist.includes(suspectId)) {
-        setSuspectId('');
+      const newItems = selectedForWhitelist.filter((id) => !existingWhitelist.includes(id));
+      if (newItems.length > 0) {
+        onUpdateWhitelist([...existingWhitelist, ...newItems]);
       }
     }
     setWhitelistMode(false);
@@ -437,133 +432,10 @@ export default function ReportFlowModal({
     >
       {stage === 'progress' ? (
         /* Stage 1: Recognition Progress State */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-text-heading)' }}>
-            正在分析事證...
-          </div>
-
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.875rem' }}
-          >
-            {/* 1. Read recording */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: progressPercent >= 20 ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>
-                讀取錄影片段
-              </span>
-              {progressPercent >= 20 ? (
-                <Badge variant="success" size="sm">完成</Badge>
-              ) : (
-                <Badge variant="primary" size="sm" dot>處理中...</Badge>
-              )}
-            </div>
-
-            {/* 2. Keyframes extraction */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: progressPercent >= 40 ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>
-                擷取關鍵畫面
-              </span>
-              {progressPercent >= 40 ? (
-                <Badge variant="success" size="sm">完成</Badge>
-              ) : progressPercent >= 20 ? (
-                <Badge variant="primary" size="sm" dot>處理中...</Badge>
-              ) : (
-                <Badge variant="default" size="sm">等待中</Badge>
-              )}
-            </div>
-
-            {/* 3. Map recognition */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: progressPercent >= 60 ? 'var(--color-text-primary)' : 'var(--color-text-secondary)', fontWeight: progressPercent >= 40 && progressPercent < 60 ? 700 : 400 }}>
-                辨識地圖名稱
-              </span>
-              {progressPercent >= 60 ? (
-                <Badge variant="success" size="sm">完成</Badge>
-              ) : progressPercent >= 40 ? (
-                <Badge variant="primary" size="sm" dot>
-                  {progressStatus.includes('地圖') && progressStatus.match(/\(([^)]+)\)/)
-                    ? `處理中 ${progressStatus.match(/\(([^)]+)\)/)?.[0] || ''}`
-                    : '處理中...'}
-                </Badge>
-              ) : (
-                <Badge variant="default" size="sm">等待中</Badge>
-              )}
-            </div>
-
-            {/* 4. Character ID recognition */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: progressPercent >= 85 ? 'var(--color-text-primary)' : 'var(--color-text-secondary)', fontWeight: progressPercent >= 60 && progressPercent < 85 ? 700 : 400 }}>
-                辨識角色 ID
-              </span>
-              {progressPercent >= 85 ? (
-                <Badge variant="success" size="sm">完成</Badge>
-              ) : progressPercent >= 60 ? (
-                <Badge variant="primary" size="sm" dot>
-                  {progressStatus.includes('ID') && progressStatus.match(/\(([^)]+)\)/)
-                    ? `處理中 ${progressStatus.match(/\(([^)]+)\)/)?.[0] || ''}`
-                    : '處理中...'}
-                </Badge>
-              ) : (
-                <Badge variant="default" size="sm">等待中</Badge>
-              )}
-            </div>
-
-            {/* 5. Organize candidates */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                color: progressPercent >= 90 ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-              }}
-            >
-              <span>整理歷史與候選資料</span>
-              {progressPercent >= 100 ? (
-                <Badge variant="success" size="sm">完成</Badge>
-              ) : progressPercent >= 85 ? (
-                <Badge variant="primary" size="sm" dot>處理中...</Badge>
-              ) : (
-                <Badge variant="default" size="sm">等待中</Badge>
-              )}
-            </div>
-          </div>
-
-          <div style={{ marginTop: '12px' }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontSize: '0.8rem',
-                color: 'var(--color-text-secondary)',
-                marginBottom: '6px',
-              }}
-            >
-              <span>
-                {progressStatus || (progressPercent >= 100
-                  ? '分析完成，載入回報表單中...'
-                  : `正在分析關鍵畫面... (${progressPercent}%)`)}
-              </span>
-              <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>可隨時略過</span>
-            </div>
-            <div
-              style={{
-                height: '8px',
-                backgroundColor: 'var(--color-surface)',
-                borderRadius: '4px',
-                overflow: 'hidden',
-                border: '1px solid var(--color-border)',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${progressPercent}%`,
-                  backgroundColor: 'var(--color-primary)',
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        <ProgressStage
+          progressPercent={progressPercent}
+          progressStatus={progressStatus}
+        />
       ) : (
         /* Stage 2: Report Confirmation Form State (Steps 1 to 5) */
         <form
@@ -580,522 +452,68 @@ export default function ReportFlowModal({
               {submissionStatus.message}
             </div>
           )}
+
           {/* Step 1: Media Confirmation with Direct 16:9 Preview & Right Actions */}
-          <div className="step-block">
-            <div className="step-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="step-number">1</span>
-                <span>確認事證媒體預覽</span>
-              </div>
-              {originalBackupPath && (
-                <Badge variant="success" size="sm">
-                  已剪輯片段
-                </Badge>
-              )}
-            </div>
-
-            <div className="media-preview-container">
-              {/* Left Column: 16:9 Media Player & Expandable Trim Panel */}
-              <div className="media-player-column">
-                <div className="media-player-box">
-                  {isVideo && mediaStreamUrl ? (
-                    <video
-                      ref={videoRef}
-                      key={mediaStreamUrl || currentMediaPath}
-                      src={mediaStreamUrl}
-                      controls
-                      preload="auto"
-                      onLoadedMetadata={handleLoadedMetadata}
-                      onTimeUpdate={handleTimeUpdate}
-                      className="media-video-element"
-                      playsInline
-                    />
-                  ) : previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="事證畫面預覽"
-                      className="media-image-element"
-                    />
-                  ) : isVideo ? (
-                    <div className="media-placeholder">
-                      <Film size={36} color="var(--color-primary)" />
-                      <span>{currentMediaPath ? '正在載入影片播放器...' : '正在儲存循環錄影，完成後將自動載入影片...'}</span>
-                    </div>
-                  ) : (
-                    <div className="media-placeholder">
-                      <ImageIcon size={36} color="var(--color-primary)" />
-                      <span>正在載入圖片預覽...</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Media filename label */}
-                <div className="media-filename-row" title={currentMediaPath}>
-                  <span className="media-filename-text">
-                    {currentMediaPath ? currentMediaPath.split(/[\\/]/).pop() : '未選取檔案'}
-                  </span>
-                  {videoDuration > 0 && (
-                    <span className="media-duration-text">
-                      時長: {formatTime(videoDuration)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Expandable Video Segment Trim Panel */}
-                {isVideo && isTrimOpen && (
-                  <div className="video-trim-panel">
-                    <div className="trim-header-row">
-                      <div className="trim-time-indicator">
-                        <Clock size={13} />
-                        <span>播放時間: {formatTime(currentPlaybackTime)} / {formatTime(videoDuration)}</span>
-                      </div>
-                      <div className="trim-marker-buttons">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleSetCutStart}
-                          aria-label="設定影片剪輯起點"
-                          title="將當前播放時間設為刪除起點"
-                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
-                        >
-                          設為起點 [{cutStart > 0 || cutEnd > cutStart ? ` ${formatTime(cutStart)}` : ''}
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleSetCutEnd}
-                          aria-label="設定影片剪輯終點"
-                          title="將當前播放時間設為刪除終點"
-                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
-                        >
-                          設為終點 ]{cutEnd > 0 ? ` ${formatTime(cutEnd)}` : ''}
-                        </Button>
-                        {(cutStart > 0 || cutEnd > 0) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleClearCut}
-                            aria-label="清除影片剪輯標記"
-                            title="清除選取的剪輯區段"
-                            style={{ fontSize: '0.75rem', padding: '3px 8px' }}
-                          >
-                            清除選取
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Visual Interactive Timeline Track */}
-                    <div className="trim-timeline-wrapper">
-                      <div
-                        className="trim-timeline-track"
-                        onMouseDown={handleTimelineMouseDown}
-                        title="點選或拖曳時間軸跳轉播放時間"
-                      >
-                        {/* Cut region highlight */}
-                        {videoDuration > 0 && cutEnd > cutStart && (
-                          <div
-                            className="trim-cut-highlight"
-                            style={{
-                              left: `${Math.max(0, Math.min(100, (cutStart / videoDuration) * 100))}%`,
-                              width: `${Math.max(0, Math.min(100, ((cutEnd - cutStart) / videoDuration) * 100))}%`,
-                            }}
-                            title={`即將刪除: ${formatTime(cutStart)} ~ ${formatTime(cutEnd)}`}
-                          >
-                            <span className="trim-cut-label">✂️ 刪除區段</span>
-                          </div>
-                        )}
-                        {/* Playhead position */}
-                        {videoDuration > 0 && (
-                          <div
-                            className="trim-playhead"
-                            style={{
-                              left: `${Math.max(0, Math.min(100, (currentPlaybackTime / videoDuration) * 100))}%`,
-                            }}
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Trim Action Footer */}
-                    <div className="trim-action-row">
-                      <div className="trim-range-summary">
-                        {cutEnd > cutStart ? (
-                          <>
-                            <span>預計移除：</span>
-                            <strong style={{ color: 'var(--color-status-danger, #ef5350)' }}>
-                              {formatTime(cutStart)} ~ {formatTime(cutEnd)}
-                            </strong>
-                            <span style={{ opacity: 0.8 }}>
-                              （長度 {(Math.max(0, cutEnd - cutStart)).toFixed(1)} 秒）
-                            </span>
-                          </>
-                        ) : (
-                          <span style={{ color: 'var(--color-text-secondary)' }}>
-                            尚未選定剪輯區段（請在時間軸選取起點與終點）
-                          </span>
-                        )}
-                      </div>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        icon={Scissors}
-                        onClick={handleExecuteCut}
-                        disabled={isTrimming || cutEnd <= cutStart}
-                        aria-label="套用影片剪輯"
-                        style={{
-                          backgroundColor: cutEnd > cutStart ? '#d32f2f' : undefined,
-                          opacity: cutEnd <= cutStart ? 0.6 : 1,
-                        }}
-                      >
-                        {isTrimming ? '剪輯處理中...' : '刪除此區段'}
-                      </Button>
-                    </div>
-
-                    {/* Feedback message */}
-                    {trimFeedback && (
-                      <div
-                        className={`trim-feedback-msg ${
-                          trimFeedback.type === 'success' ? 'success' : 'error'
-                        }`}
-                      >
-                        {trimFeedback.message}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Right Column: Action Buttons */}
-              <div className="media-actions-column">
-                <Button
-                  variant="outline"
-                  size="md"
-                  icon={ExternalLink}
-                  onClick={() => onOpenFilePath && onOpenFilePath(currentMediaPath)}
-                  disabled={!currentMediaPath}
-                  style={{ width: '100%', justifyContent: 'flex-start' }}
-                >
-                  系統播放器開啟
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="md"
-                  icon={FolderOpen}
-                  onClick={() => onOpenFileLocation && onOpenFileLocation(currentMediaPath)}
-                  disabled={!currentMediaPath}
-                  style={{ width: '100%', justifyContent: 'flex-start' }}
-                >
-                  開啟檔案位置
-                </Button>
-
-                {isVideo && (
-                  <Button
-                    variant={isTrimOpen ? 'primary' : 'outline'}
-                    size="md"
-                    icon={Scissors}
-                    onClick={() => {
-                      setIsTrimOpen(!isTrimOpen);
-                      setTrimFeedback(null);
-                    }}
-                    data-testid="video-trim-toggle"
-                    style={{ width: '100%', justifyContent: 'flex-start' }}
-                  >
-                    {isTrimOpen ? '收合剪輯工具' : '區段剪輯'}
-                  </Button>
-                )}
-
-                {originalBackupPath && (
-                  <Button
-                    variant="outline"
-                    size="md"
-                    icon={RotateCcw}
-                    onClick={handleRestoreOriginal}
-                    disabled={isTrimming}
-                    style={{
-                      width: '100%',
-                      justifyContent: 'flex-start',
-                      borderColor: 'var(--color-warning, #f59e0b)',
-                      color: 'var(--color-warning, #f59e0b)',
-                    }}
-                  >
-                    還原原始影片
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
+          <MediaPreviewSection
+            currentMediaPath={currentMediaPath}
+            mediaStreamUrl={mediaStreamUrl}
+            previewUrl={previewUrl}
+            originalBackupPath={originalBackupPath}
+            isVideo={isVideo}
+            isTrimOpen={isTrimOpen}
+            videoDuration={videoDuration}
+            currentPlaybackTime={currentPlaybackTime}
+            cutStart={cutStart}
+            cutEnd={cutEnd}
+            isTrimming={isTrimming}
+            trimFeedback={trimFeedback}
+            videoRef={videoRef}
+            formatTime={formatTime}
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            onTimelineMouseDown={handleTimelineMouseDown}
+            onSetCutStart={handleSetCutStart}
+            onSetCutEnd={handleSetCutEnd}
+            onClearCut={handleClearCut}
+            onExecuteCut={handleExecuteCut}
+            onRestoreOriginal={handleRestoreOriginal}
+            onToggleTrimOpen={() => {
+              setIsTrimOpen(!isTrimOpen);
+              setTrimFeedback(null);
+            }}
+            onOpenFilePath={onOpenFilePath}
+            onOpenFileLocation={onOpenFileLocation}
+          />
 
           {/* Step 2: Suspect ID & Whitelist Selection */}
-          <div className="step-block">
-            <div className="step-title-row">
-              <span className="step-number">2</span>
-              <span>外掛玩家角色 ID</span>
-            </div>
+          <SuspectSelector
+            suspectId={suspectId}
+            whitelistMode={whitelistMode}
+            ocrResults={ocrResults}
+            existingWhitelist={existingWhitelist}
+            selectedForWhitelist={selectedForWhitelist}
+            onSuspectIdChange={setSuspectId}
+            onPasteClipboard={handlePasteClipboard}
+            onToggleWhitelistChip={handleToggleWhitelistChip}
+            onEnterWhitelistMode={() => setWhitelistMode(true)}
+            onCancelWhitelistMode={() => setWhitelistMode(false)}
+            onFinishWhitelistMode={handleFinishWhitelistMode}
+          />
 
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <Input
-                placeholder="請輸入或點選下方候選角色 ID"
-                value={suspectId}
-                onChange={(e) => setSuspectId(e.target.value)}
-                required
-                data-testid="report-suspect-id"
-              />
-              <Button variant="secondary" size="md" icon={Clipboard} onClick={handlePasteClipboard}>
-                貼上
-              </Button>
-            </div>
-
-            {/* Suggestions Chips Area */}
-            <div style={{ marginTop: '2px' }}>
-              <div
-                style={{
-                  fontSize: '0.78rem',
-                  color: whitelistMode
-                    ? 'var(--color-status-success)'
-                    : 'var(--color-text-secondary)',
-                  marginBottom: '6px',
-                  fontWeight: whitelistMode ? 700 : 400,
-                }}
-              >
-                {whitelistMode
-                  ? '選擇白名單：點選要排除的名稱；加入後，往後辨識將自動略過。'
-                  : 'OCR 辨識結果：點選名稱即可帶入角色 ID（尚未自動選取）。'}
-              </div>
-
-              <div className={`chip-group ${whitelistMode ? 'whitelist-mode' : ''}`}>
-                {ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0 ? (
-                  ocrResults.suspect_ids.map((id, idx) => {
-                    const isAlreadyWhitelisted = existingWhitelist.includes(id);
-                    const isSelectedForWhitelist = selectedForWhitelist.includes(id);
-                    const isCurrentInputMatch = suspectId === id;
-
-                    if (whitelistMode) {
-                      return (
-                        <div
-                          key={idx}
-                          className={`chip whitelist-chip ${isAlreadyWhitelisted ? 'disabled' : ''} ${
-                            isSelectedForWhitelist ? 'success' : ''
-                          }`}
-                          onClick={() => handleToggleWhitelistChip(id)}
-                        >
-                          {isSelectedForWhitelist && <Check size={12} />}
-                          <span>{id}</span>
-                          {isAlreadyWhitelisted && (
-                            <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>(已加入)</span>
-                          )}
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div
-                        key={idx}
-                        className={`chip ${isCurrentInputMatch ? 'active' : ''}`}
-                        onClick={() => setSuspectId(id)}
-                      >
-                        {id}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-                    (未辨識到角色 ID，請手動輸入)
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Whitelist Action Toolbar at Bottom of Section */}
-            <div
-              style={{
-                marginTop: '4px',
-                paddingTop: '8px',
-                borderTop: '1px dashed var(--color-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              {!whitelistMode ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  icon={ShieldCheck}
-                  onClick={() => setWhitelistMode(true)}
-                  style={{ fontSize: '0.8rem' }}
-                >
-                  從辨識結果管理白名單
-                </Button>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--color-status-success)', fontWeight: 600 }}>
-                    正在選取白名單名單
-                  </span>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <Button variant="outline" size="sm" onClick={() => setWhitelistMode(false)}>
-                      取消
-                    </Button>
-                    <Button
-                      variant="success"
-                      size="sm"
-                      icon={Check}
-                      onClick={handleFinishWhitelistMode}
-                    >
-                      完成設定
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Step 3: Game Server */}
-          <div className="step-block">
-            <div className="step-title-row">
-              <span className="step-number">3</span>
-              <span>外掛角色所在伺服器</span>
-            </div>
-            <div style={{ padding: '4px 0' }}>
-              <RadioGroup
-                name="server"
-                value={server}
-                onChange={(val) => setServer(val)}
-                options={[
-                  { value: '雪吉拉', label: '雪吉拉' },
-                  { value: '菇菇寶貝', label: '菇菇寶貝' },
-                ]}
-              />
-            </div>
-          </div>
-
-          {/* Step 4: Map Name */}
-          <div className="step-block">
-            <div className="step-title-row">
-              <span className="step-number">4</span>
-              <span>外掛角色所在地圖</span>
-            </div>
-            <Input
-              placeholder="例如：地鐵一號線｜地區01"
-              value={mapName}
-              onChange={(e) => setMapName(e.target.value)}
-              required
-              data-testid="report-map-name"
-            />
-
-            {(!mapOcrEnabled || ocrMapName || historicalMaps.length > 0) && (
-              <>
-                {!mapOcrEnabled && (
-                  <div
-                    role="status"
-                    data-testid="ocr-map-disabled-hint"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '6px',
-                      fontSize: '0.78rem',
-                      color: 'var(--color-status-warning)',
-                      marginTop: '8px',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-                    <span>
-                      尚未啟用地圖 OCR；地圖名稱不會自動辨識，請手動輸入或從歷史紀錄選擇。
-                    </span>
-                  </div>
-                )}
-                {(ocrMapName || historicalMaps.length > 0) && (
-                  <>
-                    <div
-                      style={{
-                        fontSize: '0.78rem',
-                        color: 'var(--color-text-secondary)',
-                        marginTop: '8px',
-                      }}
-                    >
-                      建議地圖：
-                    </div>
-                    <div
-                      className="chip-group"
-                      data-testid="map-suggestion-group"
-                      aria-label="地圖建議"
-                    >
-                      {ocrMapName && (
-                        <div
-                          className={`chip ${mapName === ocrMapName ? 'active' : ''}`}
-                          onClick={() => setMapName(ocrMapName)}
-                          data-testid="ocr-map-suggestion"
-                        >
-                          OCR：{ocrMapName}
-                        </div>
-                      )}
-                      {historicalMaps.map((map, idx) => (
-                        <div
-                          key={`${map}-${idx}`}
-                          className={`chip ${mapName === map ? 'active' : ''}`}
-                          onClick={() => setMapName(map)}
-                          data-testid={`history-map-suggestion-${idx}`}
-                        >
-                          {map}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Step 5: Notes */}
-          <div className="step-block">
-            <div className="step-title-row">
-              <span className="step-number">5</span>
-              <span>違規說明與備註</span>
-            </div>
-            <Textarea
-              placeholder="自動打怪／疑似外掛行為"
-              value={note}
-              rows={2}
-              onChange={(e) => setNote(e.target.value)}
-              helperText={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <AlertCircle size={14} style={{ flexShrink: 0 }} color="var(--color-warning)" />
-                  <span>提醒：由於官方檢舉表單限制，送出時換行將自動縮減合併為一行。</span>
-                </span>
-              }
-            />
-          </div>
-
-          {/* Submission Mode: Background Headless Switch */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 14px',
-              backgroundColor: 'var(--color-surface)',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-border)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Zap size={18} color="var(--color-primary)" />
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>背景靜默送出檢舉</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                  {formSubmitHeadless
-                    ? '已啟用背景模式：Playwright 將於後台靜默自動填表'
-                    : '已關閉背景模式：將開啟可見瀏覽器視窗，展示填表與送出過程'}
-                </div>
-              </div>
-            </div>
-            <Switch
-              checked={formSubmitHeadless}
-              onChange={(val) => setFormSubmitHeadless(val)}
-            />
-          </div>
+          {/* Steps 3, 4, 5: Server, Map, Notes & Headless Toggle */}
+          <ReportFormSection
+            server={server}
+            mapName={mapName}
+            note={note}
+            formSubmitHeadless={formSubmitHeadless}
+            mapOcrEnabled={mapOcrEnabled}
+            ocrMapName={ocrMapName}
+            historicalMaps={historicalMaps}
+            onServerChange={setServer}
+            onMapNameChange={setMapName}
+            onNoteChange={setNote}
+            onFormSubmitHeadlessChange={setFormSubmitHeadless}
+          />
         </form>
       )}
     </Dialog>
