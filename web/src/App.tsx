@@ -373,19 +373,25 @@ export default function App() {
       }
     }
 
-    // Mock fallback when not in pywebview
+    // Browser fallback when not in pywebview
     setTimeout(() => {
-      setOcrResults((prev) => normalizeOcrResult({
-          suspect_ids: ['Player01', 'Player02'],
-          map_name: '地鐵一號線｜地區01',
-          ocr_map_name: '地鐵一號線｜地區01',
-          map_name_source: 'ocr',
-          media_path: 'recordings/evidence_mock.png',
-          media_type: 'image',
-        }, prev, config));
+      setOcrResults((prev) =>
+        normalizeOcrResult(
+          {
+            suspect_ids: [],
+            map_name: config.default_map || '',
+            ocr_map_name: '',
+            map_name_source: 'default',
+            media_path: '',
+            media_type: 'image',
+          },
+          prev,
+          config
+        )
+      );
       setModalProgress(100);
       setModalStage('form');
-    }, 800);
+    }, 400);
   };
 
   const startRealtimeProgress = (cdSec: number, recSec: number) => {
@@ -427,7 +433,6 @@ export default function App() {
           setRecordingTime(recSec);
           animFrameRef.current = null;
           if (!window.pywebview || !window.pywebview.api) {
-            // Mock finish flow
             setTimeout(() => {
               setStatusState('idle');
               setRecordingFraction(undefined);
@@ -439,11 +444,11 @@ export default function App() {
                 setOcrResults((prev) =>
                   normalizeOcrResult(
                     {
-                      suspect_ids: ['AutoBot88', 'PlayerX'],
-                      map_name: '隱密之地：幽靈船',
-                      ocr_map_name: '隱密之地：幽靈船',
-                      map_name_source: 'ocr',
-                      media_path: 'recordings/mock_video.mp4',
+                      suspect_ids: [],
+                      map_name: config.default_map || '',
+                      ocr_map_name: '',
+                      map_name_source: 'default',
+                      media_path: '',
                       media_type: 'video',
                     },
                     prev,
@@ -452,8 +457,8 @@ export default function App() {
                 );
                 setModalProgress(100);
                 setModalStage('form');
-              }, 800);
-            }, 300);
+              }, 400);
+            }, 200);
           }
         }
       }
@@ -580,19 +585,25 @@ export default function App() {
     } else {
       setModalStage('progress');
       setModalProgress(35);
-      setModalStatusText('正在解析模擬事證檔案...');
+      setModalStatusText('正在解析事證檔案...');
       setModalOpen(true);
       setTimeout(() => {
-        setOcrResults((prev) => normalizeOcrResult({
-            suspect_ids: ['ReplayPlayer01'],
-            map_name: config.default_map || '',
-            map_name_source: 'default',
-            media_path: 'recordings/mock_replay.mp4',
-            media_type: 'video',
-          }, prev, config));
+        setOcrResults((prev) =>
+          normalizeOcrResult(
+            {
+              suspect_ids: [],
+              map_name: config.default_map || '',
+              map_name_source: 'default',
+              media_path: '',
+              media_type: 'video',
+            },
+            prev,
+            config
+          )
+        );
         setModalProgress(100);
         setModalStage('form');
-      }, 700);
+      }, 400);
     }
   };
 
@@ -623,21 +634,27 @@ export default function App() {
     } else {
       setModalStage('progress');
       setModalProgress(40);
-      setModalStatusText('正在解析模擬事證檔案...');
+      setModalStatusText('正在解析事證檔案...');
       setModalOpen(true);
       setTimeout(() => {
-        setOcrResults((prev) => normalizeOcrResult({
-            suspect_ids: ['ImportedSuspect99'],
-            map_name: '天空之城：散步路 II',
-            ocr_map_name: '天空之城：散步路 II',
-            map_name_source: 'ocr',
-            media_path: 'recordings/imported_demo.mp4',
-            media_type: 'video',
-          }, prev, config));
+        setOcrResults((prev) =>
+          normalizeOcrResult(
+            {
+              suspect_ids: [],
+              map_name: config.default_map || '',
+              ocr_map_name: '',
+              map_name_source: 'default',
+              media_path: '',
+              media_type: 'video',
+            },
+            prev,
+            config
+          )
+        );
         setModalProgress(100);
         setModalStatusText('辨識完成');
         setModalStage('form');
-      }, 700);
+      }, 400);
     }
   };
 
@@ -773,26 +790,7 @@ export default function App() {
         setIsSubmittingReport(false);
       }
     } else {
-      const submittedMap = String(formData.map_name || '').trim();
-      const newMockRecord: HistoryRecord = {
-        record_id: `mock-${Date.now()}`,
-        time: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        suspect_id: String(formData.suspect_id || ''),
-        server: String(formData.server || '雪吉拉'),
-        map: submittedMap,
-        map_name: submittedMap,
-        upload_status: 'success',
-        status: '模擬成功',
-        note: String(formData.note || ''),
-      };
-      setHistory((prev) => [newMockRecord, ...prev]);
-      setSubmissionStatus({
-        step: 'completed',
-        status: 'success',
-        message: '檢舉事證已成功提交！(Mock)',
-      });
-      toast.success('檢舉事證已成功提交！', '已自動加入歷史紀錄並執行上傳 (Mock)');
+      toast.info('瀏覽器預覽模式', '請在桌面應用程式中執行以提交真實檢舉與儲存紀錄');
       setIsSubmittingReport(false);
       setModalOpen(false);
     }
