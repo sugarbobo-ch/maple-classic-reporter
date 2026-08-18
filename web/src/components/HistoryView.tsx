@@ -9,8 +9,14 @@ import {
   ShieldCheck,
   RefreshCw,
   Clock,
+  LayoutList,
+  Rows,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
-import { Button, IconButton, Badge, Tooltip, Dialog } from './ui';
+import { Button, IconButton, Badge, Tooltip, Dialog, Dropdown } from './ui';
 import { useClipboard, useToast } from '../hooks';
 import { HistoryRecord, SanctionSyncStatus } from '../types';
 
@@ -35,6 +41,31 @@ function formatLastSyncTime(isoStr?: string | null): string {
   return isoStr.slice(0, 16).replace('T', ' ');
 }
 
+function getPageNumbers(current: number, total: number): (number | '...')[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages: (number | '...')[] = [];
+  if (current <= 4) {
+    for (let i = 1; i <= 5; i++) pages.push(i);
+    pages.push('...');
+    pages.push(total);
+  } else if (current >= total - 3) {
+    pages.push(1);
+    pages.push('...');
+    for (let i = total - 4; i <= total; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    pages.push('...');
+    pages.push(current - 1);
+    pages.push(current);
+    pages.push(current + 1);
+    pages.push('...');
+    pages.push(total);
+  }
+  return pages;
+}
+
 export default function HistoryView({
   history = [],
   onBack,
@@ -50,6 +81,16 @@ export default function HistoryView({
   const [copiedUrl, setCopiedUrl] = useState('');
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+
+  const totalRecords = history.length;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalRecords);
+  const paginatedHistory = history.slice(startIndex, endIndex);
 
   const handleOpenClearConfirm = () => {
     setClearConfirmOpen(true);
@@ -62,6 +103,7 @@ export default function HistoryView({
       const ok = await onClearHistory();
       if (ok) {
         setClearConfirmOpen(false);
+        setCurrentPage(1);
       }
     } finally {
       setIsClearingHistory(false);
@@ -219,6 +261,17 @@ export default function HistoryView({
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Button
+              variant={isCompact ? 'primary' : 'outline'}
+              size="md"
+              icon={isCompact ? Rows : LayoutList}
+              onClick={() => setIsCompact((prev) => !prev)}
+              title={isCompact ? '切換為標準排列' : '切換為緊密排列'}
+              data-testid="toggle-compact-mode"
+            >
+              {isCompact ? '緊密排列' : '標準排列'}
+            </Button>
+
+            <Button
               variant="secondary"
               size="md"
               icon={RefreshCw}
@@ -316,7 +369,7 @@ export default function HistoryView({
 
       <div className="history-table-container" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {history.length > 0 ? (
-          <table className="history-table">
+          <table className={`history-table ${isCompact ? 'compact' : ''}`.trim()}>
             <thead>
               <tr>
                 <th>檢舉時間</th>
@@ -330,65 +383,66 @@ export default function HistoryView({
               </tr>
             </thead>
             <tbody>
-                {history.map((row, idx) => {
-                  const key = row.record_id || `history-${row.timestamp || row.time || 'item'}-${row.suspect_id || row.id || idx}-${idx}`;
-                  const evidenceUrl = (row.evidence_url || row.url || '').trim();
-                  const isCopied = copiedUrl === evidenceUrl;
+              {paginatedHistory.map((row, idx) => {
+                const key = row.record_id || `history-${row.timestamp || row.time || 'item'}-${row.suspect_id || row.id || idx}-${idx}`;
+                const evidenceUrl = (row.evidence_url || row.url || '').trim();
+                const isCopied = copiedUrl === evidenceUrl;
 
-                  return (
-                    <tr key={key}>
-                      <td className="cell-date">
-                        {row.timestamp || row.time || '-'}
-                      </td>
-                      <td className="cell-suspect">
-                        {row.suspect_id || row.id || '-'}
-                      </td>
-                      <td className="cell-nowrap">{row.server || '-'}</td>
-                      <td>{row.map_name || row.map || '-'}</td>
-                      <td className="cell-nowrap">
-                        {renderUploadStatus(row.upload_status || row.status)}
-                      </td>
-                      <td className="cell-nowrap">
-                        {renderBanStatus(row)}
-                      </td>
-                      <td className="cell-date">
-                        {formatBanDate(row.ban_date)}
-                      </td>
-                      <td className="cell-nowrap" style={{ textAlign: 'center' }}>
-                        {evidenceUrl ? (
-                          <div className="history-actions">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              icon={ExternalLink}
-                              onClick={() => onOpenUrl(evidenceUrl)}
-                              title="開啟雲端事證連結"
-                              aria-label="開啟雲端事證連結"
-                            >
-                              開啟連結
-                            </Button>
-                            <Button
-                              variant={isCopied ? 'success' : 'secondary'}
-                              size="sm"
-                              icon={isCopied ? Check : Copy}
-                              onClick={() => void handleCopyUrl(evidenceUrl)}
-                              title="複製雲端事證連結"
-                              aria-label="複製雲端事證連結"
-                            >
-                              {isCopied ? '已複製' : '複製連結'}
-                            </Button>
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
-                            無雲端連結
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                return (
+                  <tr key={key}>
+                    <td className="cell-date">
+                      {row.timestamp || row.time || '-'}
+                    </td>
+                    <td className="cell-suspect">
+                      {row.suspect_id || row.id || '-'}
+                    </td>
+                    <td className="cell-nowrap">{row.server || '-'}</td>
+                    <td>{row.map_name || row.map || '-'}</td>
+                    <td className="cell-nowrap">
+                      {renderUploadStatus(row.upload_status || row.status)}
+                    </td>
+                    <td className="cell-nowrap">
+                      {renderBanStatus(row)}
+                    </td>
+                    <td className="cell-date">
+                      {formatBanDate(row.ban_date)}
+                    </td>
+                    <td className="cell-nowrap" style={{ textAlign: 'center' }}>
+                      {evidenceUrl ? (
+                        <div className="history-actions">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            icon={ExternalLink}
+                            onClick={() => onOpenUrl(evidenceUrl)}
+                            title="開啟雲端事證連結"
+                            aria-label="開啟雲端事證連結"
+                          >
+                            開啟連結
+                          </Button>
+                          <Button
+                            variant={isCopied ? 'success' : 'secondary'}
+                            size="sm"
+                            icon={isCopied ? Check : Copy}
+                            onClick={() => void handleCopyUrl(evidenceUrl)}
+                            title="複製雲端事證連結"
+                            aria-label="複製雲端事證連結"
+                            style={{ minWidth: '84px', justifyContent: 'center' }}
+                          >
+                            {isCopied ? '已複製' : '複製連結'}
+                          </Button>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
+                          無雲端連結
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         ) : (
           <div
             style={{
@@ -402,6 +456,103 @@ export default function HistoryView({
           </div>
         )}
       </div>
+
+      {/* Pagination Footer */}
+      {totalRecords > 0 && (
+        <div className="history-pagination-bar">
+          <div className="history-pagination-info" data-testid="pagination-info">
+            <span>
+              顯示第 <strong>{startIndex + 1}</strong> ~ <strong>{endIndex}</strong> 筆，共{' '}
+              <strong>{totalRecords}</strong> 筆紀錄
+            </span>
+          </div>
+
+          <div className="history-pagination-controls">
+            <div style={{ width: '110px' }}>
+              <Dropdown<number>
+                options={[
+                  { value: 10, label: '10 筆 / 頁' },
+                  { value: 15, label: '15 筆 / 頁' },
+                  { value: 30, label: '30 筆 / 頁' },
+                  { value: 50, label: '50 筆 / 頁' },
+                  { value: 100, label: '100 筆 / 頁' },
+                ]}
+                value={pageSize}
+                onChange={(val) => {
+                  setPageSize(val);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="pagination-page-btn"
+              disabled={safeCurrentPage <= 1}
+              onClick={() => setCurrentPage(1)}
+              title="第一頁"
+              aria-label="第一頁"
+            >
+              <ChevronsLeft size={14} />
+            </button>
+
+            <button
+              type="button"
+              className="pagination-page-btn"
+              disabled={safeCurrentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              title="上一頁"
+              aria-label="上一頁"
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            {getPageNumbers(safeCurrentPage, totalPages).map((p, i) =>
+              p === '...' ? (
+                <span
+                  key={`ellipsis-${i}`}
+                  style={{ padding: '0 4px', color: 'var(--color-text-secondary)' }}
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={`page-${p}`}
+                  type="button"
+                  className={`pagination-page-btn ${p === safeCurrentPage ? 'active' : ''}`}
+                  onClick={() => setCurrentPage(p)}
+                  aria-label={`第 ${p} 頁`}
+                  aria-current={p === safeCurrentPage ? 'page' : undefined}
+                >
+                  {p}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              className="pagination-page-btn"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              title="下一頁"
+              aria-label="下一頁"
+            >
+              <ChevronRight size={14} />
+            </button>
+
+            <button
+              type="button"
+              className="pagination-page-btn"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+              title="最後一頁"
+              aria-label="最後一頁"
+            >
+              <ChevronsRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {clearConfirmOpen && (
         <Dialog

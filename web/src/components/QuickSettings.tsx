@@ -1,5 +1,5 @@
-import { Video, Sliders, Volume2, Monitor, RotateCcw, RefreshCw, ChevronRight } from 'lucide-react';
-import { Card, Button, Dropdown, IconButton } from './ui';
+import { Video, Sliders, Volume2, VolumeX, Monitor, RotateCcw, RefreshCw, ChevronRight } from 'lucide-react';
+import { Card, Button, Dropdown, IconButton, Switch, Badge } from './ui';
 import { AppConfig, WindowItem, AudioDeviceItem, DropdownOption } from '../types';
 import PresetPopup from './PresetPopup';
 import { RECORDING_PRESETS, detectPresetKey, PresetKey } from '../constants/presets';
@@ -97,6 +97,14 @@ export default function QuickSettings({
     onUpdateConfig('recording_preset', matched);
   };
 
+  const currentWindowTitle =
+    config.selected_window_title || (windowOptions[0] ? windowOptions[0].value : '');
+  const isMapleDetected = Boolean(
+    currentWindowTitle &&
+      (currentWindowTitle.includes('新楓之谷') ||
+        currentWindowTitle.toLowerCase().includes('maple'))
+  );
+
   return (
     <Card
       title="快捷設定"
@@ -120,9 +128,39 @@ export default function QuickSettings({
       <div className="quick-settings-grid">
         {/* Screenshot Window Dropdown with Refresh IconButton */}
         <div className="form-group">
-          <label className="ui-input-label" style={{ marginBottom: '4px' }}>
-            <Monitor size={14} /> 截圖視窗
-          </label>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '4px',
+              minHeight: '24px',
+            }}
+          >
+            <label
+              className="ui-input-label"
+              style={{
+                marginBottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <Monitor
+                size={14}
+                color={isMapleDetected ? 'var(--color-primary)' : 'var(--color-text-muted)'}
+                style={{
+                  color: isMapleDetected ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                }}
+              />
+              <span>截圖視窗</span>
+              {isMapleDetected && (
+                <Badge variant="primary" size="sm">
+                  已偵測
+                </Badge>
+              )}
+            </label>
+          </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <Dropdown
@@ -141,28 +179,92 @@ export default function QuickSettings({
               onClick={onRefreshWindows}
             />
           </div>
+          <div
+            style={{
+              fontSize: '0.75rem',
+              color: 'var(--color-text-secondary)',
+              marginTop: '4px',
+              lineHeight: '1.4',
+            }}
+          >
+            鎖定遊戲視窗以擷取畫面與短片
+          </div>
         </div>
 
-        {/* Audio Device Dropdown with Refresh IconButton */}
+        {/* Audio Device Dropdown with Refresh IconButton and Switch */}
         <div className="form-group">
-          <label className="ui-input-label" style={{ marginBottom: '4px' }}>
-            <Volume2 size={14} /> 音訊裝置
-          </label>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '4px',
+              minHeight: '24px',
+            }}
+          >
+            <label
+              className="ui-input-label"
+              style={{
+                marginBottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              {config.record_audio !== false ? (
+                <Volume2 size={14} style={{ color: 'var(--color-primary)' }} />
+              ) : (
+                <VolumeX size={14} style={{ color: 'var(--color-text-muted)' }} />
+              )}
+              <span>同步錄音</span>
+            </label>
+            <Switch
+              checked={config.record_audio !== false}
+              onChange={(checked) => onUpdateConfig('record_audio', checked)}
+              title="啟用或關閉同步錄製遊戲聲音"
+            />
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'center',
+              opacity: config.record_audio !== false ? 1 : 0.45,
+              transition: 'opacity 0.2s ease',
+            }}
+          >
             <div style={{ flex: 1, minWidth: 0 }}>
               <Dropdown
+                disabled={config.record_audio === false}
                 options={audioOptions}
                 value={config.audio_output_device_id || ''}
                 onChange={(val) => onUpdateConfig('audio_output_device_id', val)}
               />
             </div>
             <IconButton
+              disabled={config.record_audio === false}
               icon={RefreshCw}
               size="md"
               variant="outline"
               tooltip="重新整理音訊裝置"
               onClick={onRefreshAudio}
             />
+          </div>
+          <div
+            style={{
+              fontSize: '0.75rem',
+              color:
+                config.record_audio !== false
+                  ? 'var(--color-text-secondary)'
+                  : 'var(--color-text-muted)',
+              marginTop: '4px',
+              lineHeight: '1.4',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <span>選擇錄音裝置，建議開啟：可聽到怪物死亡聲音協助判斷</span>
           </div>
         </div>
 

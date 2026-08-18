@@ -221,8 +221,12 @@ export default function App() {
       if (Array.isArray(historyList)) {
         setHistory(historyList);
       }
-      if (summary?.last_complete_sync_at) {
-        setLastCompleteSyncAt(summary.last_complete_sync_at);
+      const syncAt =
+        summary?.last_complete_sync_at ||
+        data?.last_complete_sync_at ||
+        data?.summary?.last_complete_sync_at;
+      if (syncAt) {
+        setLastCompleteSyncAt(syncAt);
       }
 
       // Toast summary decisions
@@ -679,8 +683,19 @@ export default function App() {
     if (window.pywebview?.api?.start_sanction_sync) {
       try {
         const res = await window.pywebview.api.start_sanction_sync('manual');
-        if (res && res.status) {
-          setSanctionSyncStatus(res.status);
+        if (res) {
+          if (res.status?.last_complete_sync_at) {
+            setLastCompleteSyncAt(res.status.last_complete_sync_at);
+          }
+          if (res.started && res.status) {
+            setSanctionSyncStatus(res.status);
+          } else if (!res.started) {
+            setIsCheckingSanctions(false);
+            setSanctionSyncStatus(null);
+            if (res.reason === 'fresh') {
+              toast.info('制裁紀錄已是最新', '不久前已完成完整同步檢查。');
+            }
+          }
         }
       } catch (err: unknown) {
         setIsCheckingSanctions(false);
@@ -922,6 +937,8 @@ export default function App() {
         setCurrentView={setCurrentView}
         alertUnconfigured={alertUnconfigured}
         isDevMode={isDevMode}
+        theme={typeof config.theme === 'string' ? config.theme : undefined}
+        onUpdateTheme={(nextTheme) => updateConfig('theme', nextTheme)}
       />
 
       <main className="main-content">

@@ -28,10 +28,18 @@ export interface HeaderProps {
   setCurrentView: (view: ViewType) => void;
   alertUnconfigured?: boolean;
   isDevMode?: boolean;
+  theme?: string;
+  onUpdateTheme?: (theme: 'light' | 'dark') => void;
 }
 
-export default function Header({ currentView, setCurrentView, isDevMode }: HeaderProps) {
-  const { isDark, toggleTheme } = useTheme();
+export default function Header({
+  currentView,
+  setCurrentView,
+  isDevMode,
+  theme: configTheme,
+  onUpdateTheme,
+}: HeaderProps) {
+  const { isDark, toggleTheme } = useTheme(configTheme, onUpdateTheme);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
   usePyWebViewEvents({

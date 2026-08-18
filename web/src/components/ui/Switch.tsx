@@ -1,4 +1,7 @@
-export interface SwitchProps {
+import React from 'react';
+
+export interface SwitchProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
   label?: React.ReactNode;

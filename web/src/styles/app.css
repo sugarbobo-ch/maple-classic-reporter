@@ -1020,6 +1020,89 @@ body {
   gap: 6px;
 }
 
+/* Compact Table Variant */
+.history-table.compact th {
+  padding: 8px 12px;
+  font-size: 0.78rem;
+}
+
+.history-table.compact td {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+}
+
+.history-table.compact .history-actions {
+  gap: 4px;
+}
+
+.history-table.compact .history-actions .ui-btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+}
+
+/* History Pagination Bar */
+.history-pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.history-pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination-page-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-card);
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pagination-page-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: var(--color-surface-hover);
+}
+
+.pagination-page-btn.active {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 700;
+}
+
+.pagination-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ==========================================================================
    Media Preview & 16:9 Video Player & Trimming Panel
    ========================================================================== */

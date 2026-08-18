@@ -1,5 +1,5 @@
 import { RefreshCw, FolderOpen, Trash2 } from 'lucide-react';
-import { Switch, Dropdown, Input, Button, IconButton } from '../ui';
+import { Switch, Dropdown, Input, Button, IconButton, Badge } from '../ui';
 import { AppConfig, DropdownOption } from '../../types';
 import PresetSlider from '../PresetSlider';
 import { PresetKey } from '../../constants/presets';
@@ -127,8 +127,13 @@ export default function RecordingTab({
 
       <div className="setting-row">
         <div className="setting-info">
-          <span className="setting-label">同步錄製系統聲音 (WASAPI Loopback)</span>
-          <span className="setting-desc">同步錄製遊戲內音效與背景音樂</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="setting-label">同步錄製系統聲音 (WASAPI Loopback)</span>
+            <Badge variant="success" size="sm">推薦開啟</Badge>
+          </div>
+          <span className="setting-desc">
+            同步錄製遊戲內音效與背景音樂。推薦開啟，可聽到怪物死亡聲音協助判斷。
+          </span>
         </div>
         <Switch
           checked={config.record_audio !== false}

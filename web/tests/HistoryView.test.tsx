@@ -133,4 +133,53 @@ describe('HistoryView evidence links and sanction status', () => {
     fireEvent.click(openAnnouncementBtn);
     expect(onOpenUrl).toHaveBeenCalledWith('https://maplestoryclassic.beanfun.com/Bulletin/Detail/12345');
   });
+
+  it('toggles compact mode on and off', () => {
+    renderHistory();
+
+    const toggleBtn = screen.getByTestId('toggle-compact-mode');
+    expect(toggleBtn).toHaveTextContent('標準排列');
+    expect(screen.getByRole('table')).not.toHaveClass('compact');
+
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn).toHaveTextContent('緊密排列');
+    expect(screen.getByRole('table')).toHaveClass('compact');
+
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn).toHaveTextContent('標準排列');
+    expect(screen.getByRole('table')).not.toHaveClass('compact');
+  });
+
+  it('paginates records and handles page navigation', () => {
+    const manyRecords: HistoryRecord[] = Array.from({ length: 25 }, (_, i) => ({
+      record_id: `rec-${i + 1}`,
+      time: `2026-08-17 12:${i < 10 ? '0' + i : i}:00`,
+      suspect_id: `suspect-${i + 1}`,
+      server: 'Gamania',
+      map_name: `Map ${i + 1}`,
+      upload_status: 'success',
+      evidence_url: `https://drive.google.com/file/d/test-${i + 1}/view`,
+    }));
+
+    render(
+      <ToastProvider>
+        <HistoryView history={manyRecords} onBack={vi.fn()} onOpenUrl={vi.fn()} />
+      </ToastProvider>
+    );
+
+    // Default pageSize is 15 -> page 1 shows 15 rows
+    expect(screen.getByTestId('pagination-info')).toHaveTextContent('顯示第 1 ~ 15 筆，共 25 筆紀錄');
+    expect(screen.getByText('suspect-1')).toBeInTheDocument();
+    expect(screen.getByText('suspect-15')).toBeInTheDocument();
+    expect(screen.queryByText('suspect-16')).not.toBeInTheDocument();
+
+    // Click next page
+    const nextBtn = screen.getByRole('button', { name: '下一頁' });
+    fireEvent.click(nextBtn);
+
+    expect(screen.getByTestId('pagination-info')).toHaveTextContent('顯示第 16 ~ 25 筆，共 25 筆紀錄');
+    expect(screen.queryByText('suspect-1')).not.toBeInTheDocument();
+    expect(screen.getByText('suspect-16')).toBeInTheDocument();
+    expect(screen.getByText('suspect-25')).toBeInTheDocument();
+  });
 });
