@@ -37,12 +37,15 @@ export interface AppConfig {
   form_submit_headless?: boolean;
   dev_mode?: boolean;
   auto_check_sanction_status?: boolean;
+  theme?: 'light' | 'dark';
+  history_compact_layout?: boolean;
+  history_page_size?: number;
+  last_complete_sync_at?: string;
   recording_preset?: 'ultra_fast' | 'smooth' | 'balanced' | 'high_fps' | 'extreme' | 'custom';
   has_initialized_defaults?: boolean;
   violation_templates?: ViolationTemplateItem[];
   app_data_dir?: string;
   quick_links?: QuickLinkItem[];
-  [key: string]: unknown;
 }
 
 export interface WindowItem {

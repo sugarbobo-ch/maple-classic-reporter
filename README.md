@@ -1,56 +1,64 @@
-# 新楓之谷：經典版《自動外掛檢舉工具》 v1.3.0 (MapleStory Classic Auto Reporter)
+# 新楓之谷：經典版《自動外掛檢舉工具》 v2.0.0-pre (MapleStory Classic Auto Reporter)
 
-開源桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，快速舉報違規外掛。
+開源桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，快速舉報違規外掛。全新一代採用 **PyWebView + React 18 + TypeScript + Vite** 現代化架構，提供極致流暢之暗色毛玻璃美學介面。
 
 ## 示範影片與詳細教學
 
 - **巴哈姆特詳細教學**：[【攻略】【工具分享】新楓之谷：經典版《自動外掛檢舉工具》附教學](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)
 - **YouTube 示範影片**：[在 YouTube 觀看功能示範影片](https://youtu.be/mF-QPrEjkdE)
+- **專案文件目錄**：[docs/README.md](docs/README.md)
 
 ## 功能
 
-1. **RapidOCR 本機識別**：從程式介面按下「擷取畫面並辨識」或「錄製影片並辨識」，自動辨識遊戲畫面中的疑似外掛角色 ID；RapidOCR 無法使用時會退回 Windows OCR。
-2. **指定視窗自動錄影/截圖**：選擇錄影秒數與 15–60 FPS。採用真實時間動態補幀技術，確保生成的影片總秒數與現實秒數精準 1:1 對應（1.0x 正常播放速度）。
-3. **系統聲音同步錄音 (Audio)**：可勾選同步錄製系統音效/遊戲聲音，採用 WASAPI Loopback 背景擷取並以 PyAV 原生合成為標準 AAC + H.264 MP4 檔案。
-4. **回放緩衝**：可持續保留最近 10–60 秒的遊戲畫面與系統聲音，發現違規時按「儲存最近片段」即可保存事證；最後 5 秒會以每 0.5 秒一張的密度取樣 OCR 截圖，提高事件尾端的辨識機會。
-5. **全域錄影快捷鍵**：使用 Windows 全域快捷鍵，即使 Unity 遊戲視窗在前景仍可儲存回放或開始一般錄影；設定時只需選擇第三個鍵位，`Ctrl` 與 `Shift` 固定。預設為 `Ctrl+Shift+F9` 儲存最近片段、`Ctrl+Shift+F10` 開始一般錄影；F10 錄影中再次按下會取消，不會排入下一次錄影；回放儲存或預覽處理中再次按 F9 會忽略，也不會排隊。錄影進度固定顯示在主畫面左下角狀態列，不會再開啟覆蓋遊戲的視窗。
-6. **倒數與錄影隨時取消**：倒數、一般錄影與回放儲存流程皆可取消；一般錄影中再次按下「錄製影片並辨識」也會取消，並自動清理未完成的暫存檔。錄影期間狀態列會更新倒數／已錄製秒數與進度條，右側「錄影中（點此取消）」及主畫面的灰色「取消錄影」都可立即取消。
-7. **本機 OCR 與候選過濾**：以 RapidOCR 辨識角色 ID 與地圖名稱，搭配地圖目錄、白名單與候選排序降低誤判；辨識流程不會自動上傳整段影片。
-8. **地圖目錄與候選過濾**：針對小地圖、角色名稱、公會／勳章文字做分區辨識、地圖名稱校正、候選排序與白名單過濾，減少誤判。
-9. **事證目的地二選一**：Google Drive 適合官方審查；Discord 適合 10 MiB 內的短片快速分享。
-10. **安全的 Google OAuth 與設定保存**：OAuth refresh token 與 Discord Webhook 使用 Windows DPAPI 保護，不把使用者機密寫入明文設定檔。
-11. **上傳成功確認與安全清理**：只有在雲端上傳及官方表單收到明確成功回應後，才會依設定刪除本機事證，避免誤刪未送出的證據。
-12. **一鍵開啟雲端資料夾與歷史紀錄**：提供 Google Drive 資料夾、事證網址與過往檢舉歷史的快速開啟功能。
-13. **可攜式 onedir 發行版**：Windows 版以 onedir bundle 發行，Chromium、driver 與 RapidOCR 資源隨資料夾提供，不需要安裝 Python、uv 或 Chrome，也不會每次啟動解壓大型 one-file EXE。
+1. **現代化毛玻璃介面 (PyWebView + React 18)**：採用暗色磨砂玻璃設計系統、流暢微動效與即時響應式狀態列。
+2. **RapidOCR 本機識別**：從程式介面按下「擷取畫面並辨識」或「錄製影片並辨識」，自動辨識遊戲畫面中的疑似外掛角色 ID；RapidOCR 無法使用時會退回 Windows OCR。
+3. **指定視窗自動錄影/截圖**：選擇錄影秒數與 15–60 FPS。採用真實時間動態補幀技術，確保生成的影片總秒數與現實秒數精準 1:1 對應（1.0x 正常播放速度）。
+4. **系統聲音同步錄音 (Audio)**：可勾選同步錄製系統音效/遊戲聲音，採用 WASAPI Loopback 背景擷取並以 PyAV 原生合成為標準 AAC + H.264 MP4 檔案。
+5. **回放緩衝 (Replay Buffer)**：可持續保留最近 10–60 秒的遊戲畫面與系統聲音，發現違規時按「儲存最近片段」即可保存事證；最後 5 秒會以每 0.5 秒一張的密度取樣 OCR 截圖，提高事件尾端的辨識機會。
+6. **全域錄影快捷鍵**：使用 Windows 全域快捷鍵，即使 Unity 遊戲視窗在前景仍可儲存回放或開始一般錄影；設定時只需選擇第三個鍵位，`Ctrl` 與 `Shift` 固定。預設為 `Ctrl+Shift+F9` 儲存最近片段、`Ctrl+Shift+F10` 開始一般錄影；F10 錄影中再次按下會取消，不會排入下一次錄影；回放儲存或預覽處理中再次按 F9 會忽略，也不會排隊。錄影進度固定顯示在主畫面左下角狀態列，不會再開啟覆蓋遊戲的視窗。
+7. **倒數與錄影隨時取消**：倒數、一般錄影與回放儲存流程皆可取消；一般錄影中再次按下「錄製影片並辨識」也會取消，並自動清理未完成的暫存檔。錄影期間狀態列會更新倒數／已錄製秒數與進度條，右側「錄影中（點此取消）」及主畫面的灰色「取消錄影」都可立即取消。
+8. **雙區域 OCR 與候選過濾**：針對小地圖、角色名稱、公會／勳章文字做分區辨識、地圖名稱校正、候選排序與白名單過濾，減少誤判。
+9. **官方懲處名單比對 (Sanctions Tracker)**：背景定期快取官方最新停權公告，即時比對涉案外掛是否已被官方封鎖。
+10. **事證目的地二選一**：Google Drive 適合官方審查；Discord 適合 10 MiB 內的短片快速分享。
+11. **安全的 Google OAuth 與設定保存**：OAuth refresh token 與 Discord Webhook 使用 Windows DPAPI 保護，不把使用者機密寫入明文設定檔。
+12. **上傳成功確認與安全清理**：只有在雲端上傳及官方表單收到明確成功回應後，才會依設定刪除本機事證，避免誤刪未送出的證據。
+13. **一鍵開啟雲端資料夾與歷史紀錄**：提供 Google Drive 資料夾、事證網址與過往檢舉歷史的快速開啟功能。
+14. **可攜式 onedir 發行版**：Windows 版以 onedir bundle 發行，Chromium、driver 與 RapidOCR 資源隨資料夾提供，不需要安裝 Python、uv、pnpm 或 Chrome，也不會每次啟動解壓大型 one-file EXE。
 
 ## 快速開始
 
-### 環境需求
-- Windows 10 / 11
+### 環境需求 (開發者)
+- Windows 10 / 11 (x64)
 - Python 3.11+
-- [uv](https://github.com/astral-sh/uv) 包管理器
+- [uv](https://github.com/astral-sh/uv) Python 包管理器
+- [pnpm](https://pnpm.io/) Node.js 套件管理器 (禁用 npm)
 
-下載版使用者不需要安裝 Python、uv、Playwright 或 Chrome；以下安裝步驟只適用於從原始碼執行或自行打包。
+下載版使用者不需要安裝 Python、uv、pnpm、Playwright 或 Chrome；以下安裝步驟只適用於從原始碼執行或自行打包。
 
-### 安裝步驟
+### 安裝與開發步驟
 
 ```bash
-# 1. 複製或進入專案資料夾
+# 1. 進入專案資料夾
 cd d:\Projects\maple-classic-reporter
 
-# 2. 安裝依賴與 Playwright 驅動
+# 2. 前端依賴安裝與編譯 (請務必使用 pnpm)
+cd web
+pnpm install
+pnpm run build
+cd ..
+
+# 3. 後端依賴同步與 Playwright 驅動安裝
 uv sync
 uv run playwright install chromium
 
-# 3. 啟動應用程式
+# 4. 啟動桌面應用程式
 uv run maple-reporter
 ```
 
 ### 打包為可攜式 Windows 發行資料夾（含 Playwright Chromium）
 
 ```bash
-# 會清除 build/ 與舊的 dist/MapleClassicReporter，輸出 onedir 發行資料夾。
-# Playwright driver、Chrome for Testing、RapidOCR ONNX 模型會放在資料夾內。
+# 會自動使用 pnpm 建置前端資源，並清除舊 dist/ 輸出 onedir 發行資料夾
 powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 ```
 

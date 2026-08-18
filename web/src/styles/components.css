@@ -2,6 +2,18 @@
    Base UI Component Styles (Tailwind-Inspired Maple Classic System)
    ========================================================================== */
 
+/* Universal Disabled Cursor Behavior */
+:disabled,
+[disabled],
+.disabled,
+.disabled *,
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed !important;
+}
+
 /* --------------------------------------------------------------------------
    1. Button
    -------------------------------------------------------------------------- */
@@ -30,7 +42,6 @@
 .ui-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  pointer-events: none;
 }
 
 /* Unified Sizing */
@@ -462,6 +473,13 @@
 .ui-dropdown-trigger:focus-visible {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.ui-dropdown-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
 }
 
 .ui-dropdown-value {

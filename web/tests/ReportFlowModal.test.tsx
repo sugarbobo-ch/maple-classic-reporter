@@ -282,5 +282,38 @@ describe('ReportFlowModal evidence selection', () => {
     fireEvent.click(screen.getByText('another_player'));
     expect(suspectInput).toHaveValue('another_player');
   });
+
+  it('shows single warning line with alert icon when suspect ID OCR is disabled', () => {
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="form"
+          config={{
+            ...TEST_CONFIG,
+            ocr_autofill_id: false,
+          }}
+          ocrResults={{
+            status: 'success',
+            suspect_ids: [],
+            map_name: '',
+            ocr_map_name: '',
+            media_path: '',
+            media_type: 'video',
+          }}
+          onClose={vi.fn()}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    const hint = screen.getByTestId('ocr-id-disabled-hint');
+    expect(hint).toBeInTheDocument();
+    expect(hint).toHaveTextContent('已關閉自動辨識角色 ID，請手動輸入');
+
+    const matches = screen.getAllByText(/已關閉自動辨識角色 ID/);
+    expect(matches).toHaveLength(1);
+  });
 });
+
 

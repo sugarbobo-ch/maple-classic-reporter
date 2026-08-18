@@ -17,6 +17,7 @@
   --color-text: #292524; /* stone-800 */
   --color-text-heading: #78350f; /* amber-900 */
   --color-text-secondary: #78716c; /* stone-500 */
+  --color-text-muted: #a8a29e; /* stone-400 */
   --color-brown: #92400e; /* amber-800 */
 
   /* Borders & Dividers */
@@ -96,6 +97,7 @@
   --color-text: #eae4dc; /* soft parchment text */
   --color-text-heading: #e2cbb0; /* soft warm beige title (low saturation, not bright yellow) */
   --color-text-secondary: #a3978b; /* muted warm gray */
+  --color-text-muted: #78716c;
   --color-brown: #c49a6c;
 
   --color-border: #3d352e; /* subtle warm wood border */

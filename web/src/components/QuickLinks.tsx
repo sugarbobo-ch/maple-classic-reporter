@@ -33,7 +33,7 @@ export default function QuickLinks({
   const defaultLinks: QuickLinkItem[] = [
     {
       id: 'official-main',
-      title: '新楓之谷官網',
+      title: '新楓之谷：經典版',
       url: 'https://maplestoryclassic.beanfun.com/Main',
       icon: 'Globe',
       isDefault: true,
@@ -51,16 +51,7 @@ export default function QuickLinks({
 
   return (
     <Card
-      title={
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>快捷連結</span>
-          <span
-            style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', fontWeight: 400 }}
-          >
-            (◂ 左右滑動 ▸)
-          </span>
-        </div>
-      }
+      title="快捷連結"
       titleIcon={Globe}
       headerAction={
         <Button

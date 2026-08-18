@@ -74,15 +74,14 @@ export default function ReportFormSection({
                 data-testid="ocr-map-disabled-hint"
                 style={{
                   display: 'flex',
-                  alignItems: 'flex-start',
+                  alignItems: 'center',
                   gap: '6px',
                   fontSize: '0.78rem',
                   color: 'var(--color-status-warning)',
-                  marginTop: '8px',
-                  lineHeight: 1.45,
+                  lineHeight: 1.3,
                 }}
               >
-                <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
                 <span>
                   尚未啟用地圖 OCR；地圖名稱不會自動辨識，請手動輸入或從歷史紀錄選擇。
                 </span>
@@ -94,7 +93,7 @@ export default function ReportFormSection({
                   style={{
                     fontSize: '0.78rem',
                     color: 'var(--color-text-secondary)',
-                    marginTop: '8px',
+                    marginTop: !mapOcrEnabled ? '4px' : '0px',
                   }}
                 >
                   建議地圖：

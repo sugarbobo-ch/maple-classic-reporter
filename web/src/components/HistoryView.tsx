@@ -22,6 +22,10 @@ import { HistoryRecord, SanctionSyncStatus } from '../types';
 
 export interface HistoryViewProps {
   history?: HistoryRecord[];
+  compactLayout?: boolean;
+  onUpdateCompactLayout?: (compact: boolean) => void;
+  pageSize?: number;
+  onUpdatePageSize?: (size: number) => void;
   onBack: () => void;
   onClearHistory?: () => Promise<boolean>;
   onOpenUrl: (url: string) => void;
@@ -68,6 +72,10 @@ function getPageNumbers(current: number, total: number): (number | '...')[] {
 
 export default function HistoryView({
   history = [],
+  compactLayout,
+  onUpdateCompactLayout,
+  pageSize: propPageSize,
+  onUpdatePageSize,
   onBack,
   onClearHistory,
   onOpenUrl,
@@ -81,9 +89,46 @@ export default function HistoryView({
   const [copiedUrl, setCopiedUrl] = useState('');
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
-  const [isCompact, setIsCompact] = useState(false);
+
+  const [isCompact, setIsCompact] = useState<boolean>(() => {
+    if (typeof compactLayout === 'boolean') return compactLayout;
+    try {
+      const saved = localStorage.getItem('maple_history_compact');
+      if (saved !== null) return saved === 'true';
+    } catch {}
+    return false;
+  });
+
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof propPageSize === 'number' && propPageSize > 0) return propPageSize;
+    try {
+      const saved = localStorage.getItem('maple_history_page_size');
+      if (saved) {
+        const num = Number(saved);
+        if ([10, 15, 30, 50, 100].includes(num)) return num;
+      }
+    } catch {}
+    return 15;
+  });
+
+  const handleToggleCompact = () => {
+    const next = !isCompact;
+    setIsCompact(next);
+    try {
+      localStorage.setItem('maple_history_compact', String(next));
+    } catch {}
+    onUpdateCompactLayout?.(next);
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    try {
+      localStorage.setItem('maple_history_page_size', String(newSize));
+    } catch {}
+    onUpdatePageSize?.(newSize);
+  };
 
   const totalRecords = history.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
@@ -264,7 +309,7 @@ export default function HistoryView({
               variant={isCompact ? 'primary' : 'outline'}
               size="md"
               icon={isCompact ? Rows : LayoutList}
-              onClick={() => setIsCompact((prev) => !prev)}
+              onClick={handleToggleCompact}
               title={isCompact ? '切換為標準排列' : '切換為緊密排列'}
               data-testid="toggle-compact-mode"
             >
@@ -478,10 +523,7 @@ export default function HistoryView({
                   { value: 100, label: '100 筆 / 頁' },
                 ]}
                 value={pageSize}
-                onChange={(val) => {
-                  setPageSize(val);
-                  setCurrentPage(1);
-                }}
+                onChange={handlePageSizeChange}
               />
             </div>
 

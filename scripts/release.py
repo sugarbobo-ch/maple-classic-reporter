@@ -70,16 +70,28 @@ def get_current_version() -> str:
     return match.group(1)
 
 
-def parse_semver(version_str: str) -> tuple[int, int, int]:
+SEMVER_PATTERN = re.compile(
+    r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)"
+    r"(?:-(?P<prerelease>[0-9A-Za-z.-]+))?"
+    r"(?:\+(?P<build>[0-9A-Za-z.-]+))?$"
+)
+
+
+def parse_semver(version_str: str) -> tuple[int, int, int, str | None]:
     clean = version_str.lstrip("v")
-    parts = clean.split(".")
-    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+    match = SEMVER_PATTERN.match(clean)
+    if not match:
         raise ValueError(f"Invalid semver string: '{version_str}'")
-    return int(parts[0]), int(parts[1]), int(parts[2])
+    return (
+        int(match.group("major")),
+        int(match.group("minor")),
+        int(match.group("patch")),
+        match.group("prerelease"),
+    )
 
 
 def calculate_next_version(current: str, bump_type: str) -> str:
-    major, minor, patch = parse_semver(current)
+    major, minor, patch, _ = parse_semver(current)
     if bump_type == "major":
         return f"{major + 1}.0.0"
     if bump_type == "minor":
@@ -112,13 +124,18 @@ def update_all_version_files(new_version: str) -> None:
         rf"\g<1>{new_version}\g<2>",
     )
     update_file_version(
+        ROOT_DIR / "web" / "package.json",
+        r'("version":\s*")[^"]+(")',
+        rf"\g<1>{new_version}\g<2>",
+    )
+    update_file_version(
         README_MD,
-        r"(?m)^(# .*? v)\d+\.\d+\.\d+",
+        r"(?m)^(# .*? v)\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?",
         rf"\g<1>{new_version}",
     )
     update_file_version(
         README_MD,
-        r"(MapleClassicReporter-v)\d+\.\d+\.\d+(-windows-x64\.zip)",
+        r"(MapleClassicReporter-v)\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(-windows-x64\.zip)",
         rf"\g<1>{new_version}\g<2>",
     )
     update_file_version(
@@ -128,7 +145,7 @@ def update_all_version_files(new_version: str) -> None:
     )
     update_file_version(
         CONTEXT_MD,
-        r"(MapleClassicReporter-v)\d+\.\d+\.\d+(-windows-x64\.zip)",
+        r"(MapleClassicReporter-v)\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(-windows-x64\.zip)",
         rf"\g<1>{new_version}\g<2>",
     )
 
@@ -222,7 +239,8 @@ def _assert_tag_does_not_exist(tag_name: str) -> None:
 def create_release_commit_and_tag(new_version: str) -> tuple[str, str]:
     """Stage changes, commit when needed, and create a non-overwriting tag."""
 
-    tag_name = f"v{parse_semver(new_version)[0]}.{parse_semver(new_version)[1]}.{parse_semver(new_version)[2]}"
+    clean_version = new_version.lstrip("v")
+    tag_name = f"v{clean_version}"
     _assert_tag_does_not_exist(tag_name)
     _run_git("add", "-A")
     staged = _run_git("diff", "--cached", "--name-only", capture_output=True).stdout.splitlines()

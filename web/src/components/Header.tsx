@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { History, Minus, Settings, ShieldAlert, Square, Sun, Moon, X } from 'lucide-react';
+import { History, Minus, Settings, Square, Sun, Moon, X } from 'lucide-react';
 import { IconButton, Badge } from './ui';
 import { usePyWebViewEvents, useTheme } from '../hooks';
 import { ViewType } from '../types';
+import appLogo from '../assets/icon.png';
+import { APP_VERSION } from '../constants/version';
 
 function RestoreWindowIcon() {
   return (
@@ -104,21 +106,15 @@ export default function Header({
           onClick={() => setCurrentView('home')}
           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
         >
-          <ShieldAlert size={26} color="var(--color-primary)" />
+          <img
+            src={appLogo}
+            alt="Maple Classic Reporter Logo"
+            className="header-logo"
+          />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="header-title" style={{ fontSize: '1rem', fontWeight: 700 }}>
-                新楓之谷：經典版《自動外掛檢舉工具》
-              </span>
-              <Badge variant="primary" size="sm">
-                v1.3.0
-              </Badge>
-              {isDevMode && (
-                <Badge variant="event" size="sm">
-                  DEV 測試模式
-                </Badge>
-              )}
-            </div>
+            <span className="header-title" style={{ fontSize: '1rem', fontWeight: 700 }}>
+              新楓之谷：經典版《自動外掛檢舉工具》
+            </span>
             <span
               style={{
                 fontSize: '0.72rem',
@@ -130,6 +126,17 @@ export default function Header({
             >
               Maple Classic Reporter
             </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+            <Badge variant="primary" size="sm">
+              v{APP_VERSION}
+            </Badge>
+            {isDevMode && (
+              <Badge variant="event" size="sm">
+                DEV 測試模式
+              </Badge>
+            )}
           </div>
         </div>
       </div>

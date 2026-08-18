@@ -41,13 +41,14 @@ export default function App() {
   ]);
 
   const [audioDevices, setAudioDevices] = useState<AudioDeviceItem[]>([
-    { id: '', name: '系統預設 (Realtek Digital Output)' },
+    { id: '', name: '系統預設' },
   ]);
 
   const [history, setHistory] = useState<HistoryRecord[]>(DEFAULT_MOCK_HISTORY);
   const [sanctionSyncStatus, setSanctionSyncStatus] = useState<SanctionSyncStatus | null>(null);
   const [isCheckingSanctions, setIsCheckingSanctions] = useState<boolean>(false);
   const [lastCompleteSyncAt, setLastCompleteSyncAt] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
 
   // Status & modal states
   const [statusState, setStatusState] = useState<StatusState>('idle');
@@ -227,6 +228,7 @@ export default function App() {
         data?.summary?.last_complete_sync_at;
       if (syncAt) {
         setLastCompleteSyncAt(syncAt);
+        updateConfig('last_complete_sync_at', syncAt);
       }
 
       // Toast summary decisions
@@ -307,7 +309,11 @@ export default function App() {
         }
       } catch (e) {
         console.warn('PyWebView API initialization error:', e);
+      } finally {
+        setIsInitializing(false);
       }
+    } else {
+      setTimeout(() => setIsInitializing(false), 200);
     }
   }, [setConfig]);
 
@@ -686,6 +692,7 @@ export default function App() {
         if (res) {
           if (res.status?.last_complete_sync_at) {
             setLastCompleteSyncAt(res.status.last_complete_sync_at);
+            updateConfig('last_complete_sync_at', res.status.last_complete_sync_at);
           }
           if (res.started && res.status) {
             setSanctionSyncStatus(res.status);
@@ -717,7 +724,9 @@ export default function App() {
       setTimeout(() => {
         setIsCheckingSanctions(false);
         setSanctionSyncStatus(null);
-        setLastCompleteSyncAt(new Date().toISOString());
+        const mockNow = new Date().toISOString();
+        setLastCompleteSyncAt(mockNow);
+        updateConfig('last_complete_sync_at', mockNow);
         toast.success('制裁狀態檢查完成 (Mock)', '已比對最新官方制裁公告名單');
       }, 1200);
     }
@@ -955,6 +964,7 @@ export default function App() {
               config={config}
               windows={windows}
               audioDevices={audioDevices}
+              isInitializing={isInitializing}
               onUpdateConfig={updateConfig}
               onUpdateConfigBatch={updateConfigBatch}
               onRefreshWindows={handleRefreshWindows}
@@ -1020,13 +1030,17 @@ export default function App() {
           /* Keep backend history authoritative for both the history view and form suggestions. */
           <HistoryView
             history={history}
+            compactLayout={typeof config.history_compact_layout === 'boolean' ? config.history_compact_layout : false}
+            onUpdateCompactLayout={(compact) => updateConfig('history_compact_layout', compact)}
+            pageSize={typeof config.history_page_size === 'number' ? config.history_page_size : 15}
+            onUpdatePageSize={(size) => updateConfig('history_page_size', size)}
             onBack={() => setCurrentView('home')}
             onClearHistory={handleClearHistory}
             onOpenUrl={handleOpenUrl}
             onCheckSanctions={handleCheckSanctions}
             isCheckingSanctions={isCheckingSanctions}
             sanctionSyncStatus={sanctionSyncStatus}
-            lastCompleteSyncAt={lastCompleteSyncAt}
+            lastCompleteSyncAt={lastCompleteSyncAt || (typeof config.last_complete_sync_at === 'string' ? config.last_complete_sync_at : null)}
           />
         )}
       </main>

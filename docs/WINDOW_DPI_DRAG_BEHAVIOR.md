@@ -194,7 +194,7 @@ IDLE
 ```powershell
 rtk uv run pytest tests/test_native_window.py tests/test_pywebview_bridge.py -q
 cd web
-rtk npm run build
+rtk pnpm run build
 rtk rg -n -F "app-header-drag-region pywebview-drag-region" src/components/Header.tsx
 ```
 

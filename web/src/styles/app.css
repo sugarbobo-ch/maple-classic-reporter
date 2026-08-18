@@ -174,9 +174,17 @@ body {
 }
 
 .header-logo {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  transition: filter 0.2s ease;
+}
+
+[data-theme='dark'] .header-logo {
+  /* Crisp, clean light glow without excessive blur */
+  filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.75));
 }
 
 .header-title {

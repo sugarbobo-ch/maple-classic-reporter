@@ -24,12 +24,24 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install uv
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: "web/pnpm-lock.yaml"
+
+      - name: Install locked Python dependencies
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - name: Install locked dependencies
+      - name: Sync uv environment
         run: uv sync --frozen
 
       - name: Inject release-only OAuth resource
@@ -119,6 +131,7 @@ jobs:
         with:
           files: dist/*.zip
           body_path: ${{ steps.release-notes.outputs.notes_path }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: false
 
       - name: Create GitHub release with generated notes
@@ -126,4 +139,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true

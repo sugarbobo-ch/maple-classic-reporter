@@ -19,7 +19,8 @@ describe('StatusBar component', () => {
     expect(screen.getByText('立體聲混音')).toBeInTheDocument();
     expect(screen.getByText('MapleStory')).toBeInTheDocument();
     expect(screen.getByText('2560 × 1440')).toBeInTheDocument();
-    expect(screen.getByText('1440p 60 FPS')).toBeInTheDocument();
+    expect(screen.getByTestId('status-quality')).toHaveTextContent('1440p');
+    expect(screen.getByTestId('status-quality')).toHaveTextContent('60 FPS');
     expect(screen.queryByText('REC')).not.toBeInTheDocument();
   });
 

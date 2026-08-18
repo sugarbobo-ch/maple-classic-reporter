@@ -1,6 +1,7 @@
 import { ExternalLink, FileText, FolderOpen } from 'lucide-react';
 import { Button, Badge, Switch } from '../ui';
 import { AppConfig } from '../../types';
+import { APP_VERSION } from '../../constants/version';
 
 export interface AboutTabProps {
   config: AppConfig;
@@ -26,7 +27,7 @@ export default function AboutTab({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <strong>Maple Classic Reporter</strong>
-          <Badge variant="success">v1.3.0 最新版</Badge>
+          <Badge variant="success">v{APP_VERSION} 最新版</Badge>
         </div>
         <Button
           variant="outline"

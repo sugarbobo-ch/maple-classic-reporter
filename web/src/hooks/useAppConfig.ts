@@ -5,7 +5,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   default_server: '雪吉拉',
   default_map: '',
   default_note: '自動打怪/外掛行為',
-  selected_window_title: '新楓之谷：經典版 (1920x1080)',
+  selected_window_title: '新楓之谷：經典版',
   record_duration_sec: 8,
   record_fps: 20,
   record_countdown_sec: 0,
@@ -27,10 +27,14 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   form_submit_headless: true,
   dev_mode: false,
   auto_check_sanction_status: true,
+  theme: 'light',
+  history_compact_layout: false,
+  history_page_size: 15,
+  last_complete_sync_at: '',
   quick_links: [
     {
       id: 'official-main',
-      title: '新楓之谷官網',
+      title: '新楓之谷：經典版',
       url: 'https://maplestoryclassic.beanfun.com/Main',
       icon: 'Globe',
       isDefault: true,
@@ -89,7 +93,7 @@ export function useAppConfig() {
 
   // Update a single config item and auto-persist to backend
   const updateConfig = useCallback(
-    async (key: keyof AppConfig, value: unknown) => {
+    async (key: keyof AppConfig | string, value: unknown) => {
       const previousConfig = config;
       setConfig((prev) => ({
         ...prev,
@@ -122,7 +126,7 @@ export function useAppConfig() {
       if (window.pywebview && window.pywebview.api) {
         try {
           setSaveError(null);
-          const saved = await window.pywebview.api.save_config_all(nextConfig);
+          const saved = await window.pywebview.api.save_config_all(nextConfig as any);
           if (!saved) throw new Error('後端拒絕儲存設定');
         } catch (err) {
           console.error('Failed to save config batch:', err);
@@ -143,7 +147,7 @@ export function useAppConfig() {
     if (window.pywebview && window.pywebview.api) {
       try {
         setSaveError(null);
-        const saved = await window.pywebview.api.save_config_all(newConfig);
+        const saved = await window.pywebview.api.save_config_all(newConfig as any);
         if (!saved) throw new Error('後端拒絕儲存設定');
       } catch (err) {
         console.error('Failed to batch save config:', err);

@@ -8,6 +8,7 @@ export interface QuickSettingsProps {
   config: AppConfig;
   windows?: WindowItem[];
   audioDevices?: AudioDeviceItem[];
+  isInitializing?: boolean;
   onUpdateConfig: (key: string, value: unknown) => void;
   onUpdateConfigBatch?: (updates: Partial<AppConfig>) => void;
   onRefreshWindows?: () => void;
@@ -19,6 +20,7 @@ export default function QuickSettings({
   config,
   windows = [],
   audioDevices = [],
+  isInitializing = false,
   onUpdateConfig,
   onUpdateConfigBatch,
   onRefreshWindows,
@@ -97,8 +99,28 @@ export default function QuickSettings({
     onUpdateConfig('recording_preset', matched);
   };
 
+  const matchedWindowOption = windowOptions.find(
+    (opt) =>
+      opt.value === config.selected_window_title ||
+      (config.selected_window_title &&
+        (opt.value.includes(config.selected_window_title) ||
+          config.selected_window_title.includes(opt.value)))
+  );
+  const selectedWindowValue = matchedWindowOption
+    ? matchedWindowOption.value
+    : windowOptions[0]?.value || '';
+
+  const matchedAudioOption = audioOptions.find(
+    (opt) =>
+      opt.value === config.audio_output_device_id ||
+      (Boolean(!config.audio_output_device_id) && (opt.value === '' || opt.value === 'default'))
+  );
+  const selectedAudioValue = matchedAudioOption
+    ? matchedAudioOption.value
+    : audioOptions[0]?.value || '';
+
   const currentWindowTitle =
-    config.selected_window_title || (windowOptions[0] ? windowOptions[0].value : '');
+    selectedWindowValue || config.selected_window_title || (windowOptions[0] ? windowOptions[0].value : '');
   const isMapleDetected = Boolean(
     currentWindowTitle &&
       (currentWindowTitle.includes('新楓之谷') ||
@@ -148,9 +170,9 @@ export default function QuickSettings({
             >
               <Monitor
                 size={14}
-                color={isMapleDetected ? 'var(--color-primary)' : 'var(--color-text-muted)'}
+                color={isMapleDetected ? 'var(--color-primary)' : 'currentColor'}
                 style={{
-                  color: isMapleDetected ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                  color: isMapleDetected ? 'var(--color-primary)' : 'inherit',
                 }}
               />
               <span>截圖視窗</span>
@@ -161,17 +183,26 @@ export default function QuickSettings({
               )}
             </label>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'center',
+              opacity: isInitializing ? 0.45 : 1,
+              transition: 'opacity 0.2s ease',
+            }}
+          >
             <div style={{ flex: 1, minWidth: 0 }}>
               <Dropdown
+                disabled={isInitializing}
+                placeholder={isInitializing ? '正在偵測遊戲視窗...' : '請選擇遊戲視窗...'}
                 options={windowOptions}
-                value={
-                  config.selected_window_title || (windowOptions[0] ? windowOptions[0].value : '')
-                }
+                value={selectedWindowValue}
                 onChange={(val) => onUpdateConfig('selected_window_title', val)}
               />
             </div>
             <IconButton
+              disabled={isInitializing}
               icon={RefreshCw}
               size="md"
               variant="outline"
@@ -212,13 +243,14 @@ export default function QuickSettings({
               }}
             >
               {config.record_audio !== false ? (
-                <Volume2 size={14} style={{ color: 'var(--color-primary)' }} />
+                <Volume2 size={14} color="var(--color-primary)" style={{ color: 'var(--color-primary)' }} />
               ) : (
-                <VolumeX size={14} style={{ color: 'var(--color-text-muted)' }} />
+                <VolumeX size={14} color="var(--color-text-secondary)" style={{ color: 'var(--color-text-secondary)' }} />
               )}
               <span>同步錄音</span>
             </label>
             <Switch
+              disabled={isInitializing}
               checked={config.record_audio !== false}
               onChange={(checked) => onUpdateConfig('record_audio', checked)}
               title="啟用或關閉同步錄製遊戲聲音"
@@ -229,20 +261,21 @@ export default function QuickSettings({
               display: 'flex',
               gap: '8px',
               alignItems: 'center',
-              opacity: config.record_audio !== false ? 1 : 0.45,
+              opacity: isInitializing || config.record_audio === false ? 0.45 : 1,
               transition: 'opacity 0.2s ease',
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <Dropdown
-                disabled={config.record_audio === false}
+                disabled={isInitializing || config.record_audio === false}
+                placeholder={isInitializing ? '正在偵測音訊裝置...' : '請選擇音訊裝置...'}
                 options={audioOptions}
-                value={config.audio_output_device_id || ''}
+                value={selectedAudioValue}
                 onChange={(val) => onUpdateConfig('audio_output_device_id', val)}
               />
             </div>
             <IconButton
-              disabled={config.record_audio === false}
+              disabled={isInitializing || config.record_audio === false}
               icon={RefreshCw}
               size="md"
               variant="outline"
@@ -253,10 +286,7 @@ export default function QuickSettings({
           <div
             style={{
               fontSize: '0.75rem',
-              color:
-                config.record_audio !== false
-                  ? 'var(--color-text-secondary)'
-                  : 'var(--color-text-muted)',
+              color: 'var(--color-text-secondary)',
               marginTop: '4px',
               lineHeight: '1.4',
               display: 'flex',

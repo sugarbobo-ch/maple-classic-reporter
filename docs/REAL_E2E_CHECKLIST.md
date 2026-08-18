@@ -2,11 +2,11 @@
 
 這份清單把 mock 測試與真實環境驗證分開。不要把測試 fixture、使用者錄影目錄或使用者設定檔混用。
 
-## 已可在本機自動驗證
+## 1. 自動化測試邊界
 
-- [x] `cd web; npm test`：React UI、mock PyWebView API、歷史連結、Drive 狀態、設定 rollback、剪輯路徑、提交失敗保留表單。
-- [x] `cd web; npm run test:types`：React 測試與 production source 型別。
-- [x] `uv run python -m unittest discover -s tests -b -q`：Python 單元／bridge／native／影片編輯／API 契約。
+- [x] `cd web; pnpm test`：React UI、mock PyWebView API、歷史連結、Drive 狀態、設定 rollback、剪輯路徑、提交失敗保留表單。
+- [x] `cd web; pnpm run test:types`：React 測試與 production source 型別。
+- [x] `uv run pytest`：後端合約、錄影真實補幀、WASAPI 音訊 fallback、DPAPI 邊界、SurveyCake 填表、雙區域 OCR、白名單過濾、全域熱鍵、onedir 執行檔資源路徑。
 - [x] `powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1`：React production build + PyInstaller onedir + 真實 OAuth client 資源檢查。
 - [x] `uv run python scripts/verify_release_bundle.py --launch-smoke`：不開 GUI、不呼叫第三方服務的 frozen bundle smoke。
 

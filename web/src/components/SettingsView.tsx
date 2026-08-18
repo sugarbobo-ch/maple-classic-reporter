@@ -72,7 +72,7 @@ export default function SettingsView({
   const defaultInitialLinks: QuickLinkItem[] = [
     {
       id: 'official-main',
-      title: '新楓之谷官網',
+      title: '新楓之谷：經典版',
       url: 'https://maplestoryclassic.beanfun.com/Main',
       icon: 'Globe',
       isDefault: true,

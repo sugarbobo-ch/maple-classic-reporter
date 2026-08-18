@@ -122,6 +122,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "form_submit_headless": True,
     "dev_mode": False,
     "auto_check_sanction_status": True,
+    "theme": "light",
+    "history_compact_layout": False,
+    "history_page_size": 15,
+    "last_complete_sync_at": "",
     "quick_links": DEFAULT_QUICK_LINKS,
 }
 

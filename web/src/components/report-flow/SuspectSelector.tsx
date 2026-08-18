@@ -1,4 +1,4 @@
-import { Clipboard, ShieldCheck, Check } from 'lucide-react';
+import { Clipboard, ShieldCheck, Check, AlertCircle } from 'lucide-react';
 import { Input, Button } from '../ui';
 import { OcrResultData } from '../../types';
 
@@ -31,16 +31,18 @@ export default function SuspectSelector({
   onCancelWhitelistMode,
   onFinishWhitelistMode,
 }: SuspectSelectorProps) {
+  const hasCandidates = Boolean(ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0);
+
   const getSubtext = () => {
     if (whitelistMode) {
       return '選擇白名單：點選要排除的名稱；加入後，往後辨識將自動略過。';
     }
     if (!idOcrEnabled) {
-      return ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0
+      return hasCandidates
         ? 'OCR 辨識結果：已關閉自動填入，點選下方名稱可帶入角色 ID。'
-        : '（已關閉自動辨識角色 ID，請手動輸入）';
+        : '已關閉自動辨識角色 ID，請手動輸入';
     }
-    if (ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0) {
+    if (hasCandidates) {
       return suspectId
         ? 'OCR 辨識結果：已自動填入首選角色 ID，點選下方名稱可快速替換。'
         : 'OCR 辨識結果：點選下方名稱即可帶入角色 ID。';
@@ -71,74 +73,86 @@ export default function SuspectSelector({
       </div>
 
       {/* Suggestions Chips Area */}
-      <div style={{ marginTop: '2px' }}>
-        {subtext && (
-          <div
-            style={{
-              fontSize: '0.78rem',
-              color: whitelistMode
-                ? 'var(--color-status-success)'
-                : !idOcrEnabled
-                  ? 'var(--color-status-warning)'
-                  : 'var(--color-text-secondary)',
-              marginBottom: '6px',
-              fontWeight: whitelistMode ? 700 : 400,
-            }}
-          >
-            {subtext}
-          </div>
-        )}
+      {(subtext || hasCandidates || idOcrEnabled) && (
+        <div>
+          {subtext && (
+            <div
+              role={!idOcrEnabled && !whitelistMode ? 'status' : undefined}
+              data-testid={!idOcrEnabled && !whitelistMode ? 'ocr-id-disabled-hint' : undefined}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.78rem',
+                color: whitelistMode
+                  ? 'var(--color-status-success)'
+                  : !idOcrEnabled
+                    ? 'var(--color-status-warning)'
+                    : 'var(--color-text-secondary)',
+                marginBottom: hasCandidates ? '6px' : '0px',
+                lineHeight: 1.3,
+                fontWeight: whitelistMode ? 700 : 400,
+              }}
+            >
+              {!idOcrEnabled && !whitelistMode && (
+                <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
+              )}
+              <span>{subtext}</span>
+            </div>
+          )}
 
-        <div className={`chip-group ${whitelistMode ? 'whitelist-mode' : ''}`}>
-          {ocrResults.suspect_ids && ocrResults.suspect_ids.length > 0 ? (
-            ocrResults.suspect_ids.map((id, idx) => {
-              const isAlreadyWhitelisted = existingWhitelist.includes(id);
-              const isSelectedForWhitelist = selectedForWhitelist.includes(id);
-              const isCurrentInputMatch = suspectId === id;
+          {hasCandidates ? (
+            <div className={`chip-group ${whitelistMode ? 'whitelist-mode' : ''}`}>
+              {ocrResults.suspect_ids.map((id, idx) => {
+                const isAlreadyWhitelisted = existingWhitelist.includes(id);
+                const isSelectedForWhitelist = selectedForWhitelist.includes(id);
+                const isCurrentInputMatch = suspectId === id;
 
-              if (whitelistMode) {
+                if (whitelistMode) {
+                  return (
+                    <div
+                      key={idx}
+                      className={`chip whitelist-chip ${isAlreadyWhitelisted ? 'disabled' : ''} ${
+                        isSelectedForWhitelist ? 'success' : ''
+                      }`}
+                      onClick={() => onToggleWhitelistChip(id)}
+                    >
+                      {isSelectedForWhitelist && <Check size={12} />}
+                      <span>{id}</span>
+                      {isAlreadyWhitelisted && (
+                        <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>(已加入)</span>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={idx}
-                    className={`chip whitelist-chip ${isAlreadyWhitelisted ? 'disabled' : ''} ${
-                      isSelectedForWhitelist ? 'success' : ''
-                    }`}
-                    onClick={() => onToggleWhitelistChip(id)}
+                    className={`chip ${isCurrentInputMatch ? 'active' : ''}`}
+                    onClick={() => onSuspectIdChange(id)}
                   >
-                    {isSelectedForWhitelist && <Check size={12} />}
-                    <span>{id}</span>
-                    {isAlreadyWhitelisted && (
-                      <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>(已加入)</span>
-                    )}
+                    {id}
                   </div>
                 );
-              }
-
-              return (
-                <div
-                  key={idx}
-                  className={`chip ${isCurrentInputMatch ? 'active' : ''}`}
-                  onClick={() => onSuspectIdChange(id)}
-                >
-                  {id}
-                </div>
-              );
-            })
+              })}
+            </div>
           ) : (
-            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-              {!idOcrEnabled
-                ? '(已關閉自動辨識角色 ID，請手動輸入)'
-                : '(未辨識到角色 ID，請手動輸入)'}
-            </span>
+            idOcrEnabled && (
+              <div className="chip-group">
+                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+                  (未辨識到角色 ID，請手動輸入)
+                </span>
+              </div>
+            )
           )}
         </div>
-      </div>
+      )}
 
       {/* Whitelist Action Toolbar at Bottom of Section */}
       <div
         style={{
-          marginTop: '4px',
-          paddingTop: '8px',
+          paddingTop: '6px',
           borderTop: '1px dashed var(--color-border)',
           display: 'flex',
           alignItems: 'center',

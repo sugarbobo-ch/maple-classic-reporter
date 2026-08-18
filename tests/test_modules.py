@@ -36,7 +36,7 @@ class TestMapleReporter(unittest.TestCase):
         self.assertIsInstance(cfg["ocr_autofill_map"], bool)
 
     def test_ocr_autofill_map_switch_persists_without_user_config(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             temp_root = Path(temp_dir)
             config_dir = temp_root / "config"
 

@@ -72,6 +72,30 @@ export default function StatusBar({
       : recordingTime / Math.max(1, totalRecordingDuration)
     : 0;
 
+  const renderQualityValue = (val: string) => {
+    const match = val.match(/^(\d+p)\s*(?:[·|/]\s*)?(\d+\s*FPS)$/i);
+    if (match) {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <span>{match[1]}</span>
+          <span
+            style={{
+              display: 'inline-block',
+              width: '1px',
+              height: '11px',
+              backgroundColor: 'var(--color-border-strong)',
+              margin: '0 6px',
+              verticalAlign: 'middle',
+              opacity: 0.6,
+            }}
+          />
+          <span>{match[2]}</span>
+        </span>
+      );
+    }
+    return val;
+  };
+
   return (
     <div className="status-bar">
       {/* Top Active Progress Bar Strip (聲音來源上方) */}
@@ -106,7 +130,9 @@ export default function StatusBar({
         </div>
         <div className="status-detail-item">
           <span className="status-detail-label">錄影品質</span>
-          <span className="status-detail-value">{quality}</span>
+          <span className="status-detail-value" data-testid="status-quality" title={quality}>
+            {renderQualityValue(quality)}
+          </span>
         </div>
       </div>
 

@@ -25,12 +25,12 @@ Push-Location $projectRoot
 try {
     Push-Location (Join-Path $projectRoot "web")
     try {
-        & npm ci --no-audit --no-fund
+        & pnpm install --frozen-lockfile
         if ($LASTEXITCODE -ne 0) {
             throw "React dependency installation failed with exit code $LASTEXITCODE."
         }
 
-        & npm run build
+        & pnpm run build
         if ($LASTEXITCODE -ne 0) {
             throw "React production build failed with exit code $LASTEXITCODE."
         }
