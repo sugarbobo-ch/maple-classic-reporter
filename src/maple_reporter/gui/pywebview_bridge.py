@@ -20,6 +20,7 @@ import mimetypes
 from pathlib import Path
 import shutil
 from typing import Any
+import urllib.parse
 
 import numpy as np
 import webview
