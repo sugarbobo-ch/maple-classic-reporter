@@ -39,7 +39,7 @@ from maple_reporter.ocr.ocr_providers import (
 
 LOGGER = logging.getLogger(__name__)
 _MAP_LABELS = ("小地圖", "小地畫", "小地图", "小地画")
-_MAP_NOISE = [*_MAP_LABELS, "NEWS", "NEW", "Pup", "Pdn", "HP", "MP", "EXP", "LV"]
+_MAP_NOISE = [*_MAP_LABELS, "NEWS", "NEW", "Pup", "Pdn", "HP", "MP", "EXP", "LV", "AUTO"]
 _GUILD_MEDAL_EXCLUSION_PX = 60
 _BOTTOM_UI_CROP_Y = 0.91
 

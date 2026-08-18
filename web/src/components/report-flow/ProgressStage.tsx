@@ -115,7 +115,6 @@ export default function ProgressStage({
               ? '分析完成，載入回報表單中...'
               : `正在分析關鍵畫面... (${progressPercent}%)`)}
           </span>
-          <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>可隨時略過</span>
         </div>
         <div
           style={{
