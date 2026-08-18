@@ -128,7 +128,7 @@ export default function Header({
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '-2px' }}>
             <Badge variant="primary" size="sm">
               v{APP_VERSION}
             </Badge>

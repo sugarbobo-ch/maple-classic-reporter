@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 import threading
@@ -173,8 +174,14 @@ def capture_monitor_frame(
 RollingAudioRecorder = LoopbackAudioRecorder
 
 
-def _create_optimized_h264_stream(container, width: int, height: int, fps: int):
-    """Create H.264 video stream trying hardware encoders first with ultrafast CPU fallback."""
+_WORKING_H264_ENCODER_CACHE: Optional[tuple[str, dict[str, str]]] = None
+
+
+def _get_working_h264_encoder(fps: int = 30) -> tuple[str, dict[str, str]]:
+    global _WORKING_H264_ENCODER_CACHE
+    if _WORKING_H264_ENCODER_CACHE is not None:
+        return _WORKING_H264_ENCODER_CACHE
+
     candidates = [
         ("h264_nvenc", {"preset": "p1", "tune": "ull"}),
         ("h264_qsv", {}),
@@ -186,22 +193,36 @@ def _create_optimized_h264_stream(container, width: int, height: int, fps: int):
         if codec not in getattr(av, "codecs_available", set()):
             continue
         try:
-            stream = container.add_stream(codec, rate=fps)
-            stream.width = width
-            stream.height = height
-            stream.pix_fmt = "yuv420p"
+            buf = io.BytesIO()
+            test_container = av.open(buf, mode="w", format="mp4")
+            test_stream = test_container.add_stream(codec, rate=fps)
+            test_stream.width = 64
+            test_stream.height = 64
+            test_stream.pix_fmt = "yuv420p"
             if options:
-                stream.options = options
-            return stream
+                test_stream.options = options
+            test_stream.codec_context.open()
+            test_container.close()
+            _WORKING_H264_ENCODER_CACHE = (codec, options)
+            LOGGER.info("Selected H.264 encoder: %s", codec)
+            return _WORKING_H264_ENCODER_CACHE
         except Exception as error:
-            LOGGER.debug("Video encoder %s failed to initialize (%s)", codec, error)
+            LOGGER.debug("Encoder candidate %s not supported (%s)", codec, error)
             continue
 
-    stream = container.add_stream("h264", rate=fps)
+    _WORKING_H264_ENCODER_CACHE = ("h264", {"preset": "ultrafast"})
+    return _WORKING_H264_ENCODER_CACHE
+
+
+def _create_optimized_h264_stream(container, width: int, height: int, fps: int):
+    """Create H.264 video stream using probed working encoder with CPU fallback."""
+    codec, options = _get_working_h264_encoder(fps)
+    stream = container.add_stream(codec, rate=fps)
     stream.width = width
     stream.height = height
     stream.pix_fmt = "yuv420p"
-    stream.options = {"preset": "ultrafast"}
+    if options:
+        stream.options = options
     return stream
 
 
