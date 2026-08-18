@@ -198,6 +198,7 @@ class TestPyWebViewBridge(unittest.TestCase):
     def test_set_clipboard_text_uses_native_clipboard(self, mock_write_clipboard):
         self.assertTrue(self.bridge.set_clipboard_text("https://drive.google.com/test"))
         mock_write_clipboard.assert_called_once_with("https://drive.google.com/test")
+
     def test_window_controls_delegate_to_webview(self):
         window = MagicMock()
         self.bridge._window = window
@@ -225,6 +226,16 @@ class TestPyWebViewBridge(unittest.TestCase):
 
         window_handle.assert_called_once_with(self.bridge._window)
         native_resize.assert_called_once_with(5678, "bottom-right")
+
+    @patch("maple_reporter.gui.pywebview_bridge.begin_native_resize", return_value=True)
+    def test_resize_window_blocks_when_maximized(self, native_resize):
+        self.bridge._window = MagicMock()
+        self.bridge._window_maximized = True
+
+        with patch("maple_reporter.gui.pywebview_bridge.os.name", "nt"):
+            self.assertFalse(self.bridge.resize_window("bottom-right"))
+
+        native_resize.assert_not_called()
 
     @patch("maple_reporter.gui.pywebview_bridge.prepare_native_drag", return_value=True)
     @patch("maple_reporter.gui.pywebview_bridge._window_handle", return_value=5678)

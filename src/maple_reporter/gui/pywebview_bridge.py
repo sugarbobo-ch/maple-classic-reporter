@@ -64,6 +64,7 @@ from maple_reporter.gui.history_controller import HistoryController
 from maple_reporter.gui.media_server import LocalMediaServer, _RangeMediaRequestHandler
 from maple_reporter.gui.native_window import (
     _window_handle,
+    begin_native_drag,
     begin_native_resize,
     move_window_by_drag_delta,
     prepare_native_drag,
@@ -139,6 +140,7 @@ __all__ = [
     "order_window_candidates",
     "record_short_video",
     "select_preferred_window_title",
+    "begin_native_drag",
     "begin_native_resize",
     "_window_handle",
     "prepare_native_drag",

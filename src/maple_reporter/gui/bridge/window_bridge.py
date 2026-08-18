@@ -50,6 +50,10 @@ class WindowBridgeMixin:
 
     def handle_window_restored(self) -> None:
         """Keep the React title-bar state in sync with native restore events."""
+        mod = _bridge_mod()
+        hwnd = mod._window_handle(self._window) if getattr(self, "_window", None) else None
+        if hwnd and hasattr(mod, "restore_native_window"):
+            mod.restore_native_window(hwnd)
         self._set_window_maximized_state(False)
 
     def minimize_window(self) -> bool:
@@ -67,12 +71,16 @@ class WindowBridgeMixin:
         """Toggle between maximized and restored window state."""
         if not getattr(self, "_window", None):
             return getattr(self, "_window_maximized", False)
+        mod = _bridge_mod()
+        hwnd = mod._window_handle(self._window)
         try:
             should_maximize = not self._window_maximized
             if should_maximize:
                 self._window.maximize()
             else:
                 self._window.restore()
+                if hwnd and hasattr(mod, "restore_native_window"):
+                    mod.restore_native_window(hwnd)
             self._window_maximized = should_maximize
         except Exception as err:
             LOGGER.warning("Failed to toggle window maximized state: %s", err)
@@ -106,6 +114,8 @@ class WindowBridgeMixin:
         """Initiate native Windows window resizing in the specified direction on mousedown."""
         mod = _bridge_mod()
         if not getattr(self, "_window", None) or mod.os.name != "nt":
+            return False
+        if getattr(self, "_window_maximized", False):
             return False
 
         try:

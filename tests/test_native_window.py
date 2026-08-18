@@ -13,10 +13,16 @@ from maple_reporter.gui.native_window import (
     calculate_restored_grab_offset,
     calculate_resize_hit_test,
     calculate_resize_metrics,
+    calculate_snap_restore_rect,
     calculate_window_hit_test,
+    check_and_snap_to_top,
+    is_cursor_at_screen_top,
     move_window_by_drag_delta,
     prepare_native_drag,
     preserve_window_size_on_dpi_change,
+    restore_native_window,
+    set_window_app_user_model_id_property,
+    set_window_identity,
 )
 
 
@@ -29,6 +35,10 @@ class TestNativeWindow(unittest.TestCase):
         native_window._ACTIVE_DPI_DRAG_GEOMETRY.clear()
         native_window._ACTIVE_DRAG_ANCHOR_RATIOS.clear()
         native_window._DPI_DRAG_RELEASE_DEADLINES.clear()
+        native_window._ACTIVE_DRAG_MOVED.clear()
+        native_window._PRE_DRAG_NORMAL_RECTS.clear()
+        native_window._PENDING_MAXIMIZED_DRAG.clear()
+        native_window._SAVED_RESTORE_BOUNDS.clear()
         native_window._WINDOW_ICON_HANDLES.clear()
 
     def test_resize_hit_test_covers_edges_and_all_corners(self):
@@ -140,6 +150,7 @@ class TestNativeWindow(unittest.TestCase):
             return True
 
         user32.GetWindowRect.side_effect = get_window_rect
+        user32.IsZoomed.return_value = False
         self.assertTrue(move_window_by_drag_delta(1234, 10, -4))
         user32.SetWindowPos.assert_called_once_with(
             1234,
@@ -174,6 +185,7 @@ class TestNativeWindow(unittest.TestCase):
     def test_begin_native_resize_starts_a_non_client_sizing_loop(
         self, cursor_position, user32
     ):
+        user32.IsZoomed.return_value = False
         self.assertTrue(begin_native_resize(1234, "bottom-right"))
 
         user32.ReleaseCapture.assert_called_once_with()
@@ -186,10 +198,19 @@ class TestNativeWindow(unittest.TestCase):
         cursor_position.assert_called_once_with(user32)
 
     @patch("maple_reporter.gui.native_window._user32")
+    def test_begin_native_resize_blocks_when_maximized(self, user32):
+        user32.IsZoomed.return_value = True
+        for direction in ("left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"):
+            with self.subTest(direction=direction):
+                self.assertFalse(begin_native_resize(1234, direction))
+        user32.PostMessageW.assert_not_called()
+
+    @patch("maple_reporter.gui.native_window._user32")
     @patch("maple_reporter.gui.native_window._get_cursor_position", return_value=(321, 654))
     def test_begin_native_drag_starts_a_caption_loop_for_windows_snap(
         self, cursor_position, user32
     ):
+        user32.IsZoomed.return_value = False
         self.assertTrue(begin_native_drag(1234))
 
         user32.ReleaseCapture.assert_called_once_with()
@@ -247,7 +268,7 @@ class TestNativeWindow(unittest.TestCase):
         "maple_reporter.gui.native_window._get_cursor_position",
         return_value=(6200, 36),
     )
-    def test_prepare_native_drag_restores_maximized_window_around_cursor_anchor(
+    def test_prepare_native_drag_defers_restore_until_drag_movement(
         self, _cursor_position, user32
     ):
         def get_window_rect(_hwnd, rect_pointer):
@@ -262,13 +283,14 @@ class TestNativeWindow(unittest.TestCase):
         native_window._WINDOW_LOGICAL_SIZE[hwnd] = (1040.0, 571.2)
 
         self.assertTrue(prepare_native_drag(hwnd, "right"))
+        # Must not restore immediately on mousedown
+        user32.ShowWindow.assert_not_called()
+        self.assertEqual(native_window._PENDING_MAXIMIZED_DRAG.get(hwnd), "right")
 
-        self.assertEqual(
-            native_window._ACTIVE_DRAG_ANCHOR_RATIOS[hwnd],
-            (1100 / 1300, 36 / 714),
-        )
+        # Once drag delta movement arrives, window restores and sets anchor
+        self.assertTrue(move_window_by_drag_delta(hwnd, 0, 0))
         user32.ShowWindow.assert_called_once_with(hwnd, native_window.SW_RESTORE)
-        user32.SetWindowPos.assert_called_once_with(
+        user32.SetWindowPos.assert_called_with(
             hwnd,
             None,
             5100,
@@ -280,12 +302,6 @@ class TestNativeWindow(unittest.TestCase):
         self.assertEqual(
             native_window._ACTIVE_DPI_DRAG_GEOMETRY[hwnd],
             (1300, 714, 1100, 36),
-        )
-        user32.SetTimer.assert_called_once_with(
-            hwnd,
-            native_window._DPI_DRAG_TIMER_ID,
-            16,
-            None,
         )
     @patch("maple_reporter.gui.native_window._get_cursor_position", return_value=(3850, 250))
     @patch("maple_reporter.gui.native_window._user32")
@@ -415,6 +431,139 @@ class TestNativeWindow(unittest.TestCase):
             (maximize.x, maximize.y, maximize.cx, maximize.cy),
             (3840, 0, 2560, 1440),
         )
+
+    def test_is_cursor_at_screen_top_detects_top_boundary(self):
+        user32 = MagicMock()
+        user32.MonitorFromPoint.return_value = 1
+
+        def fake_get_monitor_info(monitor, info_ptr):
+            info = getattr(info_ptr, "_obj", getattr(info_ptr, "contents", None))
+            info.rcMonitor.left = 0
+            info.rcMonitor.top = 0
+            info.rcMonitor.right = 1920
+            info.rcMonitor.bottom = 1080
+            info.rcWork.left = 0
+            info.rcWork.top = 0
+            info.rcWork.right = 1920
+            info.rcWork.bottom = 1040
+            return True
+
+        user32.GetMonitorInfoW.side_effect = fake_get_monitor_info
+
+        # Cursor at top edge within threshold (y = 0 <= 4)
+        self.assertTrue(is_cursor_at_screen_top(user32, 500, 2, threshold_px=4))
+        # Cursor far below top edge (y = 50 > 4)
+        self.assertFalse(is_cursor_at_screen_top(user32, 500, 50, threshold_px=4))
+        # Cursor horizontally outside monitor bounds
+        self.assertFalse(is_cursor_at_screen_top(user32, 2000, 2, threshold_px=4))
+
+    def test_check_and_snap_to_top_maximizes_window_when_at_top(self):
+        with patch.object(native_window, "_user32") as user32:
+            user32.IsZoomed.return_value = False
+            user32.GetCursorPos.side_effect = lambda point_ptr: setattr(getattr(point_ptr, "_obj", getattr(point_ptr, "contents", None)), "x", 500) or setattr(getattr(point_ptr, "_obj", getattr(point_ptr, "contents", None)), "y", 0) or True
+            user32.MonitorFromPoint.return_value = 1
+
+            def fake_get_monitor_info(monitor, info_ptr):
+                info = getattr(info_ptr, "_obj", getattr(info_ptr, "contents", None))
+                info.rcMonitor.left = 0
+                info.rcMonitor.top = 0
+                info.rcMonitor.right = 1920
+                info.rcMonitor.bottom = 1080
+                info.rcWork.left = 0
+                info.rcWork.top = 0
+                info.rcWork.right = 1920
+                info.rcWork.bottom = 1040
+                return True
+
+            user32.GetMonitorInfoW.side_effect = fake_get_monitor_info
+
+            result = check_and_snap_to_top(1234, threshold_px=4)
+            self.assertTrue(result)
+            user32.ShowWindow.assert_called_once_with(1234, native_window.SW_MAXIMIZE)
+
+    def test_check_and_snap_to_top_ignores_already_maximized_window(self):
+        with patch.object(native_window, "_user32") as user32:
+            user32.IsZoomed.return_value = True
+            result = check_and_snap_to_top(1234, threshold_px=4)
+            self.assertFalse(result)
+            user32.ShowWindow.assert_not_called()
+
+    def test_drag_release_triggers_snap_to_top_when_dragged(self):
+        hwnd = 5678
+        native_window._ACTIVE_DRAG_MOVED.add(hwnd)
+        with patch("maple_reporter.gui.native_window.check_and_snap_to_top", return_value=True) as mock_snap:
+            native_window._schedule_drag_release(hwnd)
+            mock_snap.assert_called_once_with(hwnd)
+            self.assertNotIn(hwnd, native_window._ACTIVE_DRAG_MOVED)
+
+    def test_calculate_snap_restore_rect_preserves_same_monitor_origin(self):
+        pre_drag = (120, 80, 1120, 780)
+        current = (120, -15, 1120, 685)
+        cursor = (600, 2)
+        work_area = (0, 0, 1920, 1040)
+        mon_area = (0, 0, 1920, 1080)
+        result = calculate_snap_restore_rect(pre_drag, current, cursor, work_area, mon_area)
+        self.assertEqual(result, (120, 80, 1120, 780))
+
+    def test_calculate_snap_restore_rect_handles_cross_monitor_drag(self):
+        # Started on monitor 1 (0..1920), dragged to vertical monitor 2 (-1080..0)
+        pre_drag = (100, 100, 1100, 800)
+        current = (-540, -10, 460, 690)
+        cursor = (-500, 2)
+        work_area = (-1080, 0, 0, 1920)
+        mon_area = (-1080, 0, 0, 1920)
+        result = calculate_snap_restore_rect(pre_drag, current, cursor, work_area, mon_area)
+        # Should be placed on monitor 2 with top at 20 (safe from header cutoff)
+        self.assertEqual(result[1], 20)
+        self.assertEqual(result[3] - result[1], 700)
+        self.assertEqual(result[2] - result[0], 1000)
+        self.assertTrue(-1080 <= result[0] <= 0)
+
+    def test_prepare_native_drag_records_pre_drag_rect_for_normal_window(self):
+        with patch.object(native_window, "_user32") as user32:
+            user32.IsZoomed.return_value = False
+            user32.GetCursorPos.side_effect = lambda point_ptr: setattr(getattr(point_ptr, "_obj", getattr(point_ptr, "contents", None)), "x", 300) or setattr(getattr(point_ptr, "_obj", getattr(point_ptr, "contents", None)), "y", 150) or True
+            def fake_get_window_rect(h, rect_ptr):
+                rect = getattr(rect_ptr, "_obj", getattr(rect_ptr, "contents", None))
+                rect.left, rect.top, rect.right, rect.bottom = 200, 100, 1200, 800
+                return True
+            user32.GetWindowRect.side_effect = fake_get_window_rect
+
+            self.assertTrue(prepare_native_drag(9999))
+            self.assertEqual(native_window._PRE_DRAG_NORMAL_RECTS.get(9999), (200, 100, 1200, 800))
+
+    def test_restore_native_window_applies_saved_restore_bounds(self):
+        with patch.object(native_window, "_user32") as user32:
+            hwnd = 4321
+            native_window._SAVED_RESTORE_BOUNDS[hwnd] = (150, 120, 1150, 820)
+            user32.ShowWindow.return_value = True
+            user32.SetWindowPos.return_value = True
+
+            self.assertTrue(restore_native_window(hwnd))
+            user32.ShowWindow.assert_called_once_with(hwnd, native_window.SW_RESTORE)
+            user32.SetWindowPos.assert_called_once_with(
+                hwnd,
+                None,
+                150,
+                120,
+                1000,
+                700,
+                native_window.SWP_NOZORDER | native_window.SWP_NOACTIVATE | native_window.SWP_FRAMECHANGED,
+            )
+            self.assertNotIn(hwnd, native_window._SAVED_RESTORE_BOUNDS)
+
+    def test_set_window_identity_calls_app_user_model_id(self):
+        with patch.object(native_window, "_user32") as user32, \
+             patch("maple_reporter.gui.native_window.set_window_app_user_model_id_property") as mock_set_prop:
+            user32.SetWindowTextW.return_value = True
+            result = set_window_identity(
+                1234,
+                "Test Title",
+                None,
+                app_id="TestAppID",
+            )
+            self.assertTrue(result)
+            mock_set_prop.assert_called_once_with(1234, "TestAppID", "Test Title", None)
 
 
 if __name__ == "__main__":

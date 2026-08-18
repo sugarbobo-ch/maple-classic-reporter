@@ -34,6 +34,9 @@ WM_ENTERSIZEMOVE = 0x0231
 WM_EXITSIZEMOVE = 0x0232
 HTCAPTION = 2
 HTCLIENT = 1
+HTMINBUTTON = 8
+HTMAXBUTTON = 9
+HTCLOSE = 20
 MA_NOACTIVATE = 3
 GWL_WNDPROC = -4
 GWL_STYLE = -16
@@ -50,9 +53,12 @@ WS_VISIBLE = 0x10000000
 WS_EX_TRANSPARENT = 0x00000020
 WS_EX_NOACTIVATE = 0x08000000
 SW_HIDE = 0
+SW_MAXIMIZE = 3
 SW_SHOWNA = 8
 SW_RESTORE = 9
+RGN_OR = 2
 RGN_DIFF = 4
+HTTRANSPARENT = -1
 
 IDC_SIZEWE = 32644
 IDC_SIZENS = 32645
@@ -82,6 +88,8 @@ GCLP_HICONSM = -34
 
 WINDOW_HEADER_HEIGHT = 58
 WINDOW_ACTIONS_EXCLUSION_WIDTH = 280
+WINDOW_CAPTION_BUTTON_WIDTH = 46
+WINDOW_CAPTION_RIGHT_MARGIN = 12
 WINDOW_MIN_TRACK_WIDTH = 880
 WINDOW_MIN_TRACK_HEIGHT = 620
 
@@ -153,19 +161,438 @@ _RESIZE_OVERLAY_IN_SIZING: set[int] = set()
 _ACTIVE_DPI_DRAG_GEOMETRY: dict[int, tuple[int, int, int, int]] = {}
 _ACTIVE_DRAG_ANCHOR_RATIOS: dict[int, tuple[float, float]] = {}
 _DPI_DRAG_RELEASE_DEADLINES: dict[int, float] = {}
+_ACTIVE_DRAG_MOVED: set[int] = set()
+_PRE_DRAG_NORMAL_RECTS: dict[int, tuple[int, int, int, int]] = {}
+_PENDING_MAXIMIZED_DRAG: dict[int, str] = {}
+_SAVED_RESTORE_BOUNDS: dict[int, tuple[int, int, int, int]] = {}
 _WINDOW_ICON_HANDLES: dict[int, tuple[int, int]] = {}
 _RESIZE_OVERLAY_API_CONFIGURED = False
 _DPI_API_CONFIGURED = False
 _CURSOR_API_CONFIGURED = False
 
 
+class _WINDOWPLACEMENT(ctypes.Structure):
+    _fields_ = [
+        ("length", wintypes.UINT),
+        ("flags", wintypes.UINT),
+        ("showCmd", wintypes.UINT),
+        ("ptMinPosition", _Point),
+        ("ptMaxPosition", _Point),
+        ("rcNormalPosition", wintypes.RECT),
+    ]
+
+
+class _GUID(ctypes.Structure):
+    _fields_ = [
+        ("Data1", wintypes.DWORD),
+        ("Data2", wintypes.WORD),
+        ("Data3", wintypes.WORD),
+        ("Data4", ctypes.c_ubyte * 8),
+    ]
+
+
+class _PROPERTYKEY(ctypes.Structure):
+    _fields_ = [
+        ("fmtid", _GUID),
+        ("pid", wintypes.DWORD),
+    ]
+
+
+class _PROPVARIANT(ctypes.Structure):
+    _fields_ = [
+        ("vt", ctypes.c_ushort),
+        ("wReserved1", wintypes.WORD),
+        ("wReserved2", wintypes.WORD),
+        ("wReserved3", wintypes.WORD),
+        ("pwszVal", wintypes.LPWSTR),
+        ("padding", ctypes.c_byte * 8),
+    ]
+
+
+_IID_IPropertyStore = _GUID(
+    0x886D8EEB,
+    0x8CF2,
+    0x4446,
+    (ctypes.c_ubyte * 8)(0x8D, 0x02, 0xCD, 0xBA, 0x1D, 0xBD, 0xCF, 0x99),
+)
+_PKEY_AppUserModel_ID = _PROPERTYKEY(
+    _GUID(
+        0x9F4C2855,
+        0x9F79,
+        0x4B39,
+        (ctypes.c_ubyte * 8)(0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3),
+    ),
+    5,
+)
+_PKEY_AppUserModel_RelaunchIconResource = _PROPERTYKEY(
+    _GUID(
+        0x9F4C2855,
+        0x9F79,
+        0x4B39,
+        (ctypes.c_ubyte * 8)(0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3),
+    ),
+    2,
+)
+
+_PKEY_AppUserModel_RelaunchIconResource3 = _PROPERTYKEY(
+    _GUID(
+        0x9F4C2855,
+        0x9F79,
+        0x4B39,
+        (ctypes.c_ubyte * 8)(0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3),
+    ),
+    3,
+)
+
+_PKEY_AppUserModel_RelaunchDisplayNameResource = _PROPERTYKEY(
+    _GUID(
+        0x9F4C2855,
+        0x9F79,
+        0x4B39,
+        (ctypes.c_ubyte * 8)(0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3),
+    ),
+    4,
+)
+
+
+def set_window_app_user_model_id_property(
+    hwnd: int,
+    app_id: str,
+    display_name: str | None = None,
+    icon_path: str | None = None,
+) -> bool:
+    """Set window-level AppUserModelID and relaunch properties via SHGetPropertyStoreForWindow."""
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        shell32 = ctypes.windll.shell32
+        if not hasattr(shell32, "SHGetPropertyStoreForWindow"):
+            return False
+
+        shell32.SHGetPropertyStoreForWindow.argtypes = [
+            wintypes.HWND,
+            ctypes.POINTER(_GUID),
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
+        shell32.SHGetPropertyStoreForWindow.restype = ctypes.c_long
+
+        store_ptr = ctypes.c_void_p()
+        hr = shell32.SHGetPropertyStoreForWindow(
+            wintypes.HWND(hwnd),
+            ctypes.byref(_IID_IPropertyStore),
+            ctypes.byref(store_ptr),
+        )
+        if hr != 0 or not store_ptr.value:
+            return False
+
+        vtable = ctypes.cast(
+            store_ptr, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+        ).contents
+
+        set_value_func = ctypes.WINFUNCTYPE(
+            ctypes.c_long,
+            ctypes.c_void_p,
+            ctypes.POINTER(_PROPERTYKEY),
+            ctypes.POINTER(_PROPVARIANT),
+        )(vtable[6])
+
+        commit_func = ctypes.WINFUNCTYPE(
+            ctypes.c_long,
+            ctypes.c_void_p,
+        )(vtable[7])
+
+        release_func = ctypes.WINFUNCTYPE(
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+        )(vtable[2])
+
+        try:
+            if app_id:
+                propvar = _PROPVARIANT()
+                propvar.vt = 31  # VT_LPWSTR
+                propvar.pwszVal = app_id
+                set_value_func(
+                    store_ptr,
+                    ctypes.byref(_PKEY_AppUserModel_ID),
+                    ctypes.byref(propvar),
+                )
+
+            if display_name:
+                propvar_name = _PROPVARIANT()
+                propvar_name.vt = 31  # VT_LPWSTR
+                propvar_name.pwszVal = display_name
+                set_value_func(
+                    store_ptr,
+                    ctypes.byref(_PKEY_AppUserModel_RelaunchDisplayNameResource),
+                    ctypes.byref(propvar_name),
+                )
+
+            if icon_path and os.path.isfile(icon_path):
+                abs_icon = os.path.abspath(icon_path)
+                for pkey in (
+                    _PKEY_AppUserModel_RelaunchIconResource,
+                    _PKEY_AppUserModel_RelaunchIconResource3,
+                ):
+                    propvar_icon = _PROPVARIANT()
+                    propvar_icon.vt = 31  # VT_LPWSTR
+                    propvar_icon.pwszVal = f"{abs_icon},0"
+                    set_value_func(
+                        store_ptr,
+                        ctypes.byref(pkey),
+                        ctypes.byref(propvar_icon),
+                    )
+
+            commit_func(store_ptr)
+            return True
+        finally:
+            release_func(store_ptr)
+    except Exception as err:
+        LOGGER.debug("Failed to set window AppUserModelID property: %s", err)
+        return False
+
+
+def is_cursor_at_screen_top(
+    user32, cursor_x: int, cursor_y: int, threshold_px: int = 4
+) -> bool:
+    """Return True if the cursor is at or near the top of the containing monitor."""
+    try:
+        user32.MonitorFromPoint.argtypes = [_Point, wintypes.DWORD]
+        user32.MonitorFromPoint.restype = ctypes.c_void_p
+        user32.GetMonitorInfoW.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(_MonitorInfo),
+        ]
+        user32.GetMonitorInfoW.restype = wintypes.BOOL
+
+        pt = _Point(cursor_x, cursor_y)
+        monitor = user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
+        if not monitor:
+            return False
+
+        monitor_info = _MonitorInfo()
+        monitor_info.cbSize = ctypes.sizeof(_MonitorInfo)
+        if not user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
+            return False
+
+        rc_work = monitor_info.rcWork
+        rc_mon = monitor_info.rcMonitor
+        if rc_mon.left <= cursor_x < rc_mon.right and cursor_y <= rc_work.top + threshold_px:
+            return True
+        return False
+    except Exception as err:
+        LOGGER.debug("Failed to check monitor top bounds: %s", err)
+        return False
+
+
+def calculate_snap_restore_rect(
+    pre_drag_rect: tuple[int, int, int, int] | None,
+    current_rect: tuple[int, int, int, int],
+    cursor_pos: tuple[int, int],
+    monitor_work_rect: tuple[int, int, int, int],
+    monitor_rect: tuple[int, int, int, int],
+) -> tuple[int, int, int, int]:
+    """Calculate the normal restore rect when a window is snapped to the top of a monitor."""
+    work_left, work_top, work_right, work_bottom = monitor_work_rect
+    mon_left, mon_top, mon_right, mon_bottom = monitor_rect
+
+    if pre_drag_rect is not None:
+        p_left, p_top, p_right, p_bottom = pre_drag_rect
+        p_width = max(100, p_right - p_left)
+        p_height = max(100, p_bottom - p_top)
+        center_x = (p_left + p_right) / 2.0
+        center_y = (p_top + p_bottom) / 2.0
+        was_on_same_monitor = (
+            mon_left <= center_x < mon_right
+            and mon_top <= center_y < mon_bottom
+        )
+        if was_on_same_monitor:
+            clamped_top = max(work_top, min(work_bottom - 60, p_top))
+            clamped_left = max(work_left, min(work_right - p_width, p_left))
+            return (clamped_left, clamped_top, clamped_left + p_width, clamped_top + p_height)
+        else:
+            target_left = round(cursor_pos[0] - p_width / 2.0)
+            target_left = max(work_left, min(work_right - p_width, target_left))
+            target_top = work_top + 20
+            return (target_left, target_top, target_left + p_width, target_top + p_height)
+
+    c_left, c_top, c_right, c_bottom = current_rect
+    c_width = max(100, c_right - c_left)
+    c_height = max(100, c_bottom - c_top)
+    target_top = max(work_top, min(work_bottom - 60, c_top))
+    target_left = max(work_left, min(work_right - c_width, c_left))
+    return (target_left, target_top, target_left + c_width, target_top + c_height)
+
+
+def check_and_snap_to_top(hwnd: int, threshold_px: int = 10) -> bool:
+    """Maximize the window if released at the top of the monitor work area, keeping a safe restore rect."""
+    user32 = _user32
+    if not hwnd or not user32:
+        return False
+
+    try:
+        user32.IsZoomed.argtypes = [wintypes.HWND]
+        user32.IsZoomed.restype = wintypes.BOOL
+        if user32.IsZoomed(hwnd):
+            _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+            return False
+
+        cursor_pos = _get_cursor_position(user32)
+        if cursor_pos is None:
+            _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+            return False
+
+        user32.MonitorFromPoint.argtypes = [_Point, wintypes.DWORD]
+        user32.MonitorFromPoint.restype = ctypes.c_void_p
+        user32.GetMonitorInfoW.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(_MonitorInfo),
+        ]
+        user32.GetMonitorInfoW.restype = wintypes.BOOL
+
+        pt = _Point(cursor_pos[0], cursor_pos[1])
+        monitor = user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
+        if not monitor:
+            _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+            return False
+
+        monitor_info = _MonitorInfo()
+        monitor_info.cbSize = ctypes.sizeof(_MonitorInfo)
+        if not user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
+            _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+            return False
+
+        rc_work = monitor_info.rcWork
+        rc_mon = monitor_info.rcMonitor
+
+        if not (rc_mon.left <= cursor_pos[0] < rc_mon.right and cursor_pos[1] <= rc_work.top + threshold_px):
+            _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+            return False
+
+        curr_rect = wintypes.RECT()
+        user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        user32.GetWindowRect.restype = wintypes.BOOL
+        if user32.GetWindowRect(hwnd, ctypes.byref(curr_rect)):
+            current_bounds = (curr_rect.left, curr_rect.top, curr_rect.right, curr_rect.bottom)
+        else:
+            current_bounds = (rc_work.left, rc_work.top, rc_work.left + 1000, rc_work.top + 700)
+
+        pre_drag = _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+        restore_bounds = calculate_snap_restore_rect(
+            pre_drag,
+            current_bounds,
+            cursor_pos,
+            (rc_work.left, rc_work.top, rc_work.right, rc_work.bottom),
+            (rc_mon.left, rc_mon.top, rc_mon.right, rc_mon.bottom),
+        )
+
+        _SAVED_RESTORE_BOUNDS[hwnd] = restore_bounds
+
+        user32.SetWindowPos.argtypes = [
+            wintypes.HWND,
+            wintypes.HWND,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.UINT,
+        ]
+        user32.SetWindowPos.restype = wintypes.BOOL
+        user32.SetWindowPos(
+            hwnd,
+            None,
+            restore_bounds[0],
+            restore_bounds[1],
+            restore_bounds[2] - restore_bounds[0],
+            restore_bounds[3] - restore_bounds[1],
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        )
+
+        user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.ShowWindow.restype = wintypes.BOOL
+        user32.ShowWindow(hwnd, SW_MAXIMIZE)
+
+        user32.GetWindowPlacement.argtypes = [wintypes.HWND, ctypes.POINTER(_WINDOWPLACEMENT)]
+        user32.GetWindowPlacement.restype = wintypes.BOOL
+        user32.SetWindowPlacement.argtypes = [wintypes.HWND, ctypes.POINTER(_WINDOWPLACEMENT)]
+        user32.SetWindowPlacement.restype = wintypes.BOOL
+
+        wp = _WINDOWPLACEMENT()
+        wp.length = ctypes.sizeof(_WINDOWPLACEMENT)
+        if user32.GetWindowPlacement(hwnd, ctypes.byref(wp)):
+            wp.rcNormalPosition = wintypes.RECT(
+                restore_bounds[0],
+                restore_bounds[1],
+                restore_bounds[2],
+                restore_bounds[3],
+            )
+            user32.SetWindowPlacement(hwnd, ctypes.byref(wp))
+
+        return True
+    except Exception as err:
+        LOGGER.debug("Failed to snap window to top: %s", err)
+        _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+        return False
+
+
+def restore_native_window(hwnd: int) -> bool:
+    """Restore a maximized window to its saved normal bounds."""
+    user32 = _user32
+    if not hwnd or not user32:
+        return False
+    try:
+        user32.IsZoomed.argtypes = [wintypes.HWND]
+        user32.IsZoomed.restype = wintypes.BOOL
+        restore_bounds = _SAVED_RESTORE_BOUNDS.pop(hwnd, None)
+
+        user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.ShowWindow.restype = wintypes.BOOL
+        user32.ShowWindow(hwnd, SW_RESTORE)
+
+        if restore_bounds is not None:
+            r_left, r_top, r_right, r_bottom = restore_bounds
+            r_w = max(100, r_right - r_left)
+            r_h = max(100, r_bottom - r_top)
+            user32.SetWindowPos.argtypes = [
+                wintypes.HWND,
+                wintypes.HWND,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                wintypes.UINT,
+            ]
+            user32.SetWindowPos.restype = wintypes.BOOL
+            user32.SetWindowPos(
+                hwnd,
+                None,
+                r_left,
+                r_top,
+                r_w,
+                r_h,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            )
+            logical_size = _WINDOW_LOGICAL_SIZE.get(hwnd)
+            if logical_size is not None:
+                _remember_logical_window_size(user32, hwnd, _get_window_dpi(user32, hwnd))
+        return True
+    except Exception as err:
+        LOGGER.debug("Failed to restore native window: %s", err)
+        return False
+
+
 def _clear_active_drag_state(hwnd: int) -> None:
     _ACTIVE_DPI_DRAG_GEOMETRY.pop(hwnd, None)
     _ACTIVE_DRAG_ANCHOR_RATIOS.pop(hwnd, None)
     _DPI_DRAG_RELEASE_DEADLINES.pop(hwnd, None)
+    _ACTIVE_DRAG_MOVED.discard(hwnd)
+    _PRE_DRAG_NORMAL_RECTS.pop(hwnd, None)
+    _PENDING_MAXIMIZED_DRAG.pop(hwnd, None)
 
 
 def _schedule_drag_release(hwnd: int) -> None:
+    if hwnd in _ACTIVE_DRAG_MOVED:
+        _ACTIVE_DRAG_MOVED.discard(hwnd)
+        check_and_snap_to_top(hwnd)
     if hwnd in _ACTIVE_DPI_DRAG_GEOMETRY:
         _DPI_DRAG_RELEASE_DEADLINES.setdefault(hwnd, time.monotonic() + 0.12)
     else:
@@ -173,6 +600,9 @@ def _schedule_drag_release(hwnd: int) -> None:
 
 
 def _end_active_drag(user32, hwnd: int) -> None:
+    if hwnd in _ACTIVE_DRAG_MOVED:
+        _ACTIVE_DRAG_MOVED.discard(hwnd)
+        check_and_snap_to_top(hwnd)
     _clear_active_drag_state(hwnd)
     user32.KillTimer(hwnd, _DPI_DRAG_TIMER_ID)
 
@@ -401,6 +831,7 @@ def calculate_window_hit_test(
     header_height: int = WINDOW_HEADER_HEIGHT,
     right_exclusion_width: int = WINDOW_ACTIONS_EXCLUSION_WIDTH,
     maximized: bool = False,
+    dpi: int = 96,
 ) -> int | None:
     """Return resize or caption hit-testing for the frameless app window."""
     resize_hit_test = calculate_resize_hit_test(
@@ -418,7 +849,8 @@ def calculate_window_hit_test(
 
     header_bottom = top + max(header_height, border_size)
     drag_right = right - max(right_exclusion_width, border_size)
-    if left <= cursor_x < drag_right and top + border_size <= cursor_y < header_bottom:
+    drag_top = top if maximized else (top + border_size)
+    if left <= cursor_x < drag_right and drag_top <= cursor_y < header_bottom:
         return HTCAPTION
 
     return None
@@ -431,6 +863,11 @@ def _begin_native_resize(hwnd: int, hit_test: int) -> bool:
 
     user32 = _user32
     try:
+        user32.IsZoomed.argtypes = [wintypes.HWND]
+        user32.IsZoomed.restype = wintypes.BOOL
+        if user32.IsZoomed(hwnd):
+            return False
+
         user32.ReleaseCapture.argtypes = []
         user32.ReleaseCapture.restype = wintypes.BOOL
         user32.PostMessageW.argtypes = [
@@ -459,8 +896,92 @@ def _begin_native_resize(hwnd: int, hit_test: int) -> bool:
         return False
 
 
+def _restore_maximized_for_drag(user32, hwnd: int, anchor_mode: str) -> None:
+    """Restore a maximized window and position it around the cursor when dragging starts."""
+    _PENDING_MAXIMIZED_DRAG.pop(hwnd, None)
+    rect = wintypes.RECT()
+    if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return
+    width = rect.right - rect.left
+    height = rect.bottom - rect.top
+    cursor_position = _get_cursor_position(user32)
+    if cursor_position is None:
+        return
+
+    offset_x = cursor_position[0] - rect.left
+    offset_y = cursor_position[1] - rect.top
+
+    logical_size = _WINDOW_LOGICAL_SIZE.get(hwnd)
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.ShowWindow(hwnd, SW_RESTORE)
+
+    dpi = _get_window_dpi(user32, hwnd)
+    if logical_size is not None:
+        target_width, target_height = _physical_size_for_dpi(logical_size, dpi)
+    else:
+        restored_rect = wintypes.RECT()
+        if user32.GetWindowRect(hwnd, ctypes.byref(restored_rect)):
+            target_width = restored_rect.right - restored_rect.left
+            target_height = restored_rect.bottom - restored_rect.top
+        else:
+            target_width, target_height = width, height
+
+    target_offset_x, target_offset_y = calculate_restored_grab_offset(
+        width,
+        target_width,
+        target_height,
+        offset_x,
+        offset_y,
+        anchor_mode,
+    )
+    grab_ratio = (
+        target_offset_x / target_width if target_width > 0 else 0.5,
+        target_offset_y / target_height if target_height > 0 else 0.1,
+    )
+    target_left = cursor_position[0] - target_offset_x
+    target_top = cursor_position[1] - target_offset_y
+
+    user32.SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.UINT,
+    ]
+    user32.SetWindowPos.restype = wintypes.BOOL
+    user32.SetWindowPos(
+        hwnd,
+        None,
+        target_left,
+        target_top,
+        target_width,
+        target_height,
+        SWP_NOZORDER | SWP_NOACTIVATE,
+    )
+    _ACTIVE_DPI_DRAG_GEOMETRY[hwnd] = (
+        target_width,
+        target_height,
+        cursor_position[0] - target_left,
+        cursor_position[1] - target_top,
+    )
+    _ACTIVE_DRAG_ANCHOR_RATIOS[hwnd] = grab_ratio
+    user32.SetTimer.argtypes = [
+        wintypes.HWND,
+        ctypes.c_void_p,
+        wintypes.UINT,
+        ctypes.c_void_p,
+    ]
+    user32.SetTimer.restype = ctypes.c_void_p
+    user32.SetTimer(hwnd, _DPI_DRAG_TIMER_ID, 16, None)
+    if logical_size is not None:
+        _WINDOW_LOGICAL_SIZE[hwnd] = logical_size
+
+
 def prepare_native_drag(hwnd: int, anchor_mode: str = "proportional") -> bool:
-    """Capture the anchor and restore a maximized window before JS movement."""
+    """Capture the anchor and prepare drag state before JS movement."""
     user32 = _user32
     if not hwnd or not user32:
         return False
@@ -468,6 +989,11 @@ def prepare_native_drag(hwnd: int, anchor_mode: str = "proportional") -> bool:
     _end_active_drag(user32, hwnd)
     cursor_position = _get_cursor_position(user32)
     rect = wintypes.RECT()
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetWindowRect.restype = wintypes.BOOL
+    user32.IsZoomed.argtypes = [wintypes.HWND]
+    user32.IsZoomed.restype = wintypes.BOOL
+
     if cursor_position is not None and user32.GetWindowRect(
         hwnd, ctypes.byref(rect)
     ):
@@ -482,92 +1008,77 @@ def prepare_native_drag(hwnd: int, anchor_mode: str = "proportional") -> bool:
             and 0 <= offset_y <= height
         ):
             grab_ratio = (offset_x / width, offset_y / height)
+            _ACTIVE_DRAG_ANCHOR_RATIOS[hwnd] = grab_ratio
 
             if user32.IsZoomed(hwnd):
-                # A custom WebView title bar does not get Windows' normal
-                # drag-to-restore positioning for free. Restore to the
-                # canonical normal size and position that rect around the
-                # exact point the user held in the maximized window.
-                logical_size = _WINDOW_LOGICAL_SIZE.get(hwnd)
-                user32.ShowWindow(hwnd, SW_RESTORE)
-                if logical_size is not None:
-                    target_width, target_height = _physical_size_for_dpi(
-                        logical_size,
-                        _get_window_dpi(user32, hwnd),
-                    )
-                else:
-                    restored_rect = wintypes.RECT()
-                    if user32.GetWindowRect(hwnd, ctypes.byref(restored_rect)):
-                        target_width = restored_rect.right - restored_rect.left
-                        target_height = restored_rect.bottom - restored_rect.top
-                    else:
-                        target_width, target_height = width, height
-
-                target_offset_x, target_offset_y = calculate_restored_grab_offset(
-                    width,
-                    target_width,
-                    target_height,
-                    offset_x,
-                    offset_y,
-                    anchor_mode,
+                # Defer restoring until actual drag movement begins
+                _PENDING_MAXIMIZED_DRAG[hwnd] = anchor_mode
+            else:
+                _PENDING_MAXIMIZED_DRAG.pop(hwnd, None)
+                _PRE_DRAG_NORMAL_RECTS[hwnd] = (
+                    rect.left,
+                    rect.top,
+                    rect.right,
+                    rect.bottom,
                 )
-                grab_ratio = (
-                    target_offset_x / target_width,
-                    target_offset_y / target_height,
-                )
-                target_left = cursor_position[0] - target_offset_x
-                target_top = cursor_position[1] - target_offset_y
-                user32.SetWindowPos(
-                    hwnd,
-                    None,
-                    target_left,
-                    target_top,
-                    target_width,
-                    target_height,
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                )
-                _ACTIVE_DPI_DRAG_GEOMETRY[hwnd] = (
-                    target_width,
-                    target_height,
-                    cursor_position[0] - target_left,
-                    cursor_position[1] - target_top,
-                )
-                user32.SetTimer(hwnd, _DPI_DRAG_TIMER_ID, 16, None)
-                if logical_size is not None:
-                    _WINDOW_LOGICAL_SIZE[hwnd] = logical_size
-            _ACTIVE_DRAG_ANCHOR_RATIOS[hwnd] = grab_ratio
             return True
     return False
 
 
 def move_window_by_drag_delta(hwnd: int, delta_x: float, delta_y: float) -> bool:
-    """Move a window by a WebView logical-pixel delta in physical pixels.
-
-    pywebview's absolute logical desktop coordinates are not stable across
-    mixed-DPI monitor origins. Applying only the per-event delta avoids
-    converting a global logical origin with the wrong monitor scale.
-    """
+    """Move a window by a WebView logical-pixel delta in physical pixels."""
     user32 = _user32
     if not hwnd or not user32:
         return False
 
     try:
+        user32.IsZoomed.argtypes = [wintypes.HWND]
+        user32.IsZoomed.restype = wintypes.BOOL
+        if hwnd in _PENDING_MAXIMIZED_DRAG or bool(user32.IsZoomed(hwnd)):
+            anchor_mode = _PENDING_MAXIMIZED_DRAG.pop(hwnd, "proportional")
+            _restore_maximized_for_drag(user32, hwnd, anchor_mode)
+            if delta_x == 0 and delta_y == 0:
+                return True
+
         rect = wintypes.RECT()
+        user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        user32.GetWindowRect.restype = wintypes.BOOL
         if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
             return False
+        if delta_x != 0 or delta_y != 0:
+            _ACTIVE_DRAG_MOVED.add(hwnd)
+            user32.SetTimer.argtypes = [
+                wintypes.HWND,
+                ctypes.c_void_p,
+                wintypes.UINT,
+                ctypes.c_void_p,
+            ]
+            user32.SetTimer.restype = ctypes.c_void_p
+            user32.SetTimer(hwnd, _DPI_DRAG_TIMER_ID, 16, None)
         scale = max(_get_window_dpi(user32, hwnd), 1) / 96.0
         target_left = rect.left + round(float(delta_x) * scale)
         target_top = rect.top + round(float(delta_y) * scale)
-        user32.SetWindowPos(
-            hwnd,
-            None,
-            target_left,
-            target_top,
-            0,
-            0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        user32.SetWindowPos.argtypes = [
+            wintypes.HWND,
+            wintypes.HWND,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.UINT,
+        ]
+        user32.SetWindowPos.restype = wintypes.BOOL
+        return bool(
+            user32.SetWindowPos(
+                hwnd,
+                None,
+                target_left,
+                target_top,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            )
         )
-        return True
     except (OSError, TypeError, ValueError):
         LOGGER.debug("Native drag delta move failed", exc_info=True)
         return False
@@ -575,6 +1086,13 @@ def move_window_by_drag_delta(hwnd: int, delta_x: float, delta_y: float) -> bool
 
 def begin_native_resize(hwnd: int, direction: str) -> bool:
     """Start the native Windows sizing loop for a resize direction."""
+    if not hwnd or not _user32:
+        return False
+    user32 = _user32
+    user32.IsZoomed.argtypes = [wintypes.HWND]
+    user32.IsZoomed.restype = wintypes.BOOL
+    if user32.IsZoomed(hwnd):
+        return False
     hit_test = _RESIZE_HIT_TESTS.get(direction.strip().lower())
     if hit_test is None:
         return False
@@ -583,6 +1101,17 @@ def begin_native_resize(hwnd: int, direction: str) -> bool:
 
 def begin_native_drag(hwnd: int) -> bool:
     """Start the native caption drag loop so Windows Snap can take over."""
+    if not hwnd or not _user32:
+        return False
+    user32 = _user32
+    try:
+        user32.IsZoomed.argtypes = [wintypes.HWND]
+        user32.IsZoomed.restype = wintypes.BOOL
+        if user32.IsZoomed(hwnd):
+            anchor_mode = _PENDING_MAXIMIZED_DRAG.pop(hwnd, "proportional")
+            _restore_maximized_for_drag(user32, hwnd, anchor_mode)
+    except Exception:
+        pass
     return _begin_native_resize(hwnd, HTCAPTION)
 
 
@@ -599,8 +1128,13 @@ def _window_handle(window) -> int | None:
         return None
 
 
-def set_window_identity(hwnd: int, title: str, icon_path: str | None = None) -> bool:
-    """Set the native title-bar/taskbar title and icon for the PyWebView window."""
+def set_window_identity(
+    hwnd: int,
+    title: str,
+    icon_path: str | None = None,
+    app_id: str = "MapleClassicReporter",
+) -> bool:
+    """Set the native title-bar/taskbar title, icon, and AppUserModelID for the PyWebView window."""
     if os.name != "nt" or not hwnd or not _user32:
         return False
 
@@ -632,6 +1166,8 @@ def set_window_identity(hwnd: int, title: str, icon_path: str | None = None) -> 
         user32.LoadImageW.restype = ctypes.c_void_p
 
         title_set = bool(user32.SetWindowTextW(hwnd, title or ""))
+        set_window_app_user_model_id_property(hwnd, app_id, title, icon_path)
+
         if not icon_path:
             return title_set
 
@@ -897,8 +1433,9 @@ def _install_wnd_proc(hwnd: int) -> None:
             if message == WM_NCHITTEST:
                 rect = wintypes.RECT()
                 if user32.GetWindowRect(window_handle, ctypes.byref(rect)):
+                    dpi = _get_window_dpi(user32, window_handle)
                     border_size, header_height, actions_exclusion_width = (
-                        calculate_resize_metrics(_get_window_dpi(user32, window_handle))
+                        calculate_resize_metrics(dpi)
                     )
                     cursor_x = ctypes.c_short(l_param & 0xFFFF).value
                     cursor_y = ctypes.c_short((l_param >> 16) & 0xFFFF).value
@@ -913,8 +1450,17 @@ def _install_wnd_proc(hwnd: int) -> None:
                         header_height,
                         actions_exclusion_width,
                         bool(user32.IsZoomed(window_handle)),
+                        dpi=dpi,
                     )
                     if hit_test is not None:
+                        try:
+                            dwm_result = ctypes.c_ssize_t()
+                            if ctypes.windll.dwmapi.DwmDefWindowProc(
+                                window_handle, message, w_param, l_param, ctypes.byref(dwm_result)
+                            ):
+                                return dwm_result.value
+                        except Exception:
+                            pass
                         return hit_test
 
             if message == WM_NCCALCSIZE:
@@ -983,6 +1529,7 @@ def _install_wnd_proc(hwnd: int) -> None:
                 _RESIZE_OVERLAY_TIMER_ATTEMPTS.pop(hwnd, None)
                 _RESIZE_OVERLAY_IN_SIZING.discard(hwnd)
                 _clear_active_drag_state(hwnd)
+                _ACTIVE_DRAG_MOVED.discard(hwnd)
                 _SUBCLASSES.pop(hwnd, None)
                 _WINDOW_DPI.pop(hwnd, None)
                 _WINDOW_LOGICAL_SIZE.pop(hwnd, None)
@@ -1338,6 +1885,10 @@ def _resize_overlay_window_proc(window_handle, message, w_param, l_param):
     try:
         _configure_resize_overlay_api(user32)
         parent_hwnd = user32.GetParent(window_handle)
+        if parent_hwnd and user32.IsZoomed(parent_hwnd):
+            user32.ShowWindow(window_handle, SW_HIDE)
+            return user32.DefWindowProcW(window_handle, message, w_param, l_param)
+
         if message == WM_LBUTTONDOWN and parent_hwnd:
             hit_test = _resize_overlay_hit_test(user32, parent_hwnd, l_param)
             if hit_test is not None:
@@ -1483,6 +2034,11 @@ def install_native_resize_support(window) -> bool:
 
 
 __all__ = [
+    "HTCLOSE",
+    "HTMAXBUTTON",
+    "HTMINBUTTON",
+    "WINDOW_CAPTION_BUTTON_WIDTH",
+    "WINDOW_CAPTION_RIGHT_MARGIN",
     "begin_native_drag",
     "begin_native_resize",
     "calculate_restored_grab_offset",
@@ -1490,9 +2046,14 @@ __all__ = [
     "calculate_resize_metrics",
     "calculate_resize_hit_test",
     "calculate_window_hit_test",
+    "calculate_snap_restore_rect",
+    "check_and_snap_to_top",
+    "is_cursor_at_screen_top",
     "prepare_native_drag",
     "move_window_by_drag_delta",
+    "restore_native_window",
     "set_window_identity",
+    "set_window_app_user_model_id_property",
     "install_native_resize_support",
     "preserve_window_size_on_dpi_change",
 ]

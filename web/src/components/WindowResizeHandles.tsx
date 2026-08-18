@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { usePyWebViewEvents } from '../hooks';
 
 const HANDLES = [
   { dir: 'top', className: 'resize-handle-top' },
@@ -12,6 +13,17 @@ const HANDLES = [
 ];
 
 export default function WindowResizeHandles() {
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  usePyWebViewEvents({
+    WINDOW_MAXIMIZED: () => setIsMaximized(true),
+    WINDOW_RESTORED: () => setIsMaximized(false),
+  });
+
+  if (isMaximized) {
+    return null;
+  }
+
   const handlePointerDown = (dir: string) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || !e.isPrimary) return;
 

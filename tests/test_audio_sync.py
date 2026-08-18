@@ -114,6 +114,40 @@ class TestAudioVideoSync(unittest.TestCase):
             self.assertEqual(audio_start, 0.0)
             self.assertAlmostEqual(audio_duration, video_duration, delta=0.05)
 
+    def test_continuous_capture_preserves_waveform_smoothness_without_jitter_gaps(self):
+        sample_rate = 48_000
+        freq = 440.0
+        total_samples = 48_000
+        t = np.arange(total_samples) / sample_rate
+        sine_wave = np.sin(2 * np.pi * freq * t, dtype=np.float32)[:, None]
+        sine_wave = np.repeat(sine_wave, 2, axis=1)
+
+        recorder = LoopbackAudioRecorder(buffer_seconds=30, sample_rate=sample_rate)
+
+        # Simulate continuous stream recording chunks with thread scheduling jitter
+        anchor = 100.0
+        samples_recorded = 0
+        chunk_size = 4_800
+        for i in range(10):
+            chunk_data = sine_wave[i * chunk_size : (i + 1) * chunk_size]
+            # calculate start time using the continuous timeline formula
+            chunk_start = anchor + (samples_recorded / sample_rate)
+            samples_recorded += len(chunk_data)
+            recorder._append_chunk(chunk_start, chunk_data)
+
+        snapshot = recorder.snapshot(start_time=100.0, end_time=101.0)
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.shape, (48_000, 2))
+
+        # Check that there are no silence dropouts / zero runs created by jitter
+        zero_runs = (snapshot[:, 0] == 0)
+        self.assertLessEqual(np.sum(zero_runs), 2)  # only pure zero crossings of 440Hz sine
+
+        # Check maximum differential: 440Hz sine max diff at 48kHz is ~0.0576
+        diffs = np.abs(np.diff(snapshot[:, 0]))
+        self.assertLess(np.max(diffs), 0.065)
+
 
 if __name__ == "__main__":
     unittest.main()
+

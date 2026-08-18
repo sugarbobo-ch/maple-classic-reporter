@@ -148,6 +148,29 @@ def update_all_version_files(new_version: str) -> None:
         r"(MapleClassicReporter-v)\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(-windows-x64\.zip)",
         rf"\g<1>{new_version}\g<2>",
     )
+    major, minor, patch, _ = parse_semver(new_version)
+    version_info_path = ROOT_DIR / "assets" / "version_info.txt"
+    if version_info_path.is_file():
+        update_file_version(
+            version_info_path,
+            r"filevers=\(\d+,\s*\d+,\s*\d+,\s*\d+\)",
+            f"filevers=({major}, {minor}, {patch}, 0)",
+        )
+        update_file_version(
+            version_info_path,
+            r"prodvers=\(\d+,\s*\d+,\s*\d+,\s*\d+\)",
+            f"prodvers=({major}, {minor}, {patch}, 0)",
+        )
+        update_file_version(
+            version_info_path,
+            r"StringStruct\('FileVersion',\s*'[^']+'\)",
+            f"StringStruct('FileVersion', '{major}.{minor}.{patch}.0')",
+        )
+        update_file_version(
+            version_info_path,
+            r"StringStruct\('ProductVersion',\s*'[^']+'\)",
+            f"StringStruct('ProductVersion', '{new_version}')",
+        )
 
 
 def refresh_lockfile() -> None:

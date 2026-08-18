@@ -160,7 +160,12 @@ def run_webview_app() -> None:
         hwnd = _window_handle(window)
         if not install_native_resize_support(window):
             LOGGER.warning("Native window resize support could not be installed")
-        if not set_window_identity(hwnd or 0, APP_TITLE, get_webview_icon_path()):
+        if not set_window_identity(
+            hwnd or 0,
+            APP_TITLE,
+            get_webview_icon_path(),
+            APP_USER_MODEL_ID,
+        ):
             LOGGER.debug("Native window identity could not be applied")
 
     window.events.shown += on_window_ready

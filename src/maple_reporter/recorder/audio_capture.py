@@ -143,6 +143,9 @@ class LoopbackAudioRecorder(threading.Thread):
                             "音訊來源通知失敗 (%s)", type(error).__name__
                         )
 
+                stream_anchor_time: float | None = None
+                total_samples_captured: int = 0
+
                 while not self._stop_event.is_set():
                     try:
                         data = recorder.record(
@@ -165,8 +168,28 @@ class LoopbackAudioRecorder(threading.Thread):
                         LOGGER.debug("忽略格式不符的音訊緩衝")
                         continue
                     array = np.ascontiguousarray(np.nan_to_num(array))
-                    chunk_end = time.monotonic()
-                    chunk_start = chunk_end - (len(array) / self.sample_rate)
+                    now = time.monotonic()
+                    chunk_len = len(array)
+                    chunk_dur = chunk_len / self.sample_rate
+
+                    if stream_anchor_time is None:
+                        stream_anchor_time = now - chunk_dur
+                        total_samples_captured = 0
+
+                    expected_start = stream_anchor_time + (
+                        total_samples_captured / self.sample_rate
+                    )
+                    measured_start = now - chunk_dur
+
+                    # Check for genuine stream stall or excessive drift (> 250ms)
+                    if abs(measured_start - expected_start) > 0.250:
+                        stream_anchor_time = measured_start
+                        total_samples_captured = 0
+                        chunk_start = measured_start
+                    else:
+                        chunk_start = expected_start
+
+                    total_samples_captured += chunk_len
                     self._append_chunk(chunk_start, array)
         except AudioCaptureError as error:
             self._report_error(str(error))
@@ -382,6 +405,7 @@ def merge_audio_into_mp4(
                 array = np.ascontiguousarray(array * (0.95 / peak))
             samples_per_frame = 1024
             interleaved = np.ascontiguousarray(array.T, dtype=np.float32)
+            current_audio_pts = 0
             for offset in range(0, interleaved.shape[1], samples_per_frame):
                 chunk = interleaved[:, offset : offset + samples_per_frame]
                 if chunk.shape[1] < samples_per_frame:
@@ -391,7 +415,8 @@ def merge_audio_into_mp4(
                     chunk = np.hstack((chunk, padding))
                 frame = av.AudioFrame.from_ndarray(chunk, format="fltp", layout=layout)
                 frame.rate = int(sample_rate)
-                frame.pts = None
+                frame.pts = current_audio_pts
+                current_audio_pts += samples_per_frame
                 for packet in output_audio.encode(frame):
                     if output_audio.time_base is None:
                         output_audio.time_base = packet.time_base

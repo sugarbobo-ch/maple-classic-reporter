@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { History, Minus, Settings, Square, Sun, Moon, X } from 'lucide-react';
 import { IconButton, Badge } from './ui';
 import { usePyWebViewEvents, useTheme } from '../hooks';
@@ -43,11 +43,26 @@ export default function Header({
 }: HeaderProps) {
   const { isDark, toggleTheme } = useTheme(configTheme, onUpdateTheme);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
 
   usePyWebViewEvents({
     WINDOW_MAXIMIZED: () => setIsWindowMaximized(true),
     WINDOW_RESTORED: () => setIsWindowMaximized(false),
   });
+
+  useEffect(() => {
+    const actionsEl = actionsRef.current;
+    if (!actionsEl) return;
+    const stopDragPropagation = (e: MouseEvent) => {
+      e.stopPropagation();
+    };
+    actionsEl.addEventListener('mousedown', stopDragPropagation);
+    actionsEl.addEventListener('dblclick', stopDragPropagation);
+    return () => {
+      actionsEl.removeEventListener('mousedown', stopDragPropagation);
+      actionsEl.removeEventListener('dblclick', stopDragPropagation);
+    };
+  }, []);
 
   const handleMinimizeWindow = async () => {
     try {
@@ -76,6 +91,10 @@ export default function Header({
 
   const handleDragWindow = (e: React.MouseEvent) => {
     if (e.button === 0) {
+      const target = e.target as HTMLElement;
+      if (target.closest('.header-actions, button, a, input, select')) {
+        return;
+      }
       const header = e.currentTarget.closest('.app-header');
       const brand = header?.querySelector('.header-brand');
       const actions = header?.querySelector('.header-actions');
@@ -94,54 +113,81 @@ export default function Header({
     }
   };
 
-  return (
-    <header className="app-header">
-      <div
-        className="app-header-drag-region pywebview-drag-region"
-        onMouseDown={handleDragWindow}
-        onDoubleClick={() => void handleToggleWindowMaximized()}
-      >
-        <div
-          className="header-brand"
-          onClick={() => setCurrentView('home')}
-          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
-        >
-          <img
-            src={appLogo}
-            alt="Maple Classic Reporter Logo"
-            className="header-logo"
-          />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <span className="header-title" style={{ fontSize: '1rem', fontWeight: 700 }}>
-              新楓之谷：經典版《自動外掛檢舉工具》
-            </span>
-            <span
-              style={{
-                fontSize: '0.72rem',
-                color: 'var(--color-text-secondary)',
-                fontWeight: 500,
-                letterSpacing: '0.3px',
-                lineHeight: 1,
-              }}
-            >
-              Maple Classic Reporter
-            </span>
-          </div>
+  const handleHeaderDoubleClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.header-actions, button, a, input, select')) {
+      return;
+    }
+    void handleToggleWindowMaximized();
+  };
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '-6px' }}>
-            <Badge variant="primary" size="sm">
-              v{APP_VERSION}
+  return (
+    <header
+      className="app-header pywebview-drag-region"
+      onMouseDown={handleDragWindow}
+      onDoubleClick={handleHeaderDoubleClick}
+    >
+      <div
+        className="header-brand pywebview-drag-region"
+        style={{ display: 'flex', alignItems: 'center', gap: '10px', userSelect: 'none' }}
+      >
+        <img
+          src={appLogo}
+          alt="Maple Classic Reporter Logo"
+          className="header-logo pywebview-drag-region"
+          draggable={false}
+        />
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1px',
+            userSelect: 'none',
+          }}
+        >
+          <span
+            className="header-title"
+            onClick={() => setCurrentView('home')}
+            style={{ fontSize: '1rem', fontWeight: 700, cursor: 'pointer' }}
+          >
+            新楓之谷：經典版《自動外掛檢舉工具》
+          </span>
+          <span
+            style={{
+              fontSize: '0.72rem',
+              color: 'var(--color-text-secondary)',
+              fontWeight: 500,
+              letterSpacing: '0.3px',
+              lineHeight: 1,
+            }}
+          >
+            Maple Classic Reporter
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '-6px' }}>
+          <Badge variant="primary" size="sm">
+            v{APP_VERSION}
+          </Badge>
+          {isDevMode && (
+            <Badge variant="event" size="sm">
+              DEV 測試模式
             </Badge>
-            {isDevMode && (
-              <Badge variant="event" size="sm">
-                DEV 測試模式
-              </Badge>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      <div className="header-actions">
+      <div
+        className="header-spacer pywebview-drag-region"
+        style={{ flex: 1, alignSelf: 'stretch', cursor: 'default' }}
+      />
+
+      <div
+        ref={actionsRef}
+        className="header-actions"
+        onMouseDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
         <IconButton
           icon={isDark ? Sun : Moon}
           size="md"

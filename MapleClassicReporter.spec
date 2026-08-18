@@ -113,6 +113,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=[str(PROJECT_ROOT / "assets" / "icon.ico")],
+    version=str(PROJECT_ROOT / "assets" / "version_info.txt"),
 )
 
 # Keep the native dependencies, Playwright driver, Chromium, and data files

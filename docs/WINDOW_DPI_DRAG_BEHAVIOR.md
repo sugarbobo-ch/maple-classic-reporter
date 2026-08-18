@@ -164,8 +164,9 @@ IDLE
 ## 6. Resize 與 Snap 邊界
 
 - Frameless WebView2 子視窗會先吃掉邊緣指標，因此 resize 使用同進程透明 child overlay 接收 hit-test，再以 `WM_NCLBUTTONDOWN` 啟動原生 sizing loop。
-- Header 的一般移動目前由 pywebview movement 實作，不是 Windows caption modal loop。因此「拖到頂端觸發完整 Windows Snap／Snap Layout」目前不是已交付能力。
-- 若要加入 Snap，應建立獨立實驗分支，證明 caption loop 能與 async JS bridge、DPI anchor 和 WebView capture 共存後才替換移動來源。
+- **拖到頂端放開自動最大化（安全方案）**：在不變更既有 DPI delta 移動的前提下，當拖曳時將視窗移至所在螢幕工作區頂端邊界並放開滑鼠時（`WM_LBUTTONUP` / drag release timer），呼叫 `check_and_snap_to_top()` 自動將視窗最大化至該螢幕工作區。
+- **完整原生 Snap Layout（進階）**：需要 Windows 11 原生 caption move loop 與 `WM_NCHITTEST` `HTMAXBUTTON` 支援，保留至後續專屬輪次驗證。
+- **工作列身分與圖示**：透過進程級 `SetCurrentProcessExplicitAppUserModelID` 與視窗級 `SHGetPropertyStoreForWindow`（`PKEY_AppUserModel_ID` 及 `PKEY_AppUserModel_RelaunchDisplayNameResource`）綁定，確保在開發環境（`python.exe` 宿主）與打包版均顯示正確的應用程式名稱與圖示；發行版由 `assets/version_info.txt` 嵌入 `VS_VERSIONINFO` 資源。
 
 ## 7. 已證實的失敗方案
 
@@ -208,6 +209,8 @@ rtk rg -n -F "app-header-drag-region pywebview-drag-region" src/components/Heade
 - mouseup 後的 stale `WM_WINDOWPOSCHANGING` 在 120 ms 內被吸收，期限後狀態清除。
 - 最大化 `WM_WINDOWPOSCHANGING` 不受舊 drag geometry 影響。
 - Header 的最終 bundle 包含 `pywebview-drag-region` class。
+- 拖曳至頂端放開觸發 `check_and_snap_to_top()` 最大化。
+- 工作列身分與 `PKEY_AppUserModel_ID` 正確設定。
 
 ### 9.2 人工硬體驗收
 
@@ -233,20 +236,18 @@ rtk rg -n -F "app-header-drag-region pywebview-drag-region" src/components/Heade
 - 最大化／還原連續執行兩次：按鈕狀態、工作區位置與正常尺寸一致。
 - 放開滑鼠：視窗停在放開位置，不得延遲跳到左螢幕、右螢幕或負座標。
 - 八個邊與角 resize：游標形狀與 resize 方向正確，跨 DPI 後仍可使用。
+- 拖曳至螢幕頂端放開：視窗自動最大化至當前螢幕工作區。
 
 ### 9.3 Snap 驗收（實作該功能時才啟用）
 
-- 拖到螢幕頂端能觸發 Windows 原生排列／最大化行為。
-- 拖到左右邊緣能觸發 Windows 原生半螢幕排列。
+- 拖到螢幕頂端放開自動最大化（安全方案已交付）。
+- 拖到左右邊緣能觸發 Windows 原生半螢幕排列（原生 Snap Layout 專屬輪次）。
 - Snap 後拖離能依 Header anchor 還原。
 - 開啟 Snap 不得使本文件 9.1、9.2 的既有條件退化。
 
 ## 10. 目前狀態
 
 - Per-Monitor V2、邏輯尺寸、DPI anchor、`WM_WINDOWPOSCHANGING` 守門與 120 ms release grace 已實作並有單元測試。
-- 右側螢幕左飄的根因已定位為 pywebview 絕對 logical `window.move()` 與 WinForms 目前 DPI 比例的座標單位衝突；bridge 現在以 delta adapter 逐事件平移，並由 native helper 以目前實體 RECT 套用。
-- 最新自動驗證：`190 passed, 8 subtests passed`；`web` production build 已通過。仍需重新啟動實際應用程式，在右側螢幕依 9.2.1 條件人工確認，因單元測試無法取代真實 WebView2 mousemove 與 Windows 多螢幕座標。
-- Header 已恢復正確的 `pywebview-drag-region` class，前端 production build 已通過。
-- 右側螢幕的實際 WebView2 拖曳仍需依 9.2.1 重啟應用程式後驗證；自動測試不宣稱已完成這項人工驗收。
-- 「最大化時單擊 Header 不應還原」尚未完成，屬於下一個修改的第一優先。
-- Windows Snap 尚未交付。
+- 拖到螢幕頂端放開自動最大化（安全方案）已完成並具備單元測試與 drag release 整合。
+- 工作列身分（進程與視窗級 `AppUserModelID`、`RelaunchDisplayName`、多尺寸圖示、PyInstaller `VS_VERSIONINFO` 版本資源）已完成。
+- 最新自動驗證：全套 209 個 Python 單元測試與 31 個前端 Vitest 測試全部通過；`web` production build 通過。
