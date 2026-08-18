@@ -106,6 +106,32 @@ class SanctionDatabase:
 
         self._execute(_init)
 
+        # Seamlessly migrate legacy sanctions.db if using default db and reports are empty
+        if self.db_path == get_default_db_path():
+            legacy_db = CONFIG_DIR / "sanctions.db"
+            if legacy_db.exists() and legacy_db.resolve() != self.db_path.resolve():
+                def _migrate_legacy(conn: sqlite3.Connection) -> None:
+                    cur = conn.cursor()
+                    count = cur.execute("SELECT count(*) FROM reports").fetchone()[0]
+                    if count == 0:
+                        try:
+                            conn_old = sqlite3.connect(str(legacy_db))
+                            old_cur = conn_old.cursor()
+                            old_reports = old_cur.execute("SELECT * FROM reports").fetchall()
+                            if old_reports:
+                                cols = [d[0] for d in old_cur.description]
+                                placeholders = ", ".join(["?"] * len(cols))
+                                col_names = ", ".join(cols)
+                                cur.executemany(
+                                    f"INSERT OR REPLACE INTO reports ({col_names}) VALUES ({placeholders})",
+                                    old_reports,
+                                )
+                            conn_old.close()
+                        except Exception as err:
+                            LOGGER.debug("Legacy database migration skipped (%s)", type(err).__name__)
+
+                self._execute(_migrate_legacy)
+
     # --- Reports Operations ---
 
     def load_reports(self) -> list[dict[str, Any]]:
