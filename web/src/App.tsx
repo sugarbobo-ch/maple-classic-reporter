@@ -23,7 +23,6 @@ import {
   SanctionSyncStatus,
 } from './types';
 import { normalizeSafeHttpsUrl } from './utils';
-import { DEFAULT_MOCK_HISTORY } from './constants/presets';
 import './styles/app.css';
 
 import { choosePreferredWindow, normalizeOcrResult } from './utils/appHelpers';
@@ -44,7 +43,7 @@ export default function App() {
     { id: '', name: '系統預設' },
   ]);
 
-  const [history, setHistory] = useState<HistoryRecord[]>(DEFAULT_MOCK_HISTORY);
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [sanctionSyncStatus, setSanctionSyncStatus] = useState<SanctionSyncStatus | null>(null);
   const [isCheckingSanctions, setIsCheckingSanctions] = useState<boolean>(false);
   const [lastCompleteSyncAt, setLastCompleteSyncAt] = useState<string | null>(null);

@@ -180,10 +180,8 @@ class SanctionRepository:
             self.db.save_reports(clean_records)
 
             # 2. Mirror to JSON files
-            _write_json_atomic(HISTORY_FILE, clean_records)
-            if LEGACY_HISTORY_FILE.parent.exists():
-                _write_json_atomic(LEGACY_HISTORY_FILE, clean_records)
-            self._history_path = HISTORY_FILE
+            target_path = self._history_path if self._history_path else HISTORY_FILE
+            _write_json_atomic(target_path, clean_records)
 
     def add_history_entry(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Insert new history entry at index 0 after evaluating against local cache."""
@@ -205,11 +203,8 @@ class SanctionRepository:
         """Clear history records while preserving sanction cache."""
         with self._lock:
             self.db.clear_reports()
-            _write_json_atomic(self._history_path, [])
-            _write_json_atomic(HISTORY_FILE, [])
-            if LEGACY_HISTORY_FILE.parent.exists():
-                _write_json_atomic(LEGACY_HISTORY_FILE, [])
-            self._history_path = HISTORY_FILE
+            target_path = self._history_path if self._history_path else HISTORY_FILE
+            _write_json_atomic(target_path, [])
 
     # --- Cache Update Logic ---
 
