@@ -2,7 +2,7 @@ import os
 import re
 import time
 import logging
-from typing import List, Optional, Tuple, Callable
+from typing import List, Optional, Tuple, Callable, Any
 import cv2
 import numpy as np
 import mss
@@ -145,33 +145,99 @@ def select_preferred_window_title(windows: List[dict], saved_title: str = "") ->
             if normalize_window_title_keyword(title).casefold() == normalized_saved_title:
                 return title
 
+    if saved_title and (
+        PRIMARY_GAME_WINDOW_TITLE.casefold() in saved_title.casefold()
+        or RELATED_GAME_WINDOW_TITLE_KEYWORD.casefold() in saved_title.casefold()
+    ):
+        return saved_title
+
     return str(windows[0].get("title", ""))
 
 
+class _WINDOWPLACEMENT(ctypes.Structure):
+    _fields_ = [
+        ("length", wintypes.UINT),
+        ("flags", wintypes.UINT),
+        ("showCmd", wintypes.UINT),
+        ("ptMinPosition", wintypes.POINT),
+        ("ptMaxPosition", wintypes.POINT),
+        ("rcNormalPosition", wintypes.RECT),
+    ]
+
+
+def _get_window_placement(hwnd: Optional[int]) -> Optional[Tuple[int, int, int, int]]:
+    """Retrieve normal unminimized position (left, top, right, bottom) of a window."""
+    if os.name != "nt" or not hwnd:
+        return None
+    try:
+        wp = _WINDOWPLACEMENT()
+        wp.length = ctypes.sizeof(_WINDOWPLACEMENT)
+        if ctypes.windll.user32.GetWindowPlacement(hwnd, ctypes.byref(wp)):
+            rect = wp.rcNormalPosition
+            return (int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
+    except Exception:
+        pass
+    return None
+
+
+def _get_window_dimensions(window: Any) -> Optional[Tuple[int, int]]:
+    hwnd = getattr(window, "_hWnd", None)
+    is_min = getattr(window, "isMinimized", False)
+    if not is_min and hwnd and os.name == "nt":
+        try:
+            is_min = bool(ctypes.windll.user32.IsIconic(hwnd))
+        except Exception:
+            pass
+
+    if is_min and hwnd:
+        placement = _get_window_placement(hwnd)
+        if placement:
+            left, top, right, bottom = placement
+            w = int(right - left)
+            h = int(bottom - top)
+            if w > 100 and h > 100:
+                return w, h
+
+    if hwnd:
+        bounds = get_client_area_bounds(hwnd)
+        if bounds and bounds[2] > 100 and bounds[3] > 100:
+            return int(bounds[2]), int(bounds[3])
+
+    try:
+        w, h = int(window.width), int(window.height)
+        if w > 100 and h > 100:
+            return w, h
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    return None
+
+
 def get_active_windows() -> List[dict]:
-    """Return visible windows with their actual client-area dimensions."""
+    """Return visible windows (including minimized ones) with their actual client-area dimensions."""
     windows: List[dict] = []
     seen_titles: set[str] = set()
 
     for window in gw.getAllWindows():
         title = str(getattr(window, "title", "") or "").strip()
-        if not title or not getattr(window, "visible", False):
-            continue
-        if getattr(window, "isMinimized", False):
+        if not title:
             continue
 
+        # Check visibility (minimized windows still have a valid handle and title)
         hwnd = getattr(window, "_hWnd", None)
-        bounds = get_client_area_bounds(hwnd) if hwnd else None
-        if bounds and bounds[2] > 100 and bounds[3] > 100:
-            width, height = int(bounds[2]), int(bounds[3])
-        else:
+        is_visible = bool(getattr(window, "visible", False))
+        if not is_visible and hwnd and os.name == "nt":
             try:
-                width, height = int(window.width), int(window.height)
-            except (AttributeError, TypeError, ValueError):
-                continue
-
-        if width <= 100 or height <= 100:
+                is_visible = bool(ctypes.windll.user32.IsWindowVisible(hwnd))
+            except Exception:
+                pass
+        if not is_visible:
             continue
+
+        dims = _get_window_dimensions(window)
+        if not dims:
+            continue
+        width, height = dims
 
         title_key = title.casefold()
         if title_key in seen_titles:
@@ -186,29 +252,78 @@ def get_active_window_titles() -> List[str]:
     """Return a priority-ordered list of visible window titles."""
     return [window["title"] for window in get_active_windows()]
 
+def is_window_minimized(window_title_keyword: str) -> bool:
+    """Check if the target window is minimized (iconic)."""
+    window_title_keyword = normalize_window_title_keyword(window_title_keyword)
+    if not window_title_keyword:
+        return False
+    from maple_reporter.recorder.window_capture import find_target_hwnd
+    hwnd = find_target_hwnd(window_title_keyword)
+    if not hwnd and any(k in window_title_keyword.casefold() for k in ["maple", "楓之谷"]):
+        for fallback_kw in [PRIMARY_GAME_WINDOW_TITLE, RELATED_GAME_WINDOW_TITLE_KEYWORD]:
+            if fallback_kw.casefold() != window_title_keyword.casefold():
+                hwnd = find_target_hwnd(fallback_kw)
+                if hwnd:
+                    break
+    if hwnd and os.name == "nt" and ctypes.windll.user32.IsWindow(hwnd):
+        return bool(ctypes.windll.user32.IsIconic(hwnd))
+    return False
+
+
 def focus_window(window_title_keyword: str) -> bool:
-    """Bring the target window to the foreground reliably."""
+    """Bring the target window to the foreground if not minimized."""
     window_title_keyword = normalize_window_title_keyword(window_title_keyword)
     if not window_title_keyword:
         return False
 
+    from maple_reporter.recorder.window_capture import find_target_hwnd
+    hwnd = find_target_hwnd(window_title_keyword)
+
+    # Fallback to default game title if keyword was a maple variant and not found
+    if not hwnd and any(k in window_title_keyword.casefold() for k in ["maple", "楓之谷"]):
+        for fallback_kw in [PRIMARY_GAME_WINDOW_TITLE, RELATED_GAME_WINDOW_TITLE_KEYWORD]:
+            if fallback_kw.casefold() != window_title_keyword.casefold():
+                hwnd = find_target_hwnd(fallback_kw)
+                if hwnd:
+                    break
+
+    if hwnd and os.name == "nt" and ctypes.windll.user32.IsWindow(hwnd):
+        if not ctypes.windll.user32.IsIconic(hwnd):
+            try:
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+                return True
+            except Exception as err:
+                LOGGER.debug("focus_window SetForegroundWindow 失敗: %s", err)
+    return False
+
+
+def find_window_bounds(window_title_keyword: str) -> Optional[Tuple[int, int, int, int]]:
+    """
+    Find accurate window bounding box (left, top, width, height) by exact title or keyword.
+    Prioritizes exact title match over substring match to avoid selecting browser/IDE windows.
+    Returns None if the window is minimized or not found.
+    """
+    window_title_keyword = normalize_window_title_keyword(window_title_keyword)
+    if not window_title_keyword:
+        return None
+
     all_windows = gw.getAllWindows()
     target_window = None
 
-    # Pass 1: Exact title
+    # Pass 1: Exact Title Match
     for w in all_windows:
         if getattr(w, "title", "") == window_title_keyword:
             target_window = w
             break
 
-    # Pass 2: Case-insensitive exact
+    # Pass 2: Case-insensitive Exact Match
     if not target_window:
         for w in all_windows:
             if str(getattr(w, "title", "")).strip().casefold() == window_title_keyword.casefold():
                 target_window = w
                 break
 
-    # Pass 3: Substring
+    # Pass 3: Substring Match (excluding current app title)
     if not target_window:
         for w in all_windows:
             title = str(getattr(w, "title", "")).casefold()
@@ -218,81 +333,33 @@ def focus_window(window_title_keyword: str) -> bool:
                 target_window = w
                 break
 
+    hwnd = getattr(target_window, '_hWnd', None) if target_window else None
+    if not hwnd:
+        from maple_reporter.recorder.window_capture import find_target_hwnd
+        hwnd = find_target_hwnd(window_title_keyword)
+
+    if hwnd and ctypes.windll.user32.IsWindow(hwnd):
+        if ctypes.windll.user32.IsIconic(hwnd):
+            return None
+
+        bounds = get_client_area_bounds(hwnd)
+        if bounds and bounds[2] > 50 and bounds[3] > 50:
+            return bounds
+
+        placement = _get_window_placement(hwnd)
+        if placement:
+            left, top, right, bottom = placement
+            w, h = right - left, bottom - top
+            if w > 50 and h > 50:
+                return (left, top, w, h)
+
     if target_window:
-        hwnd = getattr(target_window, "_hWnd", None)
-        if hwnd and ctypes.windll.user32.IsWindow(hwnd):
-            try:
-                if ctypes.windll.user32.IsIconic(hwnd):
-                    ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-                else:
-                    ctypes.windll.user32.ShowWindow(hwnd, 5)  # SW_SHOW
-
-                # Bypass Windows foreground lock
-                current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-                target_tid = ctypes.windll.user32.GetWindowThreadProcessId(hwnd, None)
-                if current_tid != target_tid:
-                    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-
-                ctypes.windll.user32.BringWindowToTop(hwnd)
-                ctypes.windll.user32.SetForegroundWindow(hwnd)
-
-                if current_tid != target_tid:
-                    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-                return True
-            except Exception as error:
-                LOGGER.debug("設定目標視窗為前景失敗 (%s)", type(error).__name__)
         try:
-            target_window.activate()
-            return True
-        except Exception as error:
-            LOGGER.debug("啟用目標視窗失敗 (%s)", type(error).__name__)
-    return False
-
-def find_window_bounds(window_title_keyword: str) -> Optional[Tuple[int, int, int, int]]:
-    """
-    Find accurate window bounding box (left, top, width, height) by exact title or keyword.
-    Prioritizes exact title match over substring match to avoid selecting browser/IDE windows.
-    """
-    window_title_keyword = normalize_window_title_keyword(window_title_keyword)
-    if not window_title_keyword:
-        return None
-
-    visible_windows = [
-        w for w in gw.getAllWindows()
-        if w.title and w.visible and not getattr(w, 'isMinimized', False) and w.width > 50 and w.height > 50
-    ]
-
-    target_window = None
-
-    # Pass 1: Exact Title Match
-    for w in visible_windows:
-        if w.title == window_title_keyword:
-            target_window = w
-            break
-
-    # Pass 2: Case-insensitive Exact Match
-    if not target_window:
-        for w in visible_windows:
-            if w.title.strip().lower() == window_title_keyword.strip().lower():
-                target_window = w
-                break
-
-    # Pass 3: Substring Match (excluding current app title)
-    if not target_window:
-        for w in visible_windows:
-            if "maplestory classic auto reporter" in w.title.lower():
-                continue
-            if window_title_keyword.lower() in w.title.lower():
-                target_window = w
-                break
-
-    if target_window:
-        hwnd = getattr(target_window, '_hWnd', None)
-        if hwnd:
-            bounds = get_client_area_bounds(hwnd)
-            if bounds and bounds[2] > 50 and bounds[3] > 50:
-                return bounds
-        return (target_window.left, target_window.top, target_window.width, target_window.height)
+            w, h = int(target_window.width), int(target_window.height)
+            if w > 50 and h > 50:
+                return (int(target_window.left), int(target_window.top), w, h)
+        except Exception:
+            pass
 
     return None
 
@@ -380,6 +447,7 @@ def record_short_video(
     Extracts keyframe PIL images every 2 seconds for OCR. Optionally records system audio.
     Returns (file_path, keyframes_list). If canceled, returns (None, []).
     """
+    focus_window(window_title_keyword)
     bounds = find_window_bounds(window_title_keyword)
     keyframes: List[Image.Image] = []
 
@@ -472,6 +540,9 @@ def record_short_video(
             sleep_time = max(0.0, next_target_time - time.monotonic())
             if sleep_time > 0:
                 time.sleep(sleep_time)
+
+        if progress_callback and not cancelled:
+            progress_callback(1.0)
     except Exception as error:
         LOGGER.warning("短片錄製失敗 (%s)", type(error).__name__)
         if audio_thread:
@@ -500,14 +571,14 @@ def record_short_video(
             audio_thread.stop_and_get_data()
         return None, []
 
+    audio_data = None
     if audio_thread:
         audio_data = audio_thread.stop_and_get_data(
             start_time=capture_start, end_time=time.monotonic()
         )
-        if audio_data is not None and len(audio_data) > 0:
-            if not merge_audio_into_mp4(
-                file_path, audio_data, sample_rate=DEFAULT_SAMPLE_RATE
-            ):
-                LOGGER.warning("短片已儲存，但 AAC 音訊軌合併失敗")
+
+    # Always remux OpenCV mp4v output into web-compatible H.264 MP4 (with audio if available)
+    if not merge_audio_into_mp4(file_path, audio_data, sample_rate=DEFAULT_SAMPLE_RATE):
+        LOGGER.warning("短片 H.264/AAC remux 失敗")
 
     return file_path, keyframes

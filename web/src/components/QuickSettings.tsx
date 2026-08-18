@@ -1,5 +1,5 @@
-import { Video, Sliders, Volume2, Monitor, RotateCcw, RefreshCw } from 'lucide-react';
-import { Card, Dropdown, IconButton } from './ui';
+import { Video, Sliders, Volume2, Monitor, RotateCcw, RefreshCw, ChevronRight } from 'lucide-react';
+import { Card, Button, Dropdown, IconButton } from './ui';
 import { AppConfig, WindowItem, AudioDeviceItem, DropdownOption } from '../types';
 import PresetPopup from './PresetPopup';
 import { RECORDING_PRESETS, detectPresetKey, PresetKey } from '../constants/presets';
@@ -12,6 +12,7 @@ export interface QuickSettingsProps {
   onUpdateConfigBatch?: (updates: Partial<AppConfig>) => void;
   onRefreshWindows?: () => void;
   onRefreshAudio?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export default function QuickSettings({
@@ -22,6 +23,7 @@ export default function QuickSettings({
   onUpdateConfigBatch,
   onRefreshWindows,
   onRefreshAudio,
+  onOpenSettings,
 }: QuickSettingsProps) {
   const windowOptions: DropdownOption<string>[] =
     windows && windows.length > 0
@@ -96,7 +98,25 @@ export default function QuickSettings({
   };
 
   return (
-    <Card title="快捷設定" titleIcon={Sliders} variant="raised">
+    <Card
+      title="快捷設定"
+      titleIcon={Sliders}
+      variant="raised"
+      headerAction={
+        onOpenSettings && (
+          <Button
+            variant="outline"
+            size="sm"
+            icon={ChevronRight}
+            iconPosition="right"
+            onClick={onOpenSettings}
+            title="開啟完整偏好設定"
+          >
+            進階設定
+          </Button>
+        )
+      }
+    >
       <div className="quick-settings-grid">
         {/* Screenshot Window Dropdown with Refresh IconButton */}
         <div className="form-group">
@@ -217,4 +237,3 @@ export default function QuickSettings({
     </Card>
   );
 }
-

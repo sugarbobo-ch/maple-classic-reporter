@@ -40,3 +40,7 @@ export type { ToastOptions, ToastVariant, ToastItemData } from './ToastContext';
 
 export { default as DynamicIcon, POPULAR_LUCIDE_ICONS } from './DynamicIcon';
 export type { DynamicIconProps } from './DynamicIcon';
+
+export { default as CircularProgress } from './CircularProgress';
+export type { CircularProgressProps } from './CircularProgress';
+

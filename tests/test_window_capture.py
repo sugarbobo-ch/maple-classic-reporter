@@ -19,6 +19,25 @@ class TestWindowCapture(unittest.TestCase):
         self.assertFalse(restore_and_focus_window(0))
         self.assertFalse(restore_and_focus_window(-1))
 
+    @patch("ctypes.windll.user32.IsWindow", return_value=True)
+    @patch("ctypes.windll.user32.IsIconic", return_value=True)
+    @patch("ctypes.windll.user32.ShowWindow")
+    @patch("time.sleep")
+    def test_restore_and_focus_window_iconic(
+        self, mock_sleep, mock_show, mock_iconic, mock_is_win
+    ):
+        res = restore_and_focus_window(99999)
+        self.assertTrue(res)
+        mock_show.assert_called_with(99999, 9)
+
+    @patch("ctypes.windll.user32.IsWindow", return_value=True)
+    @patch("ctypes.windll.user32.IsIconic", return_value=False)
+    def test_restore_and_focus_window_already_restored(
+        self, mock_iconic, mock_is_win
+    ):
+        res = restore_and_focus_window(99999)
+        self.assertTrue(res)
+
     @patch("pygetwindow.getAllWindows")
     def test_find_target_hwnd_exact_and_fuzzy(self, mock_get_all):
         win1 = MagicMock()

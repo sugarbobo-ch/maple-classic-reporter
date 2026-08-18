@@ -672,8 +672,8 @@ export default function SettingsView({
                 </div>
               </div>
 
-              {/* 違規說明與範本管理（自然排列無多餘外框與分隔線） */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* 違規說明與範本管理（附底部橫向分隔線） */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '12px', borderBottom: '1px solid var(--color-border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <div className="setting-info">
                     <span className="setting-label">違規說明與範本管理</span>
@@ -724,8 +724,8 @@ export default function SettingsView({
                 />
               </div>
 
-              {/* 白名單管理（自然排列無多餘外框與分隔線） */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* 白名單管理（附底部橫向分隔線） */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '12px', borderBottom: '1px solid var(--color-border)' }}>
                 <div className="setting-info">
                   <span className="setting-label">白名單角色 ID 管理</span>
                   <span className="setting-desc">輸入逗號分隔文字或 Enter，自動切分為 Chip，辨識時將自動過濾</span>

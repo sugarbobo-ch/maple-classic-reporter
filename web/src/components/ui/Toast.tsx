@@ -103,7 +103,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               duration: options.duration ?? 3500,
             };
 
-      setToasts((prev) => [...prev, normalized]);
+      setToasts((prev) => {
+        // If adding an error toast, remove any existing error toast so only one is shown at a time
+        if (normalized.variant === 'error') {
+          const nonErrors = prev.filter((t) => t.variant !== 'error');
+          return [...nonErrors, normalized];
+        }
+        // Deduplicate if identical toast is already active
+        const isDuplicate = prev.some(
+          (t) =>
+            t.variant === normalized.variant &&
+            t.title === normalized.title &&
+            t.description === normalized.description
+        );
+        if (isDuplicate) {
+          return prev;
+        }
+        return [...prev, normalized];
+      });
 
       if (normalized.duration && normalized.duration > 0) {
         setTimeout(() => {

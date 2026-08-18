@@ -486,31 +486,84 @@ body {
 
 /* Status Bar */
 .status-bar {
+  --status-spacing: 12px;
+  position: relative;
+  overflow: hidden;
   background-color: var(--color-surface);
   border-top: 1px solid var(--color-border);
-  padding: 8px 16px;
+  padding: 12px 18px 14px 18px;
   font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
+.status-details-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px 16px;
+  font-size: 0.8rem;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(200, 160, 96, 0.35);
+}
+
+.status-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.status-detail-label {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.status-detail-value {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-bar-bottom,
 .status-bar-header,
 .status-bar-collapsed {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  height: var(--size-md);
+  min-height: var(--size-md);
+  box-sizing: border-box;
 }
 
 .status-pills {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  height: var(--size-md);
 }
 
 .status-pill {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.status-pill span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
 
 .status-pill.recording {
@@ -521,28 +574,113 @@ body {
   color: var(--color-primary);
 }
 
-.status-bar-expanded {
-  padding-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.status-pill.countdown {
+  color: var(--color-primary);
 }
 
-.status-details-grid {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 6px 12px;
-  font-size: 0.82rem;
+.status-pill.idle {
+  color: var(--color-text-secondary);
 }
 
-.status-actions {
+.status-actions-group {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+  margin-left: auto;
+  height: var(--size-md);
+}
+
+.status-rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-danger);
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  user-select: none;
+  line-height: 1;
+}
+
+.status-rec-badge span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.status-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-danger);
+  display: inline-block;
+  flex-shrink: 0;
+  transform: translateY(0.5px);
+}
+
+.status-rec-dot.countdown {
+  background-color: var(--color-primary);
+}
+
+.circular-progress-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.circular-progress-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.circular-progress-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Status Bar Top Progress Strip */
+.status-top-progress-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: rgba(200, 160, 96, 0.15);
+  z-index: 10;
+}
+
+.status-top-progress-track.countdown {
+  background-color: rgba(255, 135, 17, 0.15);
+}
+
+.status-top-progress-track.recording {
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+.status-top-progress-bar {
+  height: 100%;
+  transition: width 0.08s linear;
+}
+
+.status-top-progress-bar.countdown {
+  background-color: var(--color-primary);
+}
+
+.status-top-progress-bar.recording {
+  background-color: var(--color-danger);
 }
 
 /* Buttons System */

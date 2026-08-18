@@ -39,3 +39,8 @@ packages = ["src/maple_reporter"]
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["node_modules", "web", ".venv", "dist", "build"]
+

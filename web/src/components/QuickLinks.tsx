@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Globe, Plus } from 'lucide-react';
+import { Globe, Plus, ChevronRight } from 'lucide-react';
 import { Card, Button, DynamicIcon } from './ui';
 import { QuickLinkItem } from '../types';
 
@@ -63,7 +63,14 @@ export default function QuickLinks({
       }
       titleIcon={Globe}
       headerAction={
-        <Button variant="outline" size="sm" onClick={onManageLinks}>
+        <Button
+          variant="outline"
+          size="sm"
+          icon={ChevronRight}
+          iconPosition="right"
+          onClick={onManageLinks}
+          title="管理自訂快捷連結"
+        >
           管理連結
         </Button>
       }

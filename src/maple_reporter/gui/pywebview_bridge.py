@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import concurrent.futures
 import ctypes
+from ctypes import wintypes
 import io
 import json
 import logging
@@ -57,6 +58,7 @@ from maple_reporter.recorder.window_recorder import (
     find_window_bounds,
     focus_window,
     get_active_windows,
+    is_window_minimized,
     order_window_candidates,
     record_short_video,
     select_preferred_window_title,
@@ -942,6 +944,12 @@ class PyWebViewBridge:
         """Capture screenshot from the selected target game window and perform OCR."""
         win_title = self.config.get("selected_window_title", "新楓之谷：經典版")
         try:
+            if is_window_minimized(win_title):
+                return {
+                    "status": "error",
+                    "message": "目標遊戲視窗處於最小化狀態，請先展開遊戲視窗後再進行截圖。",
+                }
+
             focus_window(win_title)
             time.sleep(0.15)
             bounds = find_window_bounds(win_title)
@@ -974,6 +982,62 @@ class PyWebViewBridge:
                 "media_type": "image",
             }
 
+    def _restore_gui_window(self):
+        """Restore and bring PyWebView GUI window forcefully to foreground."""
+        try:
+            if self._window:
+                self._window.restore()
+                self._window.show()
+        except Exception:
+            pass
+
+        if os.name == "nt":
+            try:
+                pid = os.getpid()
+                found_hwnd = None
+
+                def _enum_proc(hwnd, lparam):
+                    nonlocal found_hwnd
+                    if ctypes.windll.user32.IsWindow(hwnd):
+                        window_pid = wintypes.DWORD()
+                        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_pid))
+                        if window_pid.value == pid:
+                            rect = wintypes.RECT()
+                            ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                            if (rect.right - rect.left) > 200 and (rect.bottom - rect.top) > 200:
+                                found_hwnd = hwnd
+                                return False
+                    return True
+
+                WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+                ctypes.windll.user32.EnumWindows(WNDENUMPROC(_enum_proc), 0)
+
+                if not found_hwnd:
+                    for w in gw.getAllWindows():
+                        t = str(getattr(w, "title", "")).strip().casefold()
+                        if "新楓之谷經典版 自動檢舉小幫手".casefold() in t or "maplestory classic auto reporter".casefold() in t:
+                            found_hwnd = getattr(w, "_hWnd", None)
+                            if found_hwnd:
+                                break
+
+                if found_hwnd and ctypes.windll.user32.IsWindow(found_hwnd):
+                    try:
+                        ctypes.windll.user32.OpenIcon(found_hwnd)
+                    except Exception:
+                        pass
+
+                    # Bypass Windows SetForegroundWindow lock via ALT key simulation
+                    ctypes.windll.user32.keybd_event(0x12, 0, 0, 0)
+                    ctypes.windll.user32.keybd_event(0x12, 0, 2, 0)
+
+                    ctypes.windll.user32.ShowWindow(found_hwnd, 9)  # SW_RESTORE
+                    ctypes.windll.user32.SetWindowPos(found_hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_TOPMOST
+                    ctypes.windll.user32.SetWindowPos(found_hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_NOTOPMOST
+                    ctypes.windll.user32.BringWindowToTop(found_hwnd)
+                    ctypes.windll.user32.SetForegroundWindow(found_hwnd)
+            except Exception as err:
+                LOGGER.debug("無法強制喚醒主視窗: %s", err)
+
     # --- Video Recording ---
 
     def start_recording(
@@ -985,8 +1049,13 @@ class PyWebViewBridge:
         audio_device_id: str | None = None,
     ) -> bool:
         """Start a short video recording in a background thread with real-time events."""
-        if self._recording_active:
-            return False
+        if self._recording_active or (self._recording_thread and self._recording_thread.is_alive()):
+            # Wait briefly if previous thread is finishing cleanup
+            if self._recording_thread and self._recording_thread.is_alive():
+                self._recording_thread.join(timeout=0.5)
+            if self._recording_active:
+                LOGGER.warning("start_recording rejected: previous recording still active.")
+                return False
 
         duration = duration_sec or int(self.config.get("record_duration_sec", 8))
         rec_fps = fps or int(self.config.get("record_fps", 30))
@@ -994,6 +1063,14 @@ class PyWebViewBridge:
         rec_audio = record_audio if record_audio is not None else bool(self.config.get("record_audio", True))
         audio_dev = audio_device_id or self.config.get("audio_output_device_id") or None
         win_title = self.config.get("selected_window_title", "新楓之谷：經典版")
+
+        # Reject if target window is minimized
+        if is_window_minimized(win_title):
+            LOGGER.warning("start_recording rejected: target window '%s' is minimized.", win_title)
+            self._emit_event("RECORDING_ERROR", {"message": "目標遊戲視窗處於最小化狀態，請先展開遊戲視窗後再開始錄影。"})
+            raise RuntimeError("目標遊戲視窗處於最小化狀態，請先展開遊戲視窗後再開始錄影。")
+
+        focus_window(win_title)
 
         self._recording_active = True
         self._cancel_requested = False
@@ -1007,22 +1084,30 @@ class PyWebViewBridge:
                         if self._cancel_requested:
                             self._emit_event("RECORDING_CANCELED")
                             return
-                        percent = int(((countdown - remaining) / countdown) * 100)
-                        self._emit_event("RECORDING_COUNTDOWN", {"remaining": remaining, "percent": percent})
+                        percent = int((remaining / countdown) * 100)
+                        self._emit_event("RECORDING_COUNTDOWN", {"remaining": remaining, "percent": percent, "total": countdown})
                         time.sleep(1.0)
 
                 if self._cancel_requested:
                     self._emit_event("RECORDING_CANCELED")
                     return
 
-                focus_window(win_title)
-                self._emit_event("RECORDING_PROGRESS", {"elapsed": 0, "total": duration, "percent": 0})
+                self._emit_event("RECORDING_PROGRESS", {"elapsed": 0, "total": duration, "percent": 0, "fraction": 0.0})
 
+                last_progress_time = 0.0
                 def _progress_cb(val: float):
+                    nonlocal last_progress_time
+                    now = time.monotonic()
+                    if now - last_progress_time < 0.04 and val < 0.99:
+                        return
+                    last_progress_time = now
                     frac = max(0.0, min(1.0, float(val)))
-                    elapsed = min(duration, int(math.ceil(frac * duration)))
+                    elapsed = min(duration, int(frac * duration))
                     percent = int(frac * 100)
-                    self._emit_event("RECORDING_PROGRESS", {"elapsed": elapsed, "total": duration, "percent": percent})
+                    self._emit_event(
+                        "RECORDING_PROGRESS",
+                        {"elapsed": elapsed, "total": duration, "percent": percent, "fraction": frac},
+                    )
 
                 file_path, keyframes = record_short_video(
                     win_title,
@@ -1035,8 +1120,15 @@ class PyWebViewBridge:
                 )
 
                 if self._cancel_requested or not file_path:
-                    self._emit_event("RECORDING_CANCELED")
+                    if self._cancel_requested:
+                        self._emit_event("RECORDING_CANCELED")
+                    else:
+                        self._emit_event("RECORDING_ERROR", {"message": "無法擷取目標遊戲視窗，請確認遊戲未關閉"})
                     return
+
+                # Emit final 100% progress so the circle fills completely
+                self._emit_event("RECORDING_PROGRESS", {"elapsed": duration, "total": duration, "percent": 100, "fraction": 1.0})
+                time.sleep(0.15)
 
                 self._emit_event("RECORDING_FINISHED", {"file_path": file_path})
                 ocr_res = self._perform_ocr(keyframes)
@@ -1065,10 +1157,14 @@ class PyWebViewBridge:
         return True
 
     def cancel_recording(self) -> bool:
-        """Request cancellation of active recording."""
-        if not self._recording_active:
-            return False
+        """Request cancellation of active recording and wait for cleanup."""
+        if not self._recording_active and (not self._recording_thread or not self._recording_thread.is_alive()):
+            return True
         self._cancel_requested = True
+        if self._recording_thread and self._recording_thread.is_alive():
+            self._recording_thread.join(timeout=1.5)
+        self._recording_active = False
+        self._cancel_requested = False
         return True
 
     # --- Replay Buffer ---

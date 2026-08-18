@@ -599,66 +599,62 @@
 }
 
 .ui-tooltip-box.placement-top {
-  transform: translate(-50%, -100%);
   animation: tooltipFloatTop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .ui-tooltip-box.placement-bottom {
-  transform: translate(-50%, 0);
   animation: tooltipFloatBottom 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .ui-tooltip-box.placement-left {
-  transform: translate(-100%, -50%);
   animation: tooltipFloatLeft 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .ui-tooltip-box.placement-right {
-  transform: translate(0, -50%);
   animation: tooltipFloatRight 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes tooltipFloatTop {
   from {
     opacity: 0;
-    transform: translate(-50%, calc(-100% + 4px)) scale(0.96);
+    transform: translateY(4px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -100%) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes tooltipFloatBottom {
   from {
     opacity: 0;
-    transform: translate(-50%, -4px) scale(0.96);
+    transform: translateY(-4px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes tooltipFloatLeft {
   from {
     opacity: 0;
-    transform: translate(calc(-100% + 4px), -50%) scale(0.96);
+    transform: translateX(4px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(-100%, -50%) scale(1);
+    transform: translateX(0) scale(1);
   }
 }
 
 @keyframes tooltipFloatRight {
   from {
     opacity: 0;
-    transform: translate(-4px, -50%) scale(0.96);
+    transform: translateX(-4px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(0, -50%) scale(1);
+    transform: translateX(0) scale(1);
   }
 }
 

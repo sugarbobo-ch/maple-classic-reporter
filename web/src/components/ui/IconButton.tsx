@@ -26,6 +26,7 @@ export default function IconButton({
   disabled = false,
   type = 'button',
   title,
+  'aria-label': ariaLabel,
   onClick,
   ...props
 }: IconButtonProps) {
@@ -36,8 +37,8 @@ export default function IconButton({
   const sizeClass = size === 'sm' ? 'ui-btn-sm' : size === 'lg' ? 'ui-btn-lg' : '';
   const activeClass = active ? 'active' : '';
 
-  // Use tooltip prop, fallback to title
-  const effectiveTooltip = tooltip || title;
+  // Use tooltip prop, fallback to aria-label or title
+  const effectiveLabel = ariaLabel || tooltip || title;
 
   const buttonElement = (
     <button
@@ -45,16 +46,16 @@ export default function IconButton({
       className={`${variantClass} ${sizeClass} ${activeClass} ${className}`.trim()}
       disabled={disabled}
       onClick={onClick}
-      aria-label={effectiveTooltip || undefined}
+      aria-label={effectiveLabel || undefined}
       {...props}
     >
-      <Icon size={computedIconSize} />
+      <Icon size={computedIconSize} aria-hidden="true" />
     </button>
   );
 
-  if (effectiveTooltip) {
+  if (effectiveLabel) {
     return (
-      <Tooltip content={effectiveTooltip} placement={tooltipPlacement}>
+      <Tooltip content={effectiveLabel} placement={tooltipPlacement}>
         {buttonElement}
       </Tooltip>
     );

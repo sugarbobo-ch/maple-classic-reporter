@@ -52,7 +52,15 @@ function choosePreferredWindow(windows: WindowItem[], savedTitle = ''): string {
   const saved = windows.find((window) => window.title === savedTitle);
   if (saved) return saved.title;
 
-  // 6. First scanned window
+  // 6. If saved title was Maple-related, preserve it even if temporarily not in scanned list
+  if (
+    savedTitle &&
+    (savedTitle.includes('新楓之谷') || savedTitle.toLowerCase().includes('maple'))
+  ) {
+    return savedTitle;
+  }
+
+  // 7. First scanned window
   return windows[0].title;
 }
 
@@ -115,7 +123,11 @@ export default function App() {
   const [statusState, setStatusState] = useState<StatusState>('idle');
   const [recordingTime, setRecordingTime] = useState(0);
   const [countdown, setCountdown] = useState(0);
+  const [countdownTotal, setCountdownTotal] = useState(3);
+  const [countdownFraction, setCountdownFraction] = useState<number | undefined>(undefined);
+  const [recordingFraction, setRecordingFraction] = useState<number | undefined>(undefined);
   const [replayTime, setReplayTime] = useState(0);
+  const animFrameRef = useRef<number | null>(null);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -126,6 +138,7 @@ export default function App() {
   const [modalStatusText, setModalStatusText] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatusData | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
   const [ocrResults, setOcrResults] = useState<OcrResultData>({
     suspect_ids: [],
     map_name: '',
@@ -137,20 +150,38 @@ export default function App() {
   const [quickLinkModalOpen, setQuickLinkModalOpen] = useState(false);
   const [editingQuickLink, setEditingQuickLink] = useState<QuickLinkItem | null>(null);
 
+  const cancelAnim = () => {
+    if (animFrameRef.current !== null) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+  };
+
   // PyWebView Bridge Event Subscriptions
   usePyWebViewEvents({
-    RECORDING_COUNTDOWN: (data: { remaining: number; percent: number }) => {
+    RECORDING_COUNTDOWN: (data: { remaining: number; percent: number; total: number }) => {
       setStatusState('recording');
       setCountdown(data.remaining);
+      setCountdownTotal(data.total || 3);
+      setCountdownFraction((data.percent || 0) / 100);
+      setRecordingTime(0);
+      setRecordingFraction(0);
     },
-    RECORDING_PROGRESS: (data: { elapsed: number; total: number; percent: number }) => {
+    RECORDING_PROGRESS: (data: { elapsed: number; total: number; percent: number; fraction?: number }) => {
       setStatusState('recording');
       setCountdown(0);
-      setRecordingTime(data.elapsed);
+      setCountdownFraction(0);
+      const frac = data.fraction !== undefined ? data.fraction : Math.max(0, Math.min(1, (data.percent || 0) / 100));
+      setRecordingFraction((prev) => (prev !== undefined ? Math.max(prev, frac) : frac));
+      setRecordingTime((prev) => Math.max(prev, data.elapsed));
     },
     RECORDING_FINISHED: (data?: { file_path?: string }) => {
+      cancelAnim();
       setStatusState('idle');
       setRecordingTime(0);
+      setCountdown(0);
+      setCountdownFraction(undefined);
+      setRecordingFraction(undefined);
       setSubmissionStatus(null);
       if (modalStageRef.current !== 'form') {
         setModalStage('progress');
@@ -167,15 +198,21 @@ export default function App() {
       setModalOpen(true);
     },
     RECORDING_CANCELED: () => {
+      cancelAnim();
       setStatusState('idle');
       setRecordingTime(0);
       setCountdown(0);
+      setCountdownFraction(undefined);
+      setRecordingFraction(undefined);
       toast.info('錄影已取消');
     },
     RECORDING_ERROR: (data: { message: string }) => {
+      cancelAnim();
       setStatusState('idle');
       setRecordingTime(0);
       setCountdown(0);
+      setCountdownFraction(undefined);
+      setRecordingFraction(undefined);
       toast.error('錄影失敗', data.message);
       setModalOpen(false);
     },
@@ -412,19 +449,114 @@ export default function App() {
     }, 800);
   };
 
-  const handleRecordVideo = async () => {
-    if (statusState === 'recording') {
+  const startRealtimeProgress = (cdSec: number, recSec: number) => {
+    cancelAnim();
+    const cdMs = cdSec * 1000;
+    const recMs = recSec * 1000;
+    const startTime = performance.now();
+
+    const tick = () => {
+      const now = performance.now();
+      const elapsed = now - startTime;
+
+      if (cdSec > 0 && elapsed < cdMs) {
+        // Countdown phase: 100% -> 0%
+        const remainingCd = cdMs - elapsed;
+        const cdFrac = Math.max(0, Math.min(1, remainingCd / cdMs));
+        const cdInt = Math.ceil(remainingCd / 1000);
+        setCountdown(cdInt);
+        setCountdownTotal(cdSec);
+        setCountdownFraction(cdFrac);
+        setRecordingFraction(0);
+        setRecordingTime(0);
+        animFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        // Recording phase: 0% -> 100%
+        const recElapsed = cdSec > 0 ? elapsed - cdMs : elapsed;
+        const recFrac = Math.max(0, Math.min(1, recElapsed / recMs));
+        const recSecInt = Math.min(recSec, Math.floor(recElapsed / 1000));
+        setCountdown(0);
+        setCountdownFraction(0);
+        setRecordingTime((prev) => Math.max(prev, recSecInt));
+        setRecordingFraction((prev) => (prev !== undefined ? Math.max(prev, recFrac) : recFrac));
+
+        if (recElapsed < recMs) {
+          animFrameRef.current = requestAnimationFrame(tick);
+        } else {
+          // Recording complete (100% reached!)
+          setRecordingFraction(1.0);
+          setRecordingTime(recSec);
+          animFrameRef.current = null;
+          if (!window.pywebview || !window.pywebview.api) {
+            // Mock finish flow
+            setTimeout(() => {
+              setStatusState('idle');
+              setRecordingFraction(undefined);
+              setCountdownFraction(undefined);
+              setModalStage('progress');
+              setModalProgress(50);
+              setModalOpen(true);
+              setTimeout(() => {
+                setOcrResults((prev) =>
+                  normalizeOcrResult(
+                    {
+                      suspect_ids: ['AutoBot88', 'PlayerX'],
+                      map_name: '隱密之地：幽靈船',
+                      ocr_map_name: '隱密之地：幽靈船',
+                      map_name_source: 'ocr',
+                      media_path: 'recordings/mock_video.mp4',
+                      media_type: 'video',
+                    },
+                    prev,
+                    config
+                  )
+                );
+                setModalProgress(100);
+                setModalStage('form');
+              }, 800);
+            }, 300);
+          }
+        }
+      }
+    };
+
+    animFrameRef.current = requestAnimationFrame(tick);
+  };
+
+  const handleCancelRecording = async () => {
+    if (isResetting) return;
+    setIsResetting(true);
+    cancelAnim();
+    try {
       if (window.pywebview && window.pywebview.api) {
         await window.pywebview.api.cancel_recording();
       }
+    } catch {
+      // ignore
+    } finally {
       setStatusState('idle');
+      setRecordingTime(0);
+      setCountdown(0);
+      setCountdownFraction(undefined);
+      setRecordingFraction(undefined);
+      setTimeout(() => setIsResetting(false), 300);
+    }
+  };
+
+  const handleRecordVideo = async () => {
+    if (isResetting) return;
+
+    if (statusState === 'recording' || countdown > 0) {
+      await handleCancelRecording();
       return;
     }
 
+    const cd = config.record_countdown_sec || 0;
+    const dur = config.record_duration_sec || 8;
+
+    setIsResetting(true);
     if (window.pywebview && window.pywebview.api) {
       try {
-        setStatusState('recording');
-        setRecordingTime(0);
         await window.pywebview.api.start_recording(
           config.record_duration_sec,
           config.record_fps,
@@ -433,37 +565,20 @@ export default function App() {
           config.audio_output_device_id || ''
         );
       } catch (e: any) {
+        cancelAnim();
         toast.error('錄影啟動失敗', e?.message || String(e));
         setStatusState('idle');
+        setCountdown(0);
+        setCountdownFraction(undefined);
+        setRecordingFraction(undefined);
+      } finally {
+        setTimeout(() => setIsResetting(false), 300);
       }
     } else {
-      // Mock flow
+      // Mock standalone web mode
       setStatusState('recording');
-      setRecordingTime(0);
-      let sec = 0;
-      const interval = setInterval(() => {
-        sec += 1;
-        setRecordingTime(sec);
-        if (sec >= (config.record_duration_sec || 8)) {
-          clearInterval(interval);
-          setStatusState('idle');
-          setModalStage('progress');
-          setModalProgress(50);
-          setModalOpen(true);
-          setTimeout(() => {
-            setOcrResults((prev) => normalizeOcrResult({
-                suspect_ids: ['AutoBot88', 'PlayerX'],
-                map_name: '隱密之地：幽靈船',
-                ocr_map_name: '隱密之地：幽靈船',
-                map_name_source: 'ocr',
-                media_path: 'recordings/mock_video.mp4',
-                media_type: 'video',
-              }, prev, config));
-            setModalProgress(100);
-            setModalStage('form');
-          }, 800);
-        }
-      }, 1000);
+      startRealtimeProgress(cd, dur);
+      setTimeout(() => setIsResetting(false), 300);
     }
   };
 
@@ -486,8 +601,6 @@ export default function App() {
         if (ok) {
           setStatusState('replaying');
           toast.info('已啟動循環錄影', `持續保留最近 ${config.replay_buffer_sec || 30} 秒畫面`);
-        } else {
-          toast.error('循環錄影啟動失敗', '請確認遊戲視窗已選取且未最小化');
         }
       } else {
         setStatusState('replaying');
@@ -828,16 +941,6 @@ export default function App() {
     toast.success(editingQuickLink ? '快捷連結已更新' : '已新增快捷連結');
   };
 
-  const handleCancelRecording = async () => {
-    if (window.pywebview && window.pywebview.api) {
-      await window.pywebview.api.cancel_recording();
-    }
-    setStatusState('idle');
-    setRecordingTime(0);
-    setCountdown(0);
-    toast.info('錄影已取消');
-  };
-
   const handleStopReplay = async () => {
     if (window.pywebview && window.pywebview.api) {
       await window.pywebview.api.stop_replay();
@@ -846,6 +949,18 @@ export default function App() {
     setReplayTime(0);
     toast.info('已停止循環錄影');
   };
+
+  const selectedWindow = windows.find((w) => w.title === config.selected_window_title);
+  const currentWindowSize =
+    selectedWindow && selectedWindow.width > 0
+      ? `${selectedWindow.width} × ${selectedWindow.height}`
+      : '1920 × 1080';
+  const currentAudioDevice =
+    config.record_audio === false
+      ? '已停用錄音'
+      : audioDevices.find((a) => a.id === config.audio_output_device_id)?.name || '系統預設';
+  const currentQuality = `${selectedWindow ? `${selectedWindow.height}p` : '1080p'} ${config.record_fps || 30} FPS`;
+  const activeTotalCountdown = countdownTotal || config.record_countdown_sec || 3;
 
   const alertUnconfigured =
     (config.upload_destination === 'discord' && !config.discord_webhook_url) ||
@@ -883,6 +998,10 @@ export default function App() {
               onUpdateConfigBatch={updateConfigBatch}
               onRefreshWindows={handleRefreshWindows}
               onRefreshAudio={handleRefreshAudio}
+              onOpenSettings={() => {
+                setSettingsTab('recording');
+                setCurrentView('settings');
+              }}
             />
 
             <QuickLinks
@@ -906,6 +1025,13 @@ export default function App() {
               isReplaying={statusState === 'replaying'}
               isRecording={statusState === 'recording' || countdown > 0}
               recordingLabel={countdown > 0 ? `倒數 ${countdown}s` : `錄製中 ${recordingTime}s`}
+              countdown={countdown}
+              totalCountdown={activeTotalCountdown}
+              countdownFraction={countdownFraction}
+              recordingTime={recordingTime}
+              totalRecordingDuration={config.record_duration_sec || 8}
+              recordingFraction={recordingFraction}
+              disabled={isResetting}
             />
           </>
         )}
@@ -948,12 +1074,17 @@ export default function App() {
         statusState={statusState}
         recordingTime={recordingTime}
         totalRecordingDuration={config.record_duration_sec || 8}
+        recordingFraction={recordingFraction}
         countdown={countdown}
+        totalCountdown={activeTotalCountdown}
+        countdownFraction={countdownFraction}
         replayTime={replayTime}
         maxReplayBuffer={config.replay_buffer_sec || 30}
         targetWindowTitle={config.selected_window_title || '新楓之谷：經典版'}
-        audioDevice={audioDevices.find((a) => a.id === config.audio_output_device_id)?.name || '系統預設'}
-        quality={`${config.record_fps || 30} FPS`}
+        windowSize={currentWindowSize}
+        audioDevice={currentAudioDevice}
+        quality={currentQuality}
+        disabled={isResetting}
         onCancelRecording={handleCancelRecording}
         onStopReplay={handleStopReplay}
         onSaveReplay={handleSaveReplay}

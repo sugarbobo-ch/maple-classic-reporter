@@ -1,9 +1,11 @@
+import React from 'react';
 import { LucideIcon } from 'lucide-react';
 
-export interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   children?: React.ReactNode;
   variant?: 'default' | 'raised' | 'inner' | 'primary' | 'interactive';
-  title?: React.ReactNode;
+  headerTitle?: React.ReactNode;
+  title?: any;
   titleIcon?: LucideIcon;
   headerAction?: React.ReactNode;
   footer?: React.ReactNode;
@@ -12,6 +14,7 @@ export interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 't
 export default function Card({
   children,
   variant = 'default',
+  headerTitle = null,
   title = null,
   titleIcon: TitleIcon,
   headerAction = null,
@@ -30,6 +33,10 @@ export default function Card({
       interactive: 'ui-card ui-card-interactive',
     }[variant] || 'ui-card';
 
+  // Only render a card header section if headerTitle is explicitly set,
+  // or if titleIcon/headerAction is provided.
+  const effectiveHeaderTitle = headerTitle || (TitleIcon || headerAction ? title : null);
+
   return (
     <div
       className={`${variantClass} ${className}`.trim()}
@@ -37,12 +44,12 @@ export default function Card({
       style={style}
       {...props}
     >
-      {(title || headerAction) && (
+      {(effectiveHeaderTitle || headerAction) && (
         <div className="ui-card-header">
-          {title && (
+          {effectiveHeaderTitle && (
             <div className="ui-card-title">
               {TitleIcon && <TitleIcon size={16} color="var(--color-primary)" />}
-              <span>{title}</span>
+              <span>{effectiveHeaderTitle}</span>
             </div>
           )}
           {headerAction && <div>{headerAction}</div>}

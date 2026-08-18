@@ -7,6 +7,7 @@ with automatic fallback to MSS screen-coordinate capture when WGC is unavailable
 import ctypes
 from ctypes import wintypes
 import logging
+import os
 import threading
 import time
 from typing import Callable, Optional, Tuple
@@ -95,18 +96,21 @@ def find_target_hwnd(window_title_keyword: str) -> Optional[int]:
 
 
 def restore_and_focus_window(hwnd: int) -> bool:
-    """Ensure the target window is restored from minimized state and brought to front."""
-    if not hwnd or not ctypes.windll.user32.IsWindow(hwnd):
+    """Ensure the target window is restored from minimized state for capture."""
+    if not hwnd or os.name != "nt":
         return False
     try:
-        # Check if minimized (IsIconic)
+        if not ctypes.windll.user32.IsWindow(hwnd):
+            return False
+
+        # Only un-minimize if the window is currently minimized (iconic)
         if ctypes.windll.user32.IsIconic(hwnd):
             ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-            time.sleep(0.05)
-        ctypes.windll.user32.SetForegroundWindow(hwnd)
+            time.sleep(0.12)
+
         return True
     except Exception as error:
-        LOGGER.debug("還原並置頂視窗失敗 (%s)", type(error).__name__)
+        LOGGER.debug("還原視窗失敗 (%s)", type(error).__name__)
         return False
 
 
@@ -309,7 +313,7 @@ class UnifiedWindowCapture:
 
         # Attempt WGC stream by window name keyword
         clean_title = normalize_window_title_keyword(window_title_keyword)
-        if clean_title:
+        if clean_title and hwnd:
             if self._start_wgc_stream(window_name=clean_title, hwnd=hwnd):
                 self._is_wgc_active = True
                 LOGGER.info("WGC 獨立視窗錄影以視窗名稱成功啟動 (%s)", clean_title)
@@ -427,13 +431,19 @@ class UnifiedWindowCapture:
     def _mss_capture_loop(self, window_title_keyword: str, fps: int) -> None:
         interval = 1.0 / max(1, fps)
         screen = None
+        cached_bounds = None
+        last_bounds_check = 0.0
         try:
             screen = mss.MSS()
             while not self._stop_event.is_set():
                 loop_start = time.monotonic()
-                bounds = find_window_bounds(window_title_keyword)
-                if bounds:
-                    left, top, width, height = bounds
+                if cached_bounds is None or (loop_start - last_bounds_check) >= 1.0:
+                    from maple_reporter.recorder.window_recorder import find_window_bounds
+                    cached_bounds = find_window_bounds(window_title_keyword)
+                    last_bounds_check = loop_start
+
+                if cached_bounds:
+                    left, top, width, height = cached_bounds
                     width -= width % 2
                     height -= height % 2
                     if width >= 2 and height >= 2:

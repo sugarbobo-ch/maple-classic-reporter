@@ -298,31 +298,40 @@ def has_audio_signal(audio_data: np.ndarray | None) -> bool:
 
 def merge_audio_into_mp4(
     video_path: str | os.PathLike[str],
-    audio_data: np.ndarray,
+    audio_data: Optional[np.ndarray] = None,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
 ) -> bool:
-    """Remux an existing H.264 MP4 with a new AAC audio track.
+    """Remux/re-encode MP4 into standard H.264/AAC for HTML5 web player compatibility.
 
-    The video packets are copied without re-encoding. The temporary output is
-    created beside the source and atomically replaces it only after both tracks
-    have been flushed successfully.
+    If audio_data is provided and valid, multiplexes the AAC audio track.
+    If audio_data is None or empty, re-encodes/remuxes into standard H.264 MP4.
     """
-
     source_path = Path(video_path)
-    if audio_data is None or not source_path.is_file():
+    if not source_path.is_file():
         return False
 
-    array = np.asarray(audio_data, dtype=np.float32)
-    if array.ndim == 1:
-        array = array[:, None]
-    if array.ndim != 2 or len(array) == 0 or array.shape[1] == 0:
-        return False
-    array = np.ascontiguousarray(np.nan_to_num(array, copy=False))
-    if array.shape[1] > 2:
-        array = np.ascontiguousarray(array[:, :2])
+    has_audio = False
+    array = None
+    channels = 0
+    layout = "stereo"
+    if audio_data is not None:
+        try:
+            arr = np.asarray(audio_data, dtype=np.float32)
+            if arr.ndim == 1:
+                arr = arr[:, None]
+            if arr.ndim == 2 and len(arr) > 0 and arr.shape[1] > 0:
+                arr = np.ascontiguousarray(np.nan_to_num(arr, copy=False))
+                if arr.shape[1] > 2:
+                    arr = np.ascontiguousarray(arr[:, :2])
+                array = arr
+                channels = int(array.shape[1])
+                layout = "stereo" if channels == 2 else "mono"
+                has_audio = True
+        except Exception:
+            has_audio = False
 
     temp_fd, temp_name = tempfile.mkstemp(
-        prefix=f".{source_path.stem}.audio-", suffix=".mp4", dir=source_path.parent
+        prefix=f".{source_path.stem}.remux-", suffix=".mp4", dir=source_path.parent
     )
     os.close(temp_fd)
     temp_path = Path(temp_name)
@@ -342,16 +351,12 @@ def merge_audio_into_mp4(
         output_video.height = int(input_video.height)
         output_video.pix_fmt = "yuv420p"
         output_video.options = {"crf": "23", "preset": "ultrafast"}
-        channels = int(array.shape[1])
-        layout = "stereo" if channels == 2 else "mono"
-        # Add every output stream before the first packet writes the MP4
-        # header; PyAV cannot assign a time base to a stream added afterwards.
-        output_audio = output_container.add_stream("aac", rate=int(sample_rate))
-        output_audio.layout = layout
 
-        # Re-encode decoded frames with a fresh zero-based timeline. Some MP4
-        # sources have a non-zero start timestamp; packet remuxing those into a
-        # newly-created container makes PyAV reject the output as "zero time".
+        output_audio = None
+        if has_audio:
+            output_audio = output_container.add_stream("aac", rate=int(sample_rate))
+            output_audio.layout = layout
+
         frame_index = 0
         for decoded_frame in input_container.decode(input_video):
             video_frame = decoded_frame.reformat(
@@ -369,45 +374,42 @@ def merge_audio_into_mp4(
         input_container.close()
         input_container = None
 
-        samples_per_frame = 1024
-        interleaved = np.ascontiguousarray(array.T, dtype=np.float32)
-        for offset in range(0, interleaved.shape[1], samples_per_frame):
-            chunk = interleaved[:, offset : offset + samples_per_frame]
-            if chunk.shape[1] < samples_per_frame:
-                padding = np.zeros(
-                    (channels, samples_per_frame - chunk.shape[1]), dtype=np.float32
-                )
-                chunk = np.hstack((chunk, padding))
-            frame = av.AudioFrame.from_ndarray(chunk, format="fltp", layout=layout)
-            frame.rate = int(sample_rate)
-            # Let the AAC encoder assign a valid stream time base. Manually
-            # assigning timestamps before the output header is written can
-            # produce PyAV's "Cannot rebase to zero time" error.
-            frame.pts = None
-            for packet in output_audio.encode(frame):
+        if has_audio and output_audio is not None and array is not None:
+            samples_per_frame = 1024
+            interleaved = np.ascontiguousarray(array.T, dtype=np.float32)
+            for offset in range(0, interleaved.shape[1], samples_per_frame):
+                chunk = interleaved[:, offset : offset + samples_per_frame]
+                if chunk.shape[1] < samples_per_frame:
+                    padding = np.zeros(
+                        (channels, samples_per_frame - chunk.shape[1]), dtype=np.float32
+                    )
+                    chunk = np.hstack((chunk, padding))
+                frame = av.AudioFrame.from_ndarray(chunk, format="fltp", layout=layout)
+                frame.rate = int(sample_rate)
+                frame.pts = None
+                for packet in output_audio.encode(frame):
+                    if output_audio.time_base is None:
+                        output_audio.time_base = packet.time_base
+                    packet.stream = output_audio
+                    output_container.mux(packet)
+            for packet in output_audio.encode():
                 if output_audio.time_base is None:
                     output_audio.time_base = packet.time_base
                 packet.stream = output_audio
                 output_container.mux(packet)
 
-        for packet in output_audio.encode():
-            if output_audio.time_base is None:
-                output_audio.time_base = packet.time_base
-            packet.stream = output_audio
-            output_container.mux(packet)
         output_container.close()
         output_container = None
 
-        if not temp_path.is_file() or temp_path.stat().st_size == 0:
-            return False
-        os.replace(temp_path, source_path)
+        temp_path.replace(source_path)
         return True
-    except Exception as error:  # pragma: no cover - codec availability varies
-        LOGGER.warning(
-            "MP4 audio mux failed (%s: %s)",
-            source_path.name,
-            type(error).__name__,
-        )
+    except Exception as err:
+        LOGGER.warning("H.264 MP4 remux 失敗: %s", err)
+        if temp_path.is_file():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
         return False
     finally:
         if input_container is not None:
