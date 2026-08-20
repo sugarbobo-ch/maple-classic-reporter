@@ -69,7 +69,8 @@ export default function QuickLinks({
     >
       <div className="quick-links-scroll" ref={scrollRef} onWheel={handleWheel}>
         {displayLinks.map((item, index) => (
-          <div
+          <button
+            type="button"
             key={item.id || index}
             className="quick-link-card"
             onClick={() => onOpenLink(item.url)}
@@ -81,10 +82,11 @@ export default function QuickLinks({
               color="var(--color-primary)"
             />
             <div className="quick-link-title">{item.title}</div>
-          </div>
+          </button>
         ))}
 
-        <div
+        <button
+          type="button"
           className="quick-link-card quick-link-add-card"
           onClick={onAddCustomLink}
           title="新增自訂快捷連結"
@@ -93,7 +95,7 @@ export default function QuickLinks({
           <div className="quick-link-title">
             新增連結
           </div>
-        </div>
+        </button>
       </div>
     </Card>
   );

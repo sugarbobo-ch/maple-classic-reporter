@@ -59,8 +59,9 @@ export default function SuspectSelector({
         <span>外掛玩家角色 ID</span>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+      <div className="report-suspect-input-row">
         <Input
+          label="疑似角色 ID"
           placeholder="請輸入或點選下方候選角色 ID"
           value={suspectId}
           onChange={(e) => onSuspectIdChange(e.target.value)}
@@ -110,30 +111,35 @@ export default function SuspectSelector({
 
                 if (whitelistMode) {
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={idx}
                       className={`chip whitelist-chip ${isAlreadyWhitelisted ? 'disabled' : ''} ${
                         isSelectedForWhitelist ? 'success' : ''
                       }`}
                       onClick={() => onToggleWhitelistChip(id)}
+                      disabled={isAlreadyWhitelisted}
+                      aria-pressed={isSelectedForWhitelist}
                     >
                       {isSelectedForWhitelist && <Check size={12} />}
                       <span>{id}</span>
                       {isAlreadyWhitelisted && (
                         <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>(已加入)</span>
                       )}
-                    </div>
+                    </button>
                   );
                 }
 
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={idx}
                     className={`chip ${isCurrentInputMatch ? 'active' : ''}`}
                     onClick={() => onSuspectIdChange(id)}
+                    aria-pressed={isCurrentInputMatch}
                   >
                     {id}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -170,20 +176,24 @@ export default function SuspectSelector({
             從辨識結果管理白名單
           </Button>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--color-status-success)', fontWeight: 600 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+            }}
+          >
+            <span
+              style={{ fontSize: '0.78rem', color: 'var(--color-status-success)', fontWeight: 600 }}
+            >
               正在選取白名單名單
             </span>
             <div style={{ display: 'flex', gap: '6px' }}>
               <Button variant="outline" size="sm" onClick={onCancelWhitelistMode}>
                 取消
               </Button>
-              <Button
-                variant="success"
-                size="sm"
-                icon={Check}
-                onClick={onFinishWhitelistMode}
-              >
+              <Button variant="success" size="sm" icon={Check} onClick={onFinishWhitelistMode}>
                 完成設定
               </Button>
             </div>

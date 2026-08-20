@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -27,6 +27,9 @@ export default function Textarea({
   ...props
 }: TextareaProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const generatedId = useId();
+  const textareaId = props.id || generatedId;
+  const errorId = `${textareaId}-error`;
 
   return (
     <div
@@ -34,7 +37,7 @@ export default function Textarea({
       style={wrapperStyle}
     >
       {label && (
-        <label className="ui-input-label">
+        <label className="ui-input-label" htmlFor={textareaId}>
           {label}
           {required && <span style={{ color: 'var(--color-danger)' }}>*</span>}
         </label>
@@ -46,12 +49,15 @@ export default function Textarea({
         } ${disabled ? 'disabled' : ''}`.trim()}
       >
         <textarea
+          id={textareaId}
           rows={rows}
           className="ui-textarea-field"
           value={value ?? ''}
           placeholder={placeholder}
           disabled={disabled}
           required={required}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
           style={textareaStyle}
           onChange={onChange}
           onFocus={() => setIsFocused(true)}
@@ -65,7 +71,11 @@ export default function Textarea({
         <div className="ui-input-helper-text">{helperText}</div>
       )}
 
-      {error && <span className="ui-input-error-msg">{error}</span>}
+      {error && (
+        <span id={errorId} className="ui-input-error-msg" role="alert">
+          {error}
+        </span>
+      )}
     </div>
   );
 }

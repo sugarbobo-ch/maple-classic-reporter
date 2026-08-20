@@ -59,6 +59,7 @@ export default function ReportFormSection({
           <span>外掛角色所在地圖</span>
         </div>
         <Input
+          label="所在地圖"
           placeholder="例如：地鐵一號線｜地區01"
           value={mapName}
           onChange={(e) => onMapNameChange(e.target.value)}
@@ -104,23 +105,27 @@ export default function ReportFormSection({
                   aria-label="地圖建議"
                 >
                   {ocrMapName && (
-                    <div
+                    <button
+                      type="button"
                       className={`chip ${mapName === ocrMapName ? 'active' : ''}`}
                       onClick={() => onMapNameChange(ocrMapName)}
                       data-testid="ocr-map-suggestion"
+                      aria-pressed={mapName === ocrMapName}
                     >
                       OCR：{ocrMapName}
-                    </div>
+                    </button>
                   )}
                   {historicalMaps.map((map, idx) => (
-                    <div
+                    <button
+                      type="button"
                       key={`${map}-${idx}`}
                       className={`chip ${mapName === map ? 'active' : ''}`}
                       onClick={() => onMapNameChange(map)}
                       data-testid={`history-map-suggestion-${idx}`}
+                      aria-pressed={mapName === map}
                     >
                       {map}
-                    </div>
+                    </button>
                   ))}
                 </div>
               </>
@@ -136,6 +141,7 @@ export default function ReportFormSection({
           <span>違規說明與備註</span>
         </div>
         <Textarea
+          label="補充說明"
           placeholder="自動打怪／疑似外掛行為"
           value={note}
           rows={2}
@@ -163,14 +169,16 @@ export default function ReportFormSection({
                 const text = tpl.content || tpl.name;
                 const isActive = note.trim() === text.trim();
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={`${tpl.name}-${idx}`}
                     className={`chip ${isActive ? 'active' : ''}`}
                     onClick={() => onNoteChange(text)}
                     data-testid={`template-chip-${idx}`}
+                    aria-pressed={isActive}
                   >
                     {tpl.name}
-                  </div>
+                  </button>
                 );
               })}
             </div>

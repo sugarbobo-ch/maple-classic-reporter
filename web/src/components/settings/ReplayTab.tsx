@@ -1,6 +1,7 @@
 import { Dropdown } from '../ui';
 import { AppConfig, DropdownOption } from '../../types';
 import PresetSlider from '../PresetSlider';
+import SettingRow from './SettingRow';
 import { PresetKey } from '../../constants/presets';
 
 export interface ReplayTabProps {
@@ -18,17 +19,15 @@ export default function ReplayTab({
 }: ReplayTabProps) {
   return (
     <>
-      <div className="setting-row">
-        <div style={{ width: '100%' }}>
-          <PresetSlider
-            preset={config.recording_preset}
-            duration={config.record_duration_sec}
-            fps={config.record_fps}
-            replay={config.replay_buffer_sec}
-            onChangePreset={onPresetChange}
-          />
-        </div>
-      </div>
+      <SettingRow>
+        <PresetSlider
+          preset={config.recording_preset}
+          duration={config.record_duration_sec}
+          fps={config.record_fps}
+          replay={config.replay_buffer_sec}
+          onChangePreset={onPresetChange}
+        />
+      </SettingRow>
 
       <div className="setting-row">
         <div className="setting-info">

@@ -1,4 +1,5 @@
 import { X, LucideIcon } from 'lucide-react';
+import { useId } from 'react';
 import Overlay from './Overlay';
 import IconButton from './IconButton';
 
@@ -25,30 +26,44 @@ export default function Dialog({
   className = '',
   dismissOnBackdropClick = false,
 }: DialogProps) {
+  const titleId = useId();
+
   const handleDialogHeaderMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button === 0 && !(e.target as HTMLElement).closest('button, input, select, a, [role="button"]')) {
+    if (
+      e.button === 0 &&
+      !(e.target as HTMLElement).closest('button, input, select, a, [role="button"]')
+    ) {
       window.pywebview?.api?.drag_window?.('proportional');
     }
   };
 
   return (
-    <Overlay
-      isOpen={isOpen}
-      onClose={onClose}
-      dismissOnClick={dismissOnBackdropClick}
-    >
-      <div className={`ui-dialog ${className}`.trim()} style={{ maxWidth }}>
+    <Overlay isOpen={isOpen} onClose={onClose} dismissOnClick={dismissOnBackdropClick}>
+      <div
+        className={`ui-dialog ${className}`.trim()}
+        style={{ maxWidth }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+      >
         {(title || onClose) && (
           <div
             className="ui-dialog-header pywebview-drag-region"
             onMouseDown={handleDialogHeaderMouseDown}
           >
-            <div className="ui-dialog-title">
+            <div className="ui-dialog-title" id={title ? titleId : undefined}>
               {TitleIcon && <TitleIcon size={20} color="var(--color-primary)" />}
               <span>{title}</span>
             </div>
             {onClose && (
-              <IconButton icon={X} size="md" variant="ghost" tooltip="關閉" onClick={onClose} />
+              <IconButton
+                icon={X}
+                size="md"
+                variant="ghost"
+                tooltip="關閉"
+                tooltipOnFocus={false}
+                onClick={onClose}
+              />
             )}
           </div>
         )}

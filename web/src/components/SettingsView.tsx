@@ -66,6 +66,14 @@ export default function SettingsView({
       setActiveTab(initialTab);
     }
   }, [initialTab]);
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, tab: string) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      setActiveTab(tab);
+    }
+  };
+
   const { toast } = useToast();
 
   // Quick Links state
@@ -591,55 +599,101 @@ export default function SettingsView({
           <div
             className={`settings-nav-item ${activeTab === 'general' ? 'active' : ''}`}
             onClick={() => setActiveTab('general')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'general'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'general')}
           >
             一般與表單預設
           </div>
           <div
             className={`settings-nav-item ${activeTab === 'ocr' ? 'active' : ''}`}
             onClick={() => setActiveTab('ocr')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'ocr'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'ocr')}
           >
             OCR 辨識設定
           </div>
           <div
             className={`settings-nav-item ${activeTab === 'upload' ? 'active' : ''}`}
             onClick={() => setActiveTab('upload')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'upload'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'upload')}
           >
             上傳與帳號
           </div>
           <div
             className={`settings-nav-item ${activeTab === 'recording' ? 'active' : ''}`}
             onClick={() => setActiveTab('recording')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'recording'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'recording')}
           >
             錄影與音訊
           </div>
           <div
             className={`settings-nav-item ${activeTab === 'replay' ? 'active' : ''}`}
             onClick={() => setActiveTab('replay')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'replay'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'replay')}
           >
             循環錄影
           </div>
           <div
             className={`settings-nav-item ${activeTab === 'hotkeys' ? 'active' : ''}`}
             onClick={() => setActiveTab('hotkeys')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'hotkeys'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'hotkeys')}
           >
             全域快捷鍵
           </div>
           <div
             className={`settings-nav-item ${activeTab === 'quicklinks' ? 'active' : ''}`}
             onClick={() => setActiveTab('quicklinks')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'quicklinks'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'quicklinks')}
           >
             快捷連結
           </div>
           <div
             className={`settings-nav-item ${activeTab === 'about' ? 'active' : ''}`}
             onClick={() => setActiveTab('about')}
+            role="tab"
+            tabIndex={0}
+            aria-selected={activeTab === 'about'}
+            aria-controls="settings-panel"
+            onKeyDown={(event) => handleTabKeyDown(event, 'about')}
           >
             關於與更新
           </div>
         </div>
 
         {/* Panel Content */}
-        <div className="settings-panel">
+        <div
+          id="settings-panel"
+          className="settings-panel"
+          role="tabpanel"
+          aria-label="設定內容"
+          tabIndex={0}
+        >
           {/* Tab 1: 一般與表單預設 */}
           {activeTab === 'general' && (
             <GeneralTab

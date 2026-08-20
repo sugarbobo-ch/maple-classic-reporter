@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { ChevronDown, Check, LucideIcon } from 'lucide-react';
 import { useAnchorPosition, useClickOutside, useDisclosure } from '../../hooks';
@@ -38,6 +38,8 @@ export default function Dropdown<T extends string | number = string>({
 }: DropdownProps<T>) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const { isOpen, toggle, close } = useDisclosure({ onOpen, onClose });
 
@@ -54,6 +56,16 @@ export default function Dropdown<T extends string | number = string>({
   });
 
   const selectedOption = normalizedOptions.find((opt) => opt.value === value);
+  const selectedIndex = Math.max(
+    0,
+    normalizedOptions.findIndex((opt) => opt.value === value)
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setActiveIndex(selectedIndex);
+    requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+  }, [isOpen, selectedIndex]);
 
   // Position calculation via custom hook
   const { position: menuPosition } = useAnchorPosition(triggerRef, {
@@ -70,6 +82,27 @@ export default function Dropdown<T extends string | number = string>({
       onChange(val);
     }
     close();
+  };
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (normalizedOptions.length === 0) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const direction = e.key === 'ArrowDown' ? 1 : -1;
+      const nextIndex =
+        (activeIndex + direction + normalizedOptions.length) % normalizedOptions.length;
+      setActiveIndex(nextIndex);
+      optionRefs.current[nextIndex]?.focus();
+    } else if (e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      const nextIndex = e.key === 'Home' ? 0 : normalizedOptions.length - 1;
+      setActiveIndex(nextIndex);
+      optionRefs.current[nextIndex]?.focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      triggerRef.current?.focus();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -101,7 +134,7 @@ export default function Dropdown<T extends string | number = string>({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className="ui-dropdown-value">
+        <span className="ui-dropdown-value" title={selectedOption?.label}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown size={16} className="ui-dropdown-arrow" />
@@ -115,29 +148,36 @@ export default function Dropdown<T extends string | number = string>({
             style={{
               top: `${menuPosition.top}px`,
               left: `${menuPosition.left}px`,
-              minWidth: `${menuPosition.width}px`,
-              width: 'max-content',
+              width: `min(${menuPosition.width}px, calc(100vw - 20px))`,
               ...menuStyle,
             }}
             role="listbox"
+            aria-label={typeof label === 'string' ? label : placeholder}
+            onKeyDown={handleMenuKeyDown}
           >
             {normalizedOptions.map((opt, idx) => {
               const isSelected = opt.value === value;
               const OptIcon = opt.icon;
               return (
-                <div
+                <button
+                  type="button"
                   key={idx}
+                  ref={(element) => {
+                    optionRefs.current[idx] = element;
+                  }}
                   className={`ui-dropdown-option ${isSelected ? 'selected' : ''}`}
                   onClick={() => handleSelect(opt.value)}
                   role="option"
                   aria-selected={isSelected}
+                  tabIndex={idx === activeIndex ? 0 : -1}
+                  title={opt.label}
                 >
                   <div className="ui-dropdown-option-label">
                     {OptIcon && <OptIcon size={14} />}
                     <span>{opt.label}</span>
                   </div>
                   {isSelected && <Check size={14} className="ui-dropdown-check" />}
-                </div>
+                </button>
               );
             })}
           </div>,

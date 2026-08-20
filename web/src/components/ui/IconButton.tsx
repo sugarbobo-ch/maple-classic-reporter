@@ -11,6 +11,7 @@ export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
   active?: boolean;
   tooltip?: string;
   tooltipPlacement?: Placement;
+  tooltipOnFocus?: boolean;
   iconSize?: number;
 }
 
@@ -21,6 +22,7 @@ export default function IconButton({
   active = false,
   tooltip,
   tooltipPlacement = 'bottom',
+  tooltipOnFocus = true,
   iconSize,
   className = '',
   disabled = false,
@@ -55,7 +57,7 @@ export default function IconButton({
 
   if (effectiveLabel) {
     return (
-      <Tooltip content={effectiveLabel} placement={tooltipPlacement}>
+      <Tooltip content={effectiveLabel} placement={tooltipPlacement} showOnFocus={tooltipOnFocus}>
         {buttonElement}
       </Tooltip>
     );

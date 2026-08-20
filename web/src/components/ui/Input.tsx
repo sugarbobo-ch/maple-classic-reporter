@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { X, LucideIcon } from 'lucide-react';
 
 export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'prefix'> {
@@ -31,6 +31,9 @@ export default function Input({
   ...props
 }: InputProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const generatedId = useId();
+  const inputId = props.id || generatedId;
+  const errorId = `${inputId}-error`;
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -45,7 +48,7 @@ export default function Input({
   return (
     <div className={`ui-input-container ${className}`.trim()} style={wrapperStyle}>
       {label && (
-        <label className="ui-input-label">
+        <label className="ui-input-label" htmlFor={inputId}>
           {label}
           {required && <span style={{ color: 'var(--color-danger)' }}>*</span>}
         </label>
@@ -63,12 +66,15 @@ export default function Input({
         )}
 
         <input
+          id={inputId}
           type={type}
           className="ui-input-field"
           value={value ?? ''}
           placeholder={placeholder}
           disabled={disabled}
           required={required}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
           style={inputStyle}
           onChange={onChange}
           onFocus={() => setIsFocused(true)}
@@ -78,9 +84,15 @@ export default function Input({
         />
 
         {clearable && value && !disabled && (
-          <span className="ui-input-clear" onClick={handleClear} title="清除">
+          <button
+            type="button"
+            className="ui-input-clear"
+            onClick={handleClear}
+            title="清除"
+            aria-label="清除輸入內容"
+          >
             <X size={14} />
-          </span>
+          </button>
         )}
 
         {SuffixIcon && (
@@ -90,7 +102,11 @@ export default function Input({
         )}
       </div>
 
-      {error && <span className="ui-input-error-msg">{error}</span>}
+      {error && (
+        <span id={errorId} className="ui-input-error-msg" role="alert">
+          {error}
+        </span>
+      )}
     </div>
   );
 }

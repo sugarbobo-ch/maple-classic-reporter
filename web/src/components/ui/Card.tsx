@@ -37,13 +37,8 @@ export default function Card({
   // or if titleIcon/headerAction is provided.
   const effectiveHeaderTitle = headerTitle || (TitleIcon || headerAction ? title : null);
 
-  return (
-    <div
-      className={`${variantClass} ${className}`.trim()}
-      onClick={onClick}
-      style={style}
-      {...props}
-    >
+  const cardContent = (
+    <>
       {(effectiveHeaderTitle || headerAction) && (
         <div className="ui-card-header">
           {effectiveHeaderTitle && (
@@ -59,6 +54,31 @@ export default function Card({
       {children}
 
       {footer && <div style={{ marginTop: '12px' }}>{footer}</div>}
+    </>
+  );
+
+  if (variant === 'interactive' && onClick) {
+    return (
+      <button
+        type="button"
+        className={`${variantClass} ${className}`.trim()}
+        onClick={onClick as unknown as React.MouseEventHandler<HTMLButtonElement>}
+        style={style}
+        {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+      >
+        {cardContent}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className={`${variantClass} ${className}`.trim()}
+      onClick={onClick}
+      style={style}
+      {...props}
+    >
+      {cardContent}
     </div>
   );
 }

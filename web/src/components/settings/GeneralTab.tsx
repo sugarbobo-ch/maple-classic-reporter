@@ -175,12 +175,14 @@ export default function GeneralTab({
           {whitelist.map((item, idx) => (
             <div key={idx} className="chip">
               <span>{item}</span>
-              <span
-                style={{ marginLeft: '4px', cursor: 'pointer', fontWeight: 700 }}
+              <button
+                type="button"
+                className="chip-remove-button"
                 onClick={() => onRemoveWhitelist(item)}
+                aria-label={`移除白名單 ${item}`}
               >
                 ×
-              </span>
+              </button>
             </div>
           ))}
           {whitelist.length === 0 && (

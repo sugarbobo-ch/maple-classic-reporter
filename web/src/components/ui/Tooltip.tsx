@@ -8,6 +8,7 @@ export interface TooltipProps {
   placement?: Placement;
   delay?: number;
   className?: string;
+  showOnFocus?: boolean;
 }
 
 export default function Tooltip({
@@ -16,6 +17,7 @@ export default function Tooltip({
   placement = 'bottom',
   delay = 150,
   className = '',
+  showOnFocus = true,
 }: TooltipProps) {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const tooltipBoxRef = useRef<HTMLDivElement>(null);
@@ -53,7 +55,10 @@ export default function Tooltip({
 
     const anchorCenterX = triggerRect.left + triggerRect.width / 2;
     const idealLeft = anchorCenterX - tooltipWidth / 2;
-    const clampedLeft = Math.max(margin, Math.min(viewportWidth - tooltipWidth - margin, idealLeft));
+    const clampedLeft = Math.max(
+      margin,
+      Math.min(viewportWidth - tooltipWidth - margin, idealLeft)
+    );
     const arrowLeft = Math.max(8, Math.min(tooltipWidth - 8, anchorCenterX - clampedLeft));
 
     const finalTop = coords.placement === 'top' ? coords.top - tooltipHeight : coords.top;
@@ -98,7 +103,7 @@ export default function Tooltip({
       className={`ui-tooltip-trigger-wrapper ${className}`.trim()}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onFocus={handleMouseEnter}
+      onFocus={showOnFocus ? handleMouseEnter : undefined}
       onBlur={handleMouseLeave}
     >
       {children}

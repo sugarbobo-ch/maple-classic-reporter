@@ -7,3 +7,4 @@ export { default as HotkeysTab } from './HotkeysTab';
 export { default as QuickLinksTab } from './QuickLinksTab';
 export { default as AboutTab } from './AboutTab';
 export { default as ClearRecordingsModal } from './ClearRecordingsModal';
+export { default as SettingRow } from './SettingRow';

@@ -947,6 +947,86 @@ body {
   color: var(--color-text-secondary);
 }
 
+.setting-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.settings-info-callout {
+  margin-top: 4px;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-card);
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.settings-info-callout-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--color-text-heading);
+  font-weight: 700;
+}
+
+.settings-info-callout p {
+  margin: 0;
+}
+
+.report-suspect-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.report-suspect-input-row > .ui-btn {
+  min-width: 84px;
+  flex: 0 0 auto;
+}
+
+.ui-card-interactive {
+  color: var(--color-text);
+}
+
+.ui-card-interactive .action-card-title {
+  color: var(--color-text-heading) !important;
+}
+
+.ui-card-interactive .action-card-desc {
+  color: var(--color-text-secondary) !important;
+}
+
+[data-theme='dark'] .ui-card-interactive,
+[data-theme='dark'] .ui-card-interactive .action-card-title,
+[data-theme='dark'] .ui-card-interactive .action-card-desc {
+  color: var(--color-text);
+}
+
+[data-theme='dark'] .ui-card-interactive .action-card-title {
+  color: var(--color-text-heading) !important;
+}
+
+[data-theme='dark'] .ui-card-interactive .action-card-desc {
+  color: var(--color-text-secondary) !important;
+}
+
+@media (max-width: 600px) {
+  .report-suspect-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .report-suspect-input-row > .ui-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
 /* Table Style (History & Data) */
 .history-table-container {
   width: 100%;

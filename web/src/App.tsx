@@ -1,14 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header';
 import AlertBanner from './components/AlertBanner';
-import QuickSettings from './components/QuickSettings';
 import ActionCards from './components/ActionCards';
-import QuickLinks from './components/QuickLinks';
-import QuickLinkModal from './components/QuickLinkModal';
 import StatusBar from './components/StatusBar';
-import SettingsView from './components/SettingsView';
-import HistoryView from './components/HistoryView';
-import ReportFlowModal from './components/ReportFlowModal';
 import WindowResizeHandles from './components/WindowResizeHandles';
 import { useToast, usePyWebViewEvents, useAppConfig } from './hooks';
 import {
@@ -26,6 +20,13 @@ import { normalizeSafeHttpsUrl } from './utils';
 import './styles/app.css';
 
 import { choosePreferredWindow, normalizeOcrResult } from './utils/appHelpers';
+
+const QuickSettings = lazy(() => import('./components/QuickSettings'));
+const QuickLinks = lazy(() => import('./components/QuickLinks'));
+const QuickLinkModal = lazy(() => import('./components/QuickLinkModal'));
+const SettingsView = lazy(() => import('./components/SettingsView'));
+const HistoryView = lazy(() => import('./components/HistoryView'));
+const ReportFlowModal = lazy(() => import('./components/ReportFlowModal'));
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>('home');
@@ -981,7 +982,8 @@ export default function App() {
 
         {currentView === 'home' && (
           <>
-            <QuickSettings
+            <Suspense fallback={<div className="route-loading" role="status">載入快速設定…</div>}>
+              <QuickSettings
               config={config}
               windows={windows}
               audioDevices={audioDevices}
@@ -994,9 +996,11 @@ export default function App() {
                 setSettingsTab('recording');
                 setCurrentView('settings');
               }}
-            />
+              />
+            </Suspense>
 
-            <QuickLinks
+            <Suspense fallback={<div className="route-loading" role="status">載入快捷連結…</div>}>
+              <QuickLinks
               quickLinks={config.quick_links}
               onOpenLink={handleOpenUrl}
               onManageLinks={() => {
@@ -1007,7 +1011,8 @@ export default function App() {
                 setEditingQuickLink(null);
                 setQuickLinkModalOpen(true);
               }}
-            />
+              />
+            </Suspense>
 
             <ActionCards
               onCaptureScreenshot={handleCaptureScreenshot}
@@ -1029,7 +1034,8 @@ export default function App() {
         )}
 
         {currentView === 'settings' && (
-          <SettingsView
+          <Suspense fallback={<div className="route-loading" role="status">載入設定…</div>}>
+            <SettingsView
             config={config}
             windows={windows}
             audioDevices={audioDevices}
@@ -1044,12 +1050,14 @@ export default function App() {
             onRefreshWindows={handleRefreshWindows}
             onRefreshAudio={handleRefreshAudio}
             onClearRecordings={handleClearRecordings}
-          />
+            />
+          </Suspense>
         )}
 
         {currentView === 'history' && (
           /* Keep backend history authoritative for both the history view and form suggestions. */
-          <HistoryView
+          <Suspense fallback={<div className="route-loading" role="status">載入歷史紀錄…</div>}>
+            <HistoryView
             history={history}
             compactLayout={
               typeof config.history_compact_layout === 'boolean'
@@ -1071,7 +1079,8 @@ export default function App() {
                 ? config.last_complete_sync_at
                 : null)
             }
-          />
+            />
+          </Suspense>
         )}
       </main>
 
@@ -1096,7 +1105,8 @@ export default function App() {
       />
 
       {modalOpen && (
-        <ReportFlowModal
+        <Suspense fallback={null}>
+          <ReportFlowModal
           stage={modalStage}
           progressPercent={modalProgress}
           progressStatus={modalStatusText}
@@ -1127,18 +1137,21 @@ export default function App() {
             updateConfig('whitelist', newWhitelist);
             toast.success('白名單已更新');
           }}
-        />
+          />
+        </Suspense>
       )}
 
       {quickLinkModalOpen && (
-        <QuickLinkModal
+        <Suspense fallback={null}>
+          <QuickLinkModal
           linkToEdit={editingQuickLink}
           onSave={handleSaveQuickLink}
           onClose={() => {
             setQuickLinkModalOpen(false);
             setEditingQuickLink(null);
           }}
-        />
+          />
+        </Suspense>
       )}
     </div>
   );
