@@ -27,3 +27,11 @@ web/node_modules/
 web/dist/
 .pnpm-store/
 *.local
+
+# Local agent tooling and Impeccable review artifacts
+.codex/
+.agents/skills/impeccable/
+.github/agents/impeccable-*.agent.md
+.github/hooks/impeccable.json
+.github/skills/impeccable/
+.impeccable/review/
