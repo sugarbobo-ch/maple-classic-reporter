@@ -269,6 +269,7 @@ class TestUiParity(unittest.TestCase):
                 cancel_checker=None,
                 record_audio=False,
                 audio_device_id="loopback",
+                audio_capture_mode="off",
             )
 
         def signature(call):
@@ -308,6 +309,7 @@ class TestUiParity(unittest.TestCase):
                 buffer_seconds=30,
                 record_audio=False,
                 audio_device_id="loopback",
+                audio_capture_mode="off",
             )
             legacy_controller.stop()
             legacy_recorder = recorder_class.return_value

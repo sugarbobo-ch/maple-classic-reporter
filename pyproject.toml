@@ -27,6 +27,7 @@ dependencies = [
     "soundcard>=0.4.0",
     "pywebview>=5.0.0",
     "windows-capture>=2.0.1",
+    "comtypes>=1.4.9",
 ]
 
 [project.scripts]

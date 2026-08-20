@@ -22,9 +22,11 @@ from PySide6.QtCore import QObject, Signal
 from maple_reporter.recorder.audio_capture import (
     DEFAULT_SAMPLE_RATE,
     LoopbackAudioRecorder,
+    create_audio_recorder,
     get_audio_output_devices,
     has_audio_signal,
     merge_audio_into_mp4,
+    normalize_audio_capture_mode,
 )
 from maple_reporter.recorder.window_recorder import find_window_bounds
 from maple_reporter.utils.config import get_recordings_dir
@@ -331,6 +333,7 @@ class ReplayBufferRecorder(QObject):
         buffer_seconds: int = 30,
         record_audio: bool = True,
         audio_device_id: Optional[str] = None,
+        audio_capture_mode: Optional[str] = None,
     ) -> bool:
         bounds = find_window_bounds(window_title)
         if not bounds:
@@ -359,17 +362,36 @@ class ReplayBufferRecorder(QObject):
             self._bounds = (left, top, width, height)
             self._stop_event.clear()
 
-        if record_audio:
-            self._audio = RollingAudioRecorder(
-                self._buffer_seconds,
-                sample_rate=DEFAULT_SAMPLE_RATE,
-                device_id=audio_device_id,
-                error_callback=self._emit_warning,
-                source_callback=self._emit_audio_source,
-            )
-            self._audio.start()
-        else:
+        audio_mode = normalize_audio_capture_mode(
+            audio_capture_mode, record_audio=record_audio
+        )
+        self._audio_capture_mode = audio_mode
+        if audio_mode == "off":
             self._audio = None
+        else:
+            try:
+                process_id = None
+                if audio_mode == "process":
+                    from maple_reporter.recorder.window_capture import (
+                        find_target_process_id,
+                    )
+
+                    process_id = find_target_process_id(window_title)
+                self._audio = create_audio_recorder(
+                    audio_mode,
+                    buffer_seconds=self._buffer_seconds,
+                    sample_rate=DEFAULT_SAMPLE_RATE,
+                    device_id=audio_device_id,
+                    process_id=process_id,
+                    source_name=window_title,
+                    error_callback=self._emit_warning,
+                    source_callback=self._emit_audio_source,
+                )
+                if self._audio:
+                    self._audio.start()
+            except Exception as error:
+                self._audio = None
+                self._emit_warning(str(error))
 
         self._window_title = window_title
         self._capture_thread = threading.Thread(
@@ -431,10 +453,15 @@ class ReplayBufferRecorder(QObject):
         end_time = frames[-1].captured_at
         audio_data = self._audio.snapshot(start_time, end_time) if self._audio else None
         if self._audio and not has_audio_signal(audio_data):
-            self._emit_warning(
-                "這段緩衝沒有偵測到系統聲音。請確認遊戲正在播放聲音，"
-                "並在重新啟動緩衝前選擇正確的音訊輸出來源。"
-            )
+            if getattr(self, "_audio_capture_mode", "system") == "process":
+                self._emit_warning(
+                    "這段緩衝沒有偵測到遊戲聲音。請確認遊戲正在播放聲音。"
+                )
+            else:
+                self._emit_warning(
+                    "這段緩衝沒有偵測到系統聲音。請確認遊戲正在播放聲音，"
+                    "並在重新啟動緩衝前選擇正確的音訊輸出來源。"
+                )
 
         self._emit_state(ReplayState.SAVING, end_time - start_time)
         self._save_thread = threading.Thread(

@@ -18,6 +18,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   whitelist: ['player01', 'player02'],
   auto_delete_after_upload: false,
   record_audio: true,
+  audio_capture_mode: 'process',
   ocr_autofill_id: true,
   ocr_autofill_map: true,
   audio_output_device_id: '',
@@ -140,23 +141,26 @@ export function useAppConfig() {
   );
 
   // Batch update all config items
-  const saveAllConfig = useCallback(async (newConfig: AppConfig) => {
-    const previousConfig = config;
-    setConfig(newConfig);
+  const saveAllConfig = useCallback(
+    async (newConfig: AppConfig) => {
+      const previousConfig = config;
+      setConfig(newConfig);
 
-    if (window.pywebview && window.pywebview.api) {
-      try {
-        setSaveError(null);
-        const saved = await window.pywebview.api.save_config_all(newConfig as any);
-        if (!saved) throw new Error('後端拒絕儲存設定');
-      } catch (err) {
-        console.error('Failed to batch save config:', err);
-        setSaveError('無法儲存設定');
-        const restoredConfig = await reloadConfig();
-        if (!restoredConfig) setConfig(previousConfig);
+      if (window.pywebview && window.pywebview.api) {
+        try {
+          setSaveError(null);
+          const saved = await window.pywebview.api.save_config_all(newConfig as any);
+          if (!saved) throw new Error('後端拒絕儲存設定');
+        } catch (err) {
+          console.error('Failed to batch save config:', err);
+          setSaveError('無法儲存設定');
+          const restoredConfig = await reloadConfig();
+          if (!restoredConfig) setConfig(previousConfig);
+        }
       }
-    }
-  }, [config, reloadConfig]);
+    },
+    [config, reloadConfig]
+  );
 
   return {
     config,

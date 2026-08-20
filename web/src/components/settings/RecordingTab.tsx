@@ -1,6 +1,6 @@
 import { RefreshCw, FolderOpen, Trash2 } from 'lucide-react';
-import { Switch, Dropdown, Input, Button, IconButton, Badge } from '../ui';
-import { AppConfig, DropdownOption } from '../../types';
+import { Dropdown, Input, Button, IconButton } from '../ui';
+import { AppConfig, AudioCaptureMode, DropdownOption } from '../../types';
 import PresetSlider from '../PresetSlider';
 import { PresetKey } from '../../constants/presets';
 
@@ -35,9 +35,13 @@ export default function RecordingTab({
   onOpenAppData,
   onOpenClearModal,
 }: RecordingTabProps) {
-  const handleToggle = (key: keyof AppConfig) => {
-    onUpdateConfig(key, !config[key]);
-  };
+  const audioMode: AudioCaptureMode =
+    config.audio_capture_mode || (config.record_audio === false ? 'off' : 'system');
+  const audioModeOptions: DropdownOption<AudioCaptureMode>[] = [
+    { value: 'process', label: '僅遊戲聲音' },
+    { value: 'system', label: '所有系統聲音' },
+    { value: 'off', label: '不錄音' },
+  ];
 
   return (
     <>
@@ -127,25 +131,32 @@ export default function RecordingTab({
 
       <div className="setting-row">
         <div className="setting-info">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="setting-label">同步錄製系統聲音 (WASAPI Loopback)</span>
-            <Badge variant="success" size="sm">推薦開啟</Badge>
-          </div>
-          <span className="setting-desc">
-            同步錄製遊戲內音效與背景音樂。推薦開啟，可聽到怪物死亡聲音協助判斷。
-          </span>
+          <span className="setting-label">錄音來源</span>
+          <span className="setting-desc">選擇只錄製遊戲程序、整個系統，或不加入聲音。</span>
         </div>
-        <Switch
-          checked={config.record_audio !== false}
-          onChange={() => handleToggle('record_audio')}
-        />
+        <div style={{ width: '220px', minWidth: '180px' }}>
+          <Dropdown<AudioCaptureMode>
+            options={audioModeOptions}
+            value={audioMode}
+            onChange={(val) => onUpdateConfig('audio_capture_mode', val)}
+          />
+        </div>
       </div>
 
-      {config.record_audio !== false && (
+      {audioMode === 'process' && (
         <div className="setting-row">
           <div className="setting-info">
-            <span className="setting-label">系統聲音錄製來源</span>
-            <span className="setting-desc">選擇目前實際播放遊戲聲音的 Windows 輸出裝置</span>
+            <span className="setting-label">遊戲音訊來源</span>
+            <span className="setting-desc">跟隨上方選擇的錄影視窗及其子程序。</span>
+          </div>
+        </div>
+      )}
+
+      {audioMode === 'system' && (
+        <div className="setting-row">
+          <div className="setting-info">
+            <span className="setting-label">系統聲音輸出裝置</span>
+            <span className="setting-desc">包含其他應用程式與系統通知。</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ width: '260px', minWidth: '200px' }}>

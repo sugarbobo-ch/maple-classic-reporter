@@ -13,6 +13,8 @@ export interface ViolationTemplateItem {
   content: string;
 }
 
+export type AudioCaptureMode = 'process' | 'system' | 'off';
+
 export interface AppConfig {
   default_server: string;
   default_map: string;
@@ -28,6 +30,7 @@ export interface AppConfig {
   whitelist: string[];
   auto_delete_after_upload: boolean;
   record_audio: boolean;
+  audio_capture_mode: AudioCaptureMode;
   ocr_autofill_id: boolean;
   ocr_autofill_map?: boolean;
   audio_output_device_id: string;
@@ -216,7 +219,8 @@ declare global {
           fps?: number,
           countdownSec?: number,
           recordAudio?: boolean,
-          audioDeviceId?: string
+          audioDeviceId?: string,
+          audioCaptureMode?: AudioCaptureMode
         ) => Promise<boolean>;
         cancel_recording: () => Promise<boolean>;
         start_replay: (
@@ -224,7 +228,8 @@ declare global {
           fps?: number,
           bufferSeconds?: number,
           recordAudio?: boolean,
-          audioDeviceId?: string
+          audioDeviceId?: string,
+          audioCaptureMode?: AudioCaptureMode
         ) => Promise<boolean>;
         stop_replay: () => Promise<boolean>;
         save_replay: () => Promise<boolean>;

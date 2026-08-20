@@ -31,7 +31,15 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>('home');
   const [settingsTab, setSettingsTab] = useState('general');
   const { toast } = useToast();
-  const { config, setConfig, updateConfig, updateConfigBatch, isDevMode, saveError, clearSaveError } = useAppConfig();
+  const {
+    config,
+    setConfig,
+    updateConfig,
+    updateConfigBatch,
+    isDevMode,
+    saveError,
+    clearSaveError,
+  } = useAppConfig();
   const [gdriveAuthenticated, setGdriveAuthenticated] = useState<boolean | null>(null);
   const [isAuthenticatingDrive, setIsAuthenticatingDrive] = useState(false);
 
@@ -97,11 +105,19 @@ export default function App() {
       setRecordingTime(0);
       setRecordingFraction(0);
     },
-    RECORDING_PROGRESS: (data: { elapsed: number; total: number; percent: number; fraction?: number }) => {
+    RECORDING_PROGRESS: (data: {
+      elapsed: number;
+      total: number;
+      percent: number;
+      fraction?: number;
+    }) => {
       setStatusState('recording');
       setCountdown(0);
       setCountdownFraction(0);
-      const frac = data.fraction !== undefined ? data.fraction : Math.max(0, Math.min(1, (data.percent || 0) / 100));
+      const frac =
+        data.fraction !== undefined
+          ? data.fraction
+          : Math.max(0, Math.min(1, (data.percent || 0) / 100));
       setRecordingFraction((prev) => (prev !== undefined ? Math.max(prev, frac) : frac));
       setRecordingTime((prev) => Math.max(prev, data.elapsed));
     },
@@ -241,10 +257,7 @@ export default function App() {
           `已檢查 ${checkedCount} 筆紀錄，新增 ${newlyBanned} 筆制裁，解除 ${changedToUnbanned} 筆`
         );
       } else if (newlyBanned > 0) {
-        toast.info(
-          '制裁名單已更新',
-          `新增 ${newlyBanned} 筆制裁命中`
-        );
+        toast.info('制裁名單已更新', `新增 ${newlyBanned} 筆制裁命中`);
       }
     },
     SANCTION_SYNC_FAILED: (data: any) => {
@@ -253,10 +266,7 @@ export default function App() {
       if (Array.isArray(data?.history)) {
         setHistory(data.history);
       }
-      toast.warning(
-        '制裁狀態同步未完成',
-        data?.message || '部分公告未能成功下載，已保留既有結果'
-      );
+      toast.warning('制裁狀態同步未完成', data?.message || '部分公告未能成功下載，已保留既有結果');
     },
   });
 
@@ -279,7 +289,8 @@ export default function App() {
             }));
           }
           if (initialWindows.length > 0) setWindows(initialWindows);
-          if (initData.audio_devices && initData.audio_devices.length > 0) setAudioDevices(initData.audio_devices);
+          if (initData.audio_devices && initData.audio_devices.length > 0)
+            setAudioDevices(initData.audio_devices);
           if (initData.history) setHistory(initData.history);
           setGdriveAuthenticated(Boolean(initData.gdrive_authenticated));
           if (initData.sanction_sync_status) {
@@ -289,21 +300,27 @@ export default function App() {
           if (initData.last_complete_sync_at) {
             setLastCompleteSyncAt(initData.last_complete_sync_at);
           }
-          if (initData.replay_state && ['warming', 'ready', 'saving'].includes(initData.replay_state)) {
+          if (
+            initData.replay_state &&
+            ['warming', 'ready', 'saving'].includes(initData.replay_state)
+          ) {
             setStatusState('replaying');
             setReplayTime(Math.floor(initData.replay_duration || 0));
           }
 
           // Trigger startup sanction sync once if applicable
           if (window.pywebview?.api?.start_sanction_sync) {
-            window.pywebview.api.start_sanction_sync('startup').then((res) => {
-              if (res?.started && res?.status) {
-                setSanctionSyncStatus(res.status);
-                setIsCheckingSanctions(true);
-              }
-            }).catch(() => {
-              // Ignore startup sync initiation failures
-            });
+            window.pywebview.api
+              .start_sanction_sync('startup')
+              .then((res) => {
+                if (res?.started && res?.status) {
+                  setSanctionSyncStatus(res.status);
+                  setIsCheckingSanctions(true);
+                }
+              })
+              .catch(() => {
+                // Ignore startup sync initiation failures
+              });
           }
         }
       } catch (e) {
@@ -334,13 +351,16 @@ export default function App() {
 
   useEffect(() => {
     if (currentView === 'history' && window.pywebview?.api?.get_history) {
-      window.pywebview.api.get_history().then((records) => {
-        if (Array.isArray(records)) {
-          setHistory(records);
-        }
-      }).catch((e) => {
-        console.warn('Failed to refresh history on entering history view:', e);
-      });
+      window.pywebview.api
+        .get_history()
+        .then((records) => {
+          if (Array.isArray(records)) {
+            setHistory(records);
+          }
+        })
+        .catch((e) => {
+          console.warn('Failed to refresh history on entering history view:', e);
+        });
     }
   }, [currentView]);
 
@@ -506,7 +526,8 @@ export default function App() {
           config.record_fps,
           config.record_countdown_sec || 0,
           config.record_audio !== false,
-          config.audio_output_device_id || ''
+          config.audio_output_device_id || '',
+          config.audio_capture_mode
         );
       } catch (e: any) {
         cancelAnim();
@@ -540,7 +561,8 @@ export default function App() {
           config.record_fps,
           config.replay_buffer_sec,
           config.record_audio !== false,
-          config.audio_output_device_id || ''
+          config.audio_output_device_id || '',
+          config.audio_capture_mode
         );
         if (ok) {
           setStatusState('replaying');
@@ -690,10 +712,7 @@ export default function App() {
       toast.success('歷史紀錄已清空');
       return true;
     } catch (error: unknown) {
-      toast.error(
-        '清空歷史紀錄失敗',
-        error instanceof Error ? error.message : String(error)
-      );
+      toast.error('清空歷史紀錄失敗', error instanceof Error ? error.message : String(error));
       return false;
     }
   };
@@ -722,10 +741,7 @@ export default function App() {
         }
       } catch (err: unknown) {
         setIsCheckingSanctions(false);
-        toast.error(
-          '啟動制裁檢查失敗',
-          err instanceof Error ? err.message : String(err)
-        );
+        toast.error('啟動制裁檢查失敗', err instanceof Error ? err.message : String(err));
       }
     } else {
       // Mock flow for browser preview
@@ -796,41 +812,47 @@ export default function App() {
     }
   };
 
-  const handleRefreshWindows = useCallback(async (silent = false) => {
-    if (window.pywebview && window.pywebview.api) {
-      try {
-        const list = await window.pywebview.api.get_windows();
-        if (list) {
-          setWindows(list);
-          const preferredTitle = choosePreferredWindow(list, config.selected_window_title);
-          if (preferredTitle && preferredTitle !== config.selected_window_title) {
-            await updateConfig('selected_window_title', preferredTitle);
+  const handleRefreshWindows = useCallback(
+    async (silent = false) => {
+      if (window.pywebview && window.pywebview.api) {
+        try {
+          const list = await window.pywebview.api.get_windows();
+          if (list) {
+            setWindows(list);
+            const preferredTitle = choosePreferredWindow(list, config.selected_window_title);
+            if (preferredTitle && preferredTitle !== config.selected_window_title) {
+              await updateConfig('selected_window_title', preferredTitle);
+            }
           }
+          if (!silent) {
+            toast.info('已重新整理視窗清單', `找到 ${list?.length || 0} 個可選視窗`);
+          }
+        } catch {
+          if (!silent) toast.error('重新整理視窗失敗');
         }
-        if (!silent) {
-          toast.info('已重新整理視窗清單', `找到 ${list?.length || 0} 個可選視窗`);
-        }
-      } catch {
-        if (!silent) toast.error('重新整理視窗失敗');
+      } else {
+        if (!silent) toast.info('已重新整理視窗清單');
       }
-    } else {
-      if (!silent) toast.info('已重新整理視窗清單');
-    }
-  }, [config.selected_window_title, updateConfig, toast]);
+    },
+    [config.selected_window_title, updateConfig, toast]
+  );
 
-  const handleRefreshAudio = useCallback(async (silent = false) => {
-    if (window.pywebview && window.pywebview.api) {
-      try {
-        const list = await window.pywebview.api.get_audio_devices();
-        if (list) setAudioDevices(list);
+  const handleRefreshAudio = useCallback(
+    async (silent = false) => {
+      if (window.pywebview && window.pywebview.api) {
+        try {
+          const list = await window.pywebview.api.get_audio_devices();
+          if (list) setAudioDevices(list);
+          if (!silent) toast.info('已重新整理音訊裝置清單');
+        } catch {
+          if (!silent) toast.error('重新整理音訊裝置失敗');
+        }
+      } else {
         if (!silent) toast.info('已重新整理音訊裝置清單');
-      } catch {
-        if (!silent) toast.error('重新整理音訊裝置失敗');
       }
-    } else {
-      if (!silent) toast.info('已重新整理音訊裝置清單');
-    }
-  }, [toast]);
+    },
+    [toast]
+  );
 
   // Silently refresh windows and audio devices when application gains focus
   useEffect(() => {
@@ -921,9 +943,11 @@ export default function App() {
       ? `${selectedWindow.width} × ${selectedWindow.height}`
       : '1920 × 1080';
   const currentAudioDevice =
-    config.record_audio === false
-      ? '已停用錄音'
-      : audioDevices.find((a) => a.id === config.audio_output_device_id)?.name || '系統預設';
+    config.audio_capture_mode === 'off'
+      ? '不錄音'
+      : config.audio_capture_mode === 'process'
+        ? '僅遊戲聲音'
+        : audioDevices.find((a) => a.id === config.audio_output_device_id)?.name || '系統預設';
   const currentQuality = `${selectedWindow ? `${selectedWindow.height}p` : '1080p'} ${config.record_fps || 30} FPS`;
   const activeTotalCountdown = countdownTotal || config.record_countdown_sec || 3;
 
@@ -1027,7 +1051,11 @@ export default function App() {
           /* Keep backend history authoritative for both the history view and form suggestions. */
           <HistoryView
             history={history}
-            compactLayout={typeof config.history_compact_layout === 'boolean' ? config.history_compact_layout : false}
+            compactLayout={
+              typeof config.history_compact_layout === 'boolean'
+                ? config.history_compact_layout
+                : false
+            }
             onUpdateCompactLayout={(compact) => updateConfig('history_compact_layout', compact)}
             pageSize={typeof config.history_page_size === 'number' ? config.history_page_size : 15}
             onUpdatePageSize={(size) => updateConfig('history_page_size', size)}
@@ -1037,7 +1065,12 @@ export default function App() {
             onCheckSanctions={handleCheckSanctions}
             isCheckingSanctions={isCheckingSanctions}
             sanctionSyncStatus={sanctionSyncStatus}
-            lastCompleteSyncAt={lastCompleteSyncAt || (typeof config.last_complete_sync_at === 'string' ? config.last_complete_sync_at : null)}
+            lastCompleteSyncAt={
+              lastCompleteSyncAt ||
+              (typeof config.last_complete_sync_at === 'string'
+                ? config.last_complete_sync_at
+                : null)
+            }
           />
         )}
       </main>

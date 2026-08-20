@@ -95,6 +95,25 @@ def find_target_hwnd(window_title_keyword: str) -> Optional[int]:
     return None
 
 
+def find_target_process_id(window_title_keyword: str) -> Optional[int]:
+    """Resolve the owning process ID for the selected capture window."""
+
+    if os.name != "nt":
+        return None
+    hwnd = find_target_hwnd(window_title_keyword)
+    if not hwnd:
+        return None
+    process_id = wintypes.DWORD()
+    try:
+        ctypes.windll.user32.GetWindowThreadProcessId(
+            wintypes.HWND(hwnd), ctypes.byref(process_id)
+        )
+    except Exception as error:
+        LOGGER.debug("讀取目標視窗程序失敗 (%s)", type(error).__name__)
+        return None
+    return int(process_id.value) or None
+
+
 def restore_and_focus_window(hwnd: int) -> bool:
     """Ensure the target window is restored from minimized state for capture."""
     if not hwnd or os.name != "nt":
@@ -508,6 +527,7 @@ class UnifiedWindowCapture:
 __all__ = [
     "UnifiedWindowCapture",
     "find_target_hwnd",
+    "find_target_process_id",
     "get_client_relative_crop",
     "restore_and_focus_window",
 ]

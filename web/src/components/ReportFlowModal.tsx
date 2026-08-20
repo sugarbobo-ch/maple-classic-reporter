@@ -53,6 +53,7 @@ export default function ReportFlowModal({
     whitelist: ['player01', 'player02'],
     auto_delete_after_upload: false,
     record_audio: true,
+    audio_capture_mode: 'process',
     ocr_autofill_id: true,
     form_submit_headless: true,
     audio_output_device_id: '',
@@ -95,14 +96,18 @@ export default function ReportFlowModal({
   const [originalBackupPath, setOriginalBackupPath] = useState<string | null>(null);
 
   // Video playback & Trimming state
-  const isVideo = ocrResults.media_type === 'video' || /\.(mp4|mkv|avi|mov)$/i.test(currentMediaPath);
+  const isVideo =
+    ocrResults.media_type === 'video' || /\.(mp4|mkv|avi|mov)$/i.test(currentMediaPath);
   const [isTrimOpen, setIsTrimOpen] = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const [cutStart, setCutStart] = useState(0);
   const [cutEnd, setCutEnd] = useState(0);
   const [isTrimming, setIsTrimming] = useState(false);
-  const [trimFeedback, setTrimFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [trimFeedback, setTrimFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -138,9 +143,7 @@ export default function ReportFlowModal({
     )
   );
   const historicalMaps = (
-    ocrMapName
-      ? allHistoricalMaps.filter((m) => m !== ocrMapName)
-      : allHistoricalMaps
+    ocrMapName ? allHistoricalMaps.filter((m) => m !== ocrMapName) : allHistoricalMaps
   ).slice(0, 5);
 
   const formatTime = (seconds: number) => {
@@ -174,20 +177,26 @@ export default function ReportFlowModal({
 
         // Fetch streaming URL for video
         if (window.pywebview && window.pywebview.api && window.pywebview.api.get_media_stream_url) {
-          window.pywebview.api.get_media_stream_url(activePath).then((streamUrl) => {
-            if (streamUrl) setMediaStreamUrl(streamUrl);
-          }).catch((e) => {
-            console.debug('Failed to get media stream url:', e);
-          });
+          window.pywebview.api
+            .get_media_stream_url(activePath)
+            .then((streamUrl) => {
+              if (streamUrl) setMediaStreamUrl(streamUrl);
+            })
+            .catch((e) => {
+              console.debug('Failed to get media stream url:', e);
+            });
         }
 
         // Fetch fallback thumbnail
         if (window.pywebview && window.pywebview.api && window.pywebview.api.get_media_preview) {
-          window.pywebview.api.get_media_preview(activePath).then((dataUrl) => {
-            if (dataUrl) setPreviewUrl(dataUrl);
-          }).catch((e) => {
-            console.debug('Failed to get media preview:', e);
-          });
+          window.pywebview.api
+            .get_media_preview(activePath)
+            .then((dataUrl) => {
+              if (dataUrl) setPreviewUrl(dataUrl);
+            })
+            .catch((e) => {
+              console.debug('Failed to get media preview:', e);
+            });
         }
       }
     }
@@ -466,10 +475,7 @@ export default function ReportFlowModal({
     >
       {stage === 'progress' ? (
         /* Stage 1: Recognition Progress State */
-        <ProgressStage
-          progressPercent={progressPercent}
-          progressStatus={progressStatus}
-        />
+        <ProgressStage progressPercent={progressPercent} progressStatus={progressStatus} />
       ) : (
         /* Stage 2: Report Confirmation Form State (Steps 1 to 5) */
         <form

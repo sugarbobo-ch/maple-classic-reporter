@@ -131,6 +131,12 @@ class SettingsController:
         self.config["form_submit_headless"] = window.chk_form_submit_headless.isChecked()
         self.config["dev_mode"] = window.chk_dev_mode.isChecked()
         self.config["record_audio"] = window.chk_record_audio.isChecked()
+        audio_mode = str(self.config.get("audio_capture_mode", "")).casefold()
+        if not window.chk_record_audio.isChecked():
+            audio_mode = "off"
+        elif audio_mode not in {"process", "system"}:
+            audio_mode = "system"
+        self.config["audio_capture_mode"] = audio_mode
         self.config["ocr_autofill_id"] = window.chk_ocr_id.isChecked()
         self.config["ocr_autofill_map"] = window.chk_ocr_map.isChecked()
         self.config["audio_output_device_id"] = (

@@ -1,6 +1,15 @@
-import { Video, Sliders, Volume2, VolumeX, Monitor, RotateCcw, RefreshCw, ChevronRight } from 'lucide-react';
-import { Card, Button, Dropdown, IconButton, Switch, Badge } from './ui';
-import { AppConfig, WindowItem, AudioDeviceItem, DropdownOption } from '../types';
+import {
+  Video,
+  Sliders,
+  Volume2,
+  VolumeX,
+  Monitor,
+  RotateCcw,
+  RefreshCw,
+  ChevronRight,
+} from 'lucide-react';
+import { Card, Button, Dropdown, IconButton, Badge } from './ui';
+import { AppConfig, WindowItem, AudioDeviceItem, AudioCaptureMode, DropdownOption } from '../types';
 import PresetPopup from './PresetPopup';
 import { RECORDING_PRESETS, detectPresetKey, PresetKey } from '../constants/presets';
 
@@ -52,6 +61,12 @@ export default function QuickSettings({
             label: 'Realtek Digital Output (系統預設)',
           },
         ];
+
+  const audioModeOptions: DropdownOption<AudioCaptureMode>[] = [
+    { value: 'process', label: '僅遊戲聲音' },
+    { value: 'system', label: '所有系統聲音' },
+    { value: 'off', label: '不錄音' },
+  ];
 
   const fpsOptions: DropdownOption<number>[] = [
     { value: 15, label: '15 FPS' },
@@ -118,13 +133,16 @@ export default function QuickSettings({
   const selectedAudioValue = matchedAudioOption
     ? matchedAudioOption.value
     : audioOptions[0]?.value || '';
+  const audioMode: AudioCaptureMode =
+    config.audio_capture_mode || (config.record_audio === false ? 'off' : 'system');
 
   const currentWindowTitle =
-    selectedWindowValue || config.selected_window_title || (windowOptions[0] ? windowOptions[0].value : '');
+    selectedWindowValue ||
+    config.selected_window_title ||
+    (windowOptions[0] ? windowOptions[0].value : '');
   const isMapleDetected = Boolean(
     currentWindowTitle &&
-      (currentWindowTitle.includes('新楓之谷') ||
-        currentWindowTitle.toLowerCase().includes('maple'))
+    (currentWindowTitle.includes('新楓之谷') || currentWindowTitle.toLowerCase().includes('maple'))
   );
 
   return (
@@ -222,7 +240,7 @@ export default function QuickSettings({
           </div>
         </div>
 
-        {/* Audio Device Dropdown with Refresh IconButton and Switch */}
+        {/* Audio source stays compact; the endpoint row is revealed only for system mode. */}
         <div className="form-group">
           <div
             style={{
@@ -242,45 +260,29 @@ export default function QuickSettings({
                 gap: '6px',
               }}
             >
-              {config.record_audio !== false ? (
-                <Volume2 size={14} color="var(--color-primary)" style={{ color: 'var(--color-primary)' }} />
+              {audioMode === 'off' ? (
+                <VolumeX size={14} color="var(--color-text-secondary)" />
               ) : (
-                <VolumeX size={14} color="var(--color-text-secondary)" style={{ color: 'var(--color-text-secondary)' }} />
+                <Volume2
+                  size={14}
+                  color="var(--color-primary)"
+                  style={{ color: 'var(--color-primary)' }}
+                />
               )}
-              <span>同步錄音</span>
+              <span>錄音來源</span>
             </label>
-            <Switch
-              disabled={isInitializing}
-              checked={config.record_audio !== false}
-              onChange={(checked) => onUpdateConfig('record_audio', checked)}
-              title="啟用或關閉同步錄製遊戲聲音"
-            />
           </div>
           <div
             style={{
-              display: 'flex',
-              gap: '8px',
-              alignItems: 'center',
-              opacity: isInitializing || config.record_audio === false ? 0.45 : 1,
+              opacity: isInitializing ? 0.45 : 1,
               transition: 'opacity 0.2s ease',
             }}
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Dropdown
-                disabled={isInitializing || config.record_audio === false}
-                placeholder={isInitializing ? '正在偵測音訊裝置...' : '請選擇音訊裝置...'}
-                options={audioOptions}
-                value={selectedAudioValue}
-                onChange={(val) => onUpdateConfig('audio_output_device_id', val)}
-              />
-            </div>
-            <IconButton
-              disabled={isInitializing || config.record_audio === false}
-              icon={RefreshCw}
-              size="md"
-              variant="outline"
-              tooltip="重新整理音訊裝置"
-              onClick={onRefreshAudio}
+            <Dropdown<AudioCaptureMode>
+              disabled={isInitializing}
+              options={audioModeOptions}
+              value={audioMode}
+              onChange={(val) => onUpdateConfig('audio_capture_mode', val)}
             />
           </div>
           <div
@@ -294,9 +296,40 @@ export default function QuickSettings({
               gap: '4px',
             }}
           >
-            <span>選擇錄音裝置，建議開啟：可聽到怪物死亡聲音協助判斷</span>
+            <span>
+              {audioMode === 'process'
+                ? `跟隨錄影視窗：${currentWindowTitle || '尚未選擇'}`
+                : audioMode === 'system'
+                  ? '包含其他應用程式與系統通知。'
+                  : '影片將不包含聲音。'}
+            </span>
           </div>
         </div>
+
+        {audioMode === 'system' && (
+          <div className="form-group audio-device-row">
+            <label className="ui-input-label">系統聲音輸出裝置</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Dropdown
+                  disabled={isInitializing}
+                  placeholder={isInitializing ? '正在偵測音訊裝置...' : '請選擇音訊裝置...'}
+                  options={audioOptions}
+                  value={selectedAudioValue}
+                  onChange={(val) => onUpdateConfig('audio_output_device_id', val)}
+                />
+              </div>
+              <IconButton
+                disabled={isInitializing}
+                icon={RefreshCw}
+                size="md"
+                variant="outline"
+                tooltip="重新整理音訊裝置"
+                onClick={onRefreshAudio}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Video duration, FPS, Replay buffer & Preset Popup inline row */}
         <div className="settings-inline-row">

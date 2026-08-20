@@ -16,6 +16,7 @@
   "auto_submit_without_preview": false,
   "auto_delete_after_upload": false,
   "record_audio": false,
+  "audio_capture_mode": "off",
   "ocr_autofill_id": true,
   "ocr_autofill_map": true,
   "audio_output_device_id": "",

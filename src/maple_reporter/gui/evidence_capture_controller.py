@@ -35,6 +35,7 @@ class EvidenceCaptureController:
         cancel_checker: Optional[Callable[[], bool]],
         record_audio: bool,
         audio_device_id: str | None,
+        audio_capture_mode: str | None = None,
     ):
         return record_short_video(
             window_title,
@@ -44,6 +45,7 @@ class EvidenceCaptureController:
             cancel_checker=cancel_checker,
             record_audio=record_audio,
             audio_device_id=audio_device_id,
+            audio_capture_mode=audio_capture_mode,
         )
 
     def load_keyframes(self, file_path: str) -> list[Image.Image]:

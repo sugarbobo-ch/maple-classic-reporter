@@ -24,6 +24,7 @@ export const TEST_CONFIG: AppConfig = {
   whitelist: ['known-player'],
   auto_delete_after_upload: false,
   record_audio: true,
+  audio_capture_mode: 'process',
   ocr_autofill_id: true,
   ocr_autofill_map: true,
   audio_output_device_id: '',
@@ -39,9 +40,7 @@ export const TEST_WINDOWS: WindowItem[] = [
   { title: 'MapleStory Classic', width: 1920, height: 1080 },
 ];
 
-export const TEST_AUDIO_DEVICES: AudioDeviceItem[] = [
-  { id: '', name: 'Default output' },
-];
+export const TEST_AUDIO_DEVICES: AudioDeviceItem[] = [{ id: '', name: 'Default output' }];
 
 export const TEST_HISTORY: HistoryRecord[] = [
   {
@@ -126,7 +125,9 @@ export function createMockPyWebViewApi(
     get_media_preview: vi.fn().mockResolvedValue(''),
     get_media_stream_url: vi.fn().mockResolvedValue(''),
     trim_video_segment: vi.fn().mockResolvedValue({ success: false, error: 'No trim result' }),
-    restore_original_video: vi.fn().mockResolvedValue({ success: false, error: 'No restore result' }),
+    restore_original_video: vi
+      .fn()
+      .mockResolvedValue({ success: false, error: 'No restore result' }),
     clear_all_recordings: vi.fn().mockResolvedValue({ success: true, count: 0, total_bytes: 0 }),
     open_app_data_folder: vi.fn(),
     open_log_file: vi.fn().mockResolvedValue(true),

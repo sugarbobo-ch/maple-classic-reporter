@@ -76,6 +76,7 @@ binaries.extend(webview_binaries)
 hiddenimports = (
     collect_submodules("playwright")
     + collect_submodules("windows_capture")
+    + collect_submodules("comtypes")
     + clr_hiddenimports
     + pythonnet_hiddenimports
     + webview_hiddenimports

@@ -15,7 +15,9 @@ from ctypes import wintypes
 from maple_reporter.recorder.audio_capture import (
     DEFAULT_SAMPLE_RATE,
     LoopbackAudioRecorder,
+    create_audio_recorder,
     merge_audio_into_mp4,
+    normalize_audio_capture_mode,
 )
 
 
@@ -441,6 +443,7 @@ def record_short_video(
     cancel_checker: Optional[Callable[[], bool]] = None,
     record_audio: bool = True,
     audio_device_id: Optional[str] = None,
+    audio_capture_mode: Optional[str] = None,
 ) -> Tuple[Optional[str], List[Image.Image]]:
     """
     Record a short MP4 video of the target window for `duration_sec` seconds with specified `fps`.
@@ -462,13 +465,27 @@ def record_short_video(
     if width < 2 or height < 2:
         return None, []
 
-    audio_thread: Optional[AudioRecorderThread] = None
-    if record_audio:
+    audio_mode = normalize_audio_capture_mode(
+        audio_capture_mode, record_audio=record_audio
+    )
+    audio_thread: Optional[LoopbackAudioRecorder] = None
+    if audio_mode != "off":
         try:
-            audio_thread = AudioRecorderThread(
-                sample_rate=DEFAULT_SAMPLE_RATE, device_id=audio_device_id
+            process_id = None
+            if audio_mode == "process":
+                from maple_reporter.recorder.window_capture import find_target_process_id
+
+                process_id = find_target_process_id(window_title_keyword)
+            audio_thread = create_audio_recorder(
+                audio_mode,
+                buffer_seconds=max(1.0, float(duration_sec) + 2.0),
+                sample_rate=DEFAULT_SAMPLE_RATE,
+                device_id=audio_device_id,
+                process_id=process_id,
+                source_name=normalize_window_title_keyword(window_title_keyword),
             )
-            audio_thread.start()
+            if audio_thread:
+                audio_thread.start()
         except Exception as error:
             LOGGER.warning("無法啟動短片音訊擷取 (%s)", type(error).__name__)
             audio_thread = None

@@ -24,6 +24,7 @@ class ReplayController(QObject):
         buffer_seconds: int,
         record_audio: bool,
         audio_device_id: str | None,
+        audio_capture_mode: str | None = None,
     ) -> bool:
         return self.recorder.start(
             window_title,
@@ -31,6 +32,7 @@ class ReplayController(QObject):
             buffer_seconds=buffer_seconds,
             record_audio=record_audio,
             audio_device_id=audio_device_id,
+            audio_capture_mode=audio_capture_mode,
         )
 
     def stop(self) -> None:

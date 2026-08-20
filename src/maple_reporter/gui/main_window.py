@@ -1096,6 +1096,9 @@ class MainWindow(QMainWindow):
             return
         selected_audio_device_id = self.combo_audio_output.currentData() or ""
         self.cfg["record_audio"] = self.chk_record_audio.isChecked()
+        audio_mode = str(self.cfg.get("audio_capture_mode", "")).casefold()
+        if audio_mode not in {"process", "system", "off"}:
+            audio_mode = "system" if self.chk_record_audio.isChecked() else "off"
         self.cfg["audio_output_device_id"] = selected_audio_device_id
         self.settings_controller.save_model()
         if not self.chk_record_audio.isChecked():
@@ -1106,6 +1109,7 @@ class MainWindow(QMainWindow):
             buffer_seconds=self.spin_replay_seconds.value(),
             record_audio=self.chk_record_audio.isChecked(),
             audio_device_id=selected_audio_device_id or None,
+            audio_capture_mode=audio_mode,
         )
         if from_hotkey:
             if started:
@@ -1513,6 +1517,7 @@ class MainWindow(QMainWindow):
                 cancel_checker=lambda: self._video_cancel_requested,
                 record_audio=self.chk_record_audio.isChecked(),
                 audio_device_id=self.combo_audio_output.currentData() or None,
+                audio_capture_mode=str(self.cfg.get("audio_capture_mode", "system" if self.chk_record_audio.isChecked() else "off")),
             )
             user_canceled = self._video_cancel_requested
         finally:

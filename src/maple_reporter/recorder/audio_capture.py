@@ -14,7 +14,7 @@ import time
 from collections import deque
 from pathlib import Path
 from fractions import Fraction
-from typing import Callable, Deque, Optional
+from typing import Callable, Deque, Literal, Optional
 
 import numpy as np
 
@@ -22,10 +22,25 @@ import numpy as np
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SAMPLE_RATE = 48_000
 _SILENCE_THRESHOLD = 1e-5
+AudioCaptureMode = Literal["process", "system", "off"]
+_AUDIO_CAPTURE_MODES = {"process", "system", "off"}
 
 
 class AudioCaptureError(RuntimeError):
-    """Raised when a selected Windows playback endpoint cannot be opened."""
+    """Raised when a selected Windows audio source cannot be opened."""
+
+
+def normalize_audio_capture_mode(
+    mode: str | None,
+    *,
+    record_audio: bool = True,
+) -> AudioCaptureMode:
+    """Normalize the new mode while preserving legacy boolean callers."""
+
+    normalized = str(mode or "").strip().casefold()
+    if normalized in _AUDIO_CAPTURE_MODES:
+        return normalized  # type: ignore[return-value]
+    return "system" if record_audio else "off"
 
 
 def _load_soundcard():
@@ -306,6 +321,87 @@ class LoopbackAudioRecorder(threading.Thread):
         with self._lock:
             self._chunks.clear()
         return data
+
+
+class ProcessLoopbackAudioRecorder(LoopbackAudioRecorder):
+    """Capture audio rendered by one process and all of its child processes."""
+
+    def __init__(
+        self,
+        buffer_seconds: float,
+        process_id: int,
+        sample_rate: int = DEFAULT_SAMPLE_RATE,
+        source_name: str = "遊戲聲音",
+        error_callback: Optional[Callable[[str], None]] = None,
+        source_callback: Optional[Callable[[str], None]] = None,
+    ):
+        super().__init__(
+            buffer_seconds,
+            sample_rate=sample_rate,
+            error_callback=error_callback,
+            source_callback=source_callback,
+        )
+        self.process_id = int(process_id)
+        self.source_name = source_name.strip() or "遊戲聲音"
+
+    def run(self) -> None:
+        try:
+            from maple_reporter.recorder.process_loopback import capture_process_audio
+
+            def _opened() -> None:
+                self._opened.set()
+                if self.source_callback:
+                    self.source_callback(self.source_name)
+
+            capture_process_audio(
+                self.process_id,
+                self.sample_rate,
+                self._stop_event,
+                self._append_chunk,
+                _opened,
+            )
+        except Exception as error:
+            message = str(error).strip() or (
+                "無法只錄製遊戲聲音。影片將繼續錄製但不包含聲音。"
+            )
+            LOGGER.warning("遊戲程序音訊錄製失敗 (%s)", type(error).__name__)
+            self._report_error(message)
+
+
+def create_audio_recorder(
+    mode: str | None,
+    *,
+    buffer_seconds: float,
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
+    device_id: str | None = None,
+    process_id: int | None = None,
+    source_name: str = "遊戲聲音",
+    error_callback: Optional[Callable[[str], None]] = None,
+    source_callback: Optional[Callable[[str], None]] = None,
+) -> LoopbackAudioRecorder | None:
+    """Create the recorder for one normalized audio mode without fallback."""
+
+    normalized = normalize_audio_capture_mode(mode)
+    if normalized == "off":
+        return None
+    if normalized == "process":
+        if not process_id:
+            raise AudioCaptureError("找不到所選視窗的音訊程序，請重新整理視窗。")
+        return ProcessLoopbackAudioRecorder(
+            buffer_seconds,
+            process_id=process_id,
+            sample_rate=sample_rate,
+            source_name=source_name,
+            error_callback=error_callback,
+            source_callback=source_callback,
+        )
+    return LoopbackAudioRecorder(
+        buffer_seconds,
+        sample_rate=sample_rate,
+        device_id=device_id,
+        error_callback=error_callback,
+        source_callback=source_callback,
+    )
 
 
 def has_audio_signal(audio_data: np.ndarray | None) -> bool:

@@ -126,6 +126,15 @@ class ConfigBridgeMixin:
 
                 candidate_config = dict(current_config)
                 candidate_config[key] = value
+                if key == "audio_capture_mode":
+                    mode = str(value).casefold()
+                    if mode not in {"process", "system", "off"}:
+                        return False
+                    candidate_config["record_audio"] = mode != "off"
+                elif key == "record_audio":
+                    candidate_config["audio_capture_mode"] = (
+                        "system" if bool(value) else "off"
+                    )
                 mod.save_config(candidate_config)
                 self.config = candidate_config
 
@@ -136,6 +145,7 @@ class ConfigBridgeMixin:
                     "selected_window_title",
                     "record_fps",
                     "record_audio",
+                    "audio_capture_mode",
                     "audio_output_device_id",
                 ):
                     if self.replay_recorder.is_running:
@@ -155,6 +165,15 @@ class ConfigBridgeMixin:
                 current_config = mod.load_config()
                 candidate_config = dict(current_config)
                 candidate_config.update(new_config)
+                if "audio_capture_mode" not in new_config and "record_audio" in new_config:
+                    candidate_config["audio_capture_mode"] = (
+                        "system" if bool(new_config["record_audio"]) else "off"
+                    )
+                mode = str(candidate_config.get("audio_capture_mode", "process")).casefold()
+                if mode not in {"process", "system", "off"}:
+                    return False
+                candidate_config["audio_capture_mode"] = mode
+                candidate_config["record_audio"] = mode != "off"
 
                 # Validate hotkey conflicts
                 save_hk = str(candidate_config.get("save_replay_hotkey", "")).strip().lower()

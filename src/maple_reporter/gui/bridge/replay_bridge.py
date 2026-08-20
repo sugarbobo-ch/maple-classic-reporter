@@ -19,6 +19,7 @@ class ReplayBridgeMixin:
         buffer_seconds: int | None = None,
         record_audio: bool | None = None,
         audio_device_id: str | None = None,
+        audio_capture_mode: str | None = None,
     ) -> bool:
         """Start the background sliding replay buffer."""
         title = window_title or self.config.get("selected_window_title", "新楓之谷：經典版")
@@ -29,6 +30,12 @@ class ReplayBridgeMixin:
             if record_audio is not None
             else bool(self.config.get("record_audio", True))
         )
+        mode = str(
+            audio_capture_mode
+            or self.config.get("audio_capture_mode", "system" if rec_audio else "off")
+        ).casefold()
+        if mode not in {"process", "system", "off"}:
+            mode = "system" if rec_audio else "off"
         audio_dev = audio_device_id or self.config.get("audio_output_device_id") or None
 
         return self.replay_recorder.start(
@@ -37,6 +44,7 @@ class ReplayBridgeMixin:
             buffer_seconds=sec,
             record_audio=rec_audio,
             audio_device_id=audio_dev,
+            audio_capture_mode=mode,
         )
 
     def stop_replay(self) -> bool:

@@ -113,6 +113,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "auto_submit_without_preview": False,
     "auto_delete_after_upload": False,
     "record_audio": True,
+    "audio_capture_mode": "process",
     "ocr_autofill_id": True,
     "ocr_autofill_map": True,
     "audio_output_device_id": "",
@@ -257,6 +258,13 @@ def load_config() -> Dict[str, Any]:
         # of being loaded into the application model.
         sanitized = dict(cfg) if isinstance(cfg, dict) else {}
         changed = False
+        audio_mode = str(sanitized.get("audio_capture_mode", "")).casefold()
+        if audio_mode not in {"process", "system", "off"}:
+            audio_mode = "process" if bool(sanitized.get("record_audio", True)) else "off"
+            sanitized["audio_capture_mode"] = audio_mode
+            changed = True
+        merged["audio_capture_mode"] = audio_mode
+        merged["record_audio"] = audio_mode != "off"
         for name in _REMOVED_CONFIG_KEYS:
             if name in sanitized:
                 sanitized.pop(name, None)
@@ -297,6 +305,9 @@ def save_config(cfg: Dict[str, Any]) -> None:
     with _CONFIG_LOCK:
         ensure_config_dir()
         serializable = dict(cfg)
+        audio_mode = str(serializable.get("audio_capture_mode", "")).casefold()
+        if audio_mode in {"process", "system", "off"}:
+            serializable["record_audio"] = audio_mode != "off"
         for name in _REMOVED_CONFIG_KEYS:
             serializable.pop(name, None)
             _delete_removed_config_secret(name)

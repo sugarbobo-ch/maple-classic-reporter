@@ -318,6 +318,10 @@ body {
   width: 100%;
 }
 
+.audio-device-row {
+  grid-column: 1 / -1;
+}
+
 .form-label {
   font-size: 0.82rem;
   font-weight: 600;

@@ -69,6 +69,7 @@ class RecordingBridgeMixin:
         countdown_sec: int | None = None,
         record_audio: bool | None = None,
         audio_device_id: str | None = None,
+        audio_capture_mode: str | None = None,
     ) -> bool:
         """Start a short video recording in a background thread with real-time events."""
         mod = _bridge_mod()
@@ -92,6 +93,12 @@ class RecordingBridgeMixin:
             if record_audio is not None
             else bool(self.config.get("record_audio", True))
         )
+        mode = str(
+            audio_capture_mode
+            or self.config.get("audio_capture_mode", "system" if rec_audio else "off")
+        ).casefold()
+        if mode not in {"process", "system", "off"}:
+            mode = "system" if rec_audio else "off"
         audio_dev = audio_device_id or self.config.get("audio_output_device_id") or None
         win_title = self.config.get("selected_window_title", "新楓之谷：經典版")
 
@@ -158,6 +165,7 @@ class RecordingBridgeMixin:
                     cancel_checker=lambda: self._cancel_requested,
                     record_audio=rec_audio,
                     audio_device_id=audio_dev,
+                    audio_capture_mode=mode,
                 )
 
                 if self._cancel_requested or not file_path:
