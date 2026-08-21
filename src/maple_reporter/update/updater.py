@@ -92,21 +92,8 @@ def _safe_zip_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     return members
 
 
-def _extract_safe(archive: zipfile.ZipFile, destination: Path) -> None:
+def _extract_safe(archive: zipfile.ZipFile, destination: Path, progress_callback: Any = None) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    tar_exe = shutil.which("tar")
-    if tar_exe and os.name == "nt" and archive.filename:
-        archive_path = Path(archive.filename)
-        try:
-            subprocess.run(
-                [tar_exe, "-xf", str(archive_path), "-C", str(destination)],
-                capture_output=True,
-                check=True,
-            )
-            return
-        except Exception:
-            pass
-
     orig_open = archive.open
 
     def _patched_open(name_or_info: Any, mode: str = "r", pwd: Any = None, *, force_zip64: bool = False) -> Any:
@@ -125,6 +112,9 @@ def _extract_safe(archive: zipfile.ZipFile, destination: Path) -> None:
 
     archive.open = _patched_open  # type: ignore[method-assign]
     members = _safe_zip_members(archive)
+    total_bytes = max(1, sum(m.file_size for m in members))
+    extracted_bytes = 0
+
     for member in members:
         clean_name = member.filename.replace("\\", "/")
         relative = Path(safe_relative_path(clean_name))
@@ -133,7 +123,15 @@ def _extract_safe(archive: zipfile.ZipFile, destination: Path) -> None:
             raise ValueError(f"Archive path escaped staging directory: {member.filename}")
         target.parent.mkdir(parents=True, exist_ok=True)
         with archive.open(member, "r") as source, target.open("wb") as output:
-            shutil.copyfileobj(source, output, length=1024 * 1024)
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+                extracted_bytes += len(chunk)
+                if progress_callback:
+                    pct = 10.0 + (extracted_bytes / total_bytes * 70.0)
+                    progress_callback(pct, f"正在解壓縮檔案 ({int(extracted_bytes * 100 / total_bytes)}%)…")
 
 
 def _copy_backup(source: Path, backup_root: Path, relative: str) -> bool:
@@ -254,11 +252,11 @@ def _safe_move_directory(src: Path, dst: Path, retries: int = 12, delay: float =
         raise last_error
 
 
-def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path) -> Path:
+def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path, progress_callback: Any = None) -> Path:
     staging_parent = transaction_dir / "full-staging"
     staging_parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path) as archive:
-        _extract_safe(archive, staging_parent)
+        _extract_safe(archive, staging_parent, progress_callback=progress_callback)
     staged_bundle = staging_parent / install_dir.name
     if not staged_bundle.is_dir() or not (staged_bundle / "MapleClassicReporter.exe").is_file():
         staged_bundle = staging_parent / "MapleClassicReporter"
@@ -281,6 +279,8 @@ def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path) ->
     if backup.exists():
         shutil.rmtree(backup, ignore_errors=True)
     _write_json(transaction_dir / "state.json", {"phase": "ready-to-swap", "kind": "full", "backup": str(backup), "install_dir": str(install_dir)})
+    if progress_callback:
+        progress_callback(85.0, "正在套用新版檔案…")
     _safe_move_directory(install_dir, backup)
     try:
         _safe_move_directory(staged_bundle, install_dir)
@@ -301,18 +301,19 @@ def _launch(executable: Path, token: str) -> subprocess.Popen[Any]:
 
 
 class UpdateProgressUI:
-    """Lightweight Windows progress dialog with project camera icon."""
+    """Lightweight Windows progress dialog with project camera icon and real percentage bar."""
 
     def __init__(self, target_version: str = "", install_dir: Path | None = None) -> None:
         self._root = None
         self._status_var = None
+        self._percent_var = None
         try:
             import tkinter as tk
             from tkinter import ttk
 
             root = tk.Tk()
             root.title("新楓之谷：經典版 - 套用更新")
-            root.geometry("380x130")
+            root.geometry("380x135")
             root.resizable(False, False)
             root.attributes("-topmost", True)
 
@@ -347,19 +348,28 @@ class UpdateProgressUI:
             )
             lbl.pack(anchor="w", pady=(0, 8))
 
-            progress = ttk.Progressbar(frame, mode="indeterminate", length=340)
+            self._percent_var = tk.DoubleVar(value=0.0)
+            progress = ttk.Progressbar(
+                frame,
+                mode="determinate",
+                variable=self._percent_var,
+                maximum=100.0,
+                length=340,
+            )
             progress.pack(fill="x", pady=(0, 4))
-            progress.start(10)
 
             self._root = root
             self._root.update()
         except Exception:
             self._root = None
 
-    def set_status(self, text: str) -> None:
-        if self._status_var and self._root:
+    def update_progress(self, percent: float, text: str = "") -> None:
+        if self._root:
             try:
-                self._status_var.set(text)
+                if self._percent_var is not None:
+                    self._percent_var.set(min(100.0, max(0.0, float(percent))))
+                if text and self._status_var is not None:
+                    self._status_var.set(text)
                 self._root.update_idletasks()
             except Exception:
                 pass
@@ -367,7 +377,7 @@ class UpdateProgressUI:
     def run_with_worker(self, worker_func: Any) -> Any:
         """Run worker function in background thread while keeping UI responsive."""
         if not self._root:
-            return worker_func(lambda _s: None)
+            return worker_func(lambda _p, _s="": None)
 
         import threading
 
@@ -375,7 +385,7 @@ class UpdateProgressUI:
 
         def _bg_thread() -> None:
             try:
-                result_container["result"] = worker_func(self.set_status)
+                result_container["result"] = worker_func(self.update_progress)
             except Exception as err:
                 result_container["error"] = err
             finally:
@@ -427,7 +437,7 @@ def apply_update(
     _log(f"Starting update: package={package_path}, install_dir={install_dir}, pid={pid}, target={target_version}")
     ui = UpdateProgressUI(target_version=target_version, install_dir=install_dir)
 
-    def _do_update(update_status: Any) -> bool:
+    def _do_update(update_progress: Any) -> bool:
         package_file = package_path.resolve()
         target_dir = install_dir.resolve()
         update_dir.mkdir(parents=True, exist_ok=True)
@@ -439,22 +449,22 @@ def apply_update(
             {"phase": "waiting", "package": str(package_file), "install_dir": str(target_dir), "target_version": target_version},
         )
         _log("Waiting for main process to exit...")
-        update_status("正在等待應用程式關閉…")
+        update_progress(5.0, "正在等待應用程式關閉…")
         if not _wait_for_pid(pid, timeout=timeout):
             _log("Timeout waiting for main process exit")
             raise TimeoutError("Main application did not exit before the update timeout")
 
         _log("Main process exited. Swapping files...")
-        update_status("正在解壓縮並套用更新檔案…")
+        update_progress(10.0, "正在解壓縮並套用更新檔案…")
         backup: Path | None = None
         kind = "full"
         try:
             with zipfile.ZipFile(package_file) as archive:
                 names = set(archive.namelist())
             kind = "delta" if "patch.json" in names else "full"
-            backup = _apply_delta(package_file, target_dir, transaction) if kind == "delta" else _apply_full(package_file, target_dir, transaction)
+            backup = _apply_delta(package_file, target_dir, transaction) if kind == "delta" else _apply_full(package_file, target_dir, transaction, progress_callback=update_progress)
             _log(f"Files replaced successfully ({kind}). Launching updated application...")
-            update_status("正在啟動全新版本…")
+            update_progress(92.0, "正在啟動全新版本…")
             executable = target_dir / "MapleClassicReporter.exe"
             if not executable.is_file():
                 _log("Updated executable is missing!")
@@ -465,6 +475,7 @@ def apply_update(
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 if marker.is_file():
+                    update_progress(100.0, "更新完成！")
                     _log("Confirmed new process is running successfully!")
                     _write_json(transaction / "state.json", {"phase": "confirmed", "kind": kind, "target_version": target_version})
                     if backup and backup.exists():
