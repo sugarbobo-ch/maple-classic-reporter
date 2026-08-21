@@ -93,6 +93,15 @@ class ConfigBridgeMixin:
             except Exception as err:
                 LOGGER.warning("Failed to save initial default config: %s", err)
 
+        # Start or rehydrate the updater before returning initial data. Cached
+        # candidates can transition to AVAILABLE synchronously; doing this
+        # here makes that state part of the initial response instead of relying
+        # on a startup event that React may not have subscribed to yet.
+        if getattr(self, "_window", None) is not None and getattr(
+            self, "update_service", None
+        ):
+            self.update_service.start_check(force=False)
+
         return {
             "config": self.config,
             "windows": windows,

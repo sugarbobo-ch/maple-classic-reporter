@@ -84,6 +84,21 @@ class TestPyWebViewBridge(unittest.TestCase):
         self.assertIn("replay_duration", data)
         self.assertIn("sanction_sync_status", data)
 
+    def test_initial_data_starts_update_check_when_window_is_attached(self):
+        self.bridge._window = MagicMock()
+        self.bridge.get_windows = MagicMock(return_value=[])
+        self.bridge.get_audio_devices = MagicMock(return_value=[])
+        self.bridge.sanction_repo.load_history = MagicMock(return_value=[])
+        self.bridge.drive_mgr.is_authenticated = MagicMock(return_value=False)
+        self.bridge.sanction_coordinator.get_status = MagicMock(
+            return_value=MagicMock(to_dict=lambda: {"running": False})
+        )
+        self.bridge.update_service.start_check = MagicMock(return_value=True)
+
+        self.bridge.get_initial_data()
+
+        self.bridge.update_service.start_check.assert_called_once_with(force=False)
+
     def test_clear_history_delegates_to_persistence(self):
         with patch.object(self.bridge.sanction_repo, "clear_history") as mock_clear:
             self.assertTrue(self.bridge.clear_history())
