@@ -109,11 +109,19 @@ jobs:
               $previousZip = $previous.assets | Where-Object { $_.name -like '*-windows-x64.zip' -and $_.name -notlike '*.patch.zip' } | Select-Object -First 1
               if ($previousZip) {
                 $previousArchive = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release.zip'
-                Invoke-WebRequest -Headers $headers -Uri $previousZip.browser_download_url -OutFile $previousArchive
+                Invoke-WebRequest -Uri $previousZip.browser_download_url -OutFile $previousArchive
                 $previousExtract = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release'
                 Expand-Archive -LiteralPath $previousArchive -DestinationPath $previousExtract -Force
-                $previousBundle = Join-Path $previousExtract 'MapleClassicReporter'
+                $candidate1 = Join-Path $previousExtract 'MapleClassicReporter'
+                if (Test-Path -LiteralPath (Join-Path $candidate1 'MapleClassicReporter.exe')) {
+                  $previousBundle = $candidate1
+                } elseif (Test-Path -LiteralPath (Join-Path $previousExtract 'MapleClassicReporter.exe')) {
+                  $previousBundle = $previousExtract
+                }
                 $previousVersion = $previous.tag_name.TrimStart('v')
+                if ($previousBundle) {
+                  Write-Host "Found previous release bundle at: $previousBundle (v$previousVersion)"
+                }
               }
             }
           }
