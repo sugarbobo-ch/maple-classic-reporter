@@ -24,14 +24,15 @@ function status(state: UpdateStatus['state'], progress = 0): UpdateStatus {
 
 describe('Header update control', () => {
   it('switches from available update to circular progress and restart action', () => {
+    const startDownload = vi.fn();
     const openDetails = vi.fn();
     const restart = vi.fn();
     const { rerender } = render(
-      <Header {...baseProps} updateStatus={status('available')} onOpenUpdateDetails={openDetails} />
+      <Header {...baseProps} updateStatus={status('available')} onStartUpdateDownload={startDownload} onOpenUpdateDetails={openDetails} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: /有可用更新/ }));
-    expect(openDetails).toHaveBeenCalledTimes(1);
+    expect(startDownload).toHaveBeenCalledTimes(1);
 
     rerender(
       <Header {...baseProps} updateStatus={status('downloading', 42)} onOpenUpdateDetails={openDetails} />

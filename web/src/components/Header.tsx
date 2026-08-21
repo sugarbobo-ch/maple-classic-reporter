@@ -48,6 +48,7 @@ export default function Header({
   onUpdateTheme,
   updateStatus,
   updateBusy = false,
+  onStartUpdateDownload,
   onRestartAndApplyUpdate,
   onOpenUpdateDetails,
 }: HeaderProps) {
@@ -237,9 +238,9 @@ export default function Header({
         variant="primary"
         size="sm"
         icon={Download}
-        onClick={onOpenUpdateDetails}
-        title={`有可用更新：v${updateStatus?.target_version || ''}`}
-        aria-label={`有可用更新：v${updateStatus?.target_version || ''}，點擊前往設定`}
+        onClick={onStartUpdateDownload}
+        title={`有可用更新：v${updateStatus?.target_version || ''} - 點擊立即下載`}
+        aria-label={`有可用更新：v${updateStatus?.target_version || ''}，點擊立即下載`}
         className="header-update-button"
       >
         有可用更新

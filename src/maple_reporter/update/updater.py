@@ -199,6 +199,29 @@ def _apply_delta(archive_path: Path, install_dir: Path, transaction_dir: Path) -
         return backup
 
 
+def _safe_move_directory(src: Path, dst: Path, retries: int = 12, delay: float = 0.4) -> None:
+    """Safely move a directory on Windows with retry to handle brief file locks."""
+    last_error: Exception | None = None
+    for attempt in range(retries):
+        try:
+            if dst.exists():
+                shutil.rmtree(dst, ignore_errors=True)
+            shutil.move(str(src), str(dst))
+            return
+        except (PermissionError, OSError) as exc:
+            last_error = exc
+            time.sleep(delay)
+    # Fallback to copytree with overwrite + rmtree
+    try:
+        shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+        shutil.rmtree(str(src), ignore_errors=True)
+        return
+    except Exception as exc:
+        LOGGER.warning("copytree fallback failed: %s", exc)
+    if last_error:
+        raise last_error
+
+
 def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path) -> Path:
     staging_parent = transaction_dir / "full-staging"
     staging_parent.mkdir(parents=True, exist_ok=True)
@@ -226,11 +249,12 @@ def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path) ->
     if backup.exists():
         shutil.rmtree(backup, ignore_errors=True)
     _write_json(transaction_dir / "state.json", {"phase": "ready-to-swap", "kind": "full", "backup": str(backup), "install_dir": str(install_dir)})
-    os.replace(install_dir, backup)
+    _safe_move_directory(install_dir, backup)
     try:
-        os.replace(staged_bundle, install_dir)
+        _safe_move_directory(staged_bundle, install_dir)
     except Exception:
-        os.replace(backup, install_dir)
+        if backup.exists() and not install_dir.exists():
+            _safe_move_directory(backup, install_dir)
         raise
     _write_json(transaction_dir / "state.json", {"phase": "applied", "kind": "full", "backup": str(backup), "install_dir": str(install_dir)})
     return backup
@@ -320,6 +344,15 @@ def apply_update(
 ) -> bool:
     """Apply a full ZIP or delta package and verify a clean relaunch."""
 
+    log_path = update_dir / "updater.log"
+    def _log(msg: str) -> None:
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+        except Exception:
+            pass
+
+    _log(f"Starting update: package={package_path}, install_dir={install_dir}, pid={pid}, target={target_version}")
     ui = UpdateProgressUI(target_version=target_version, install_dir=install_dir)
     try:
         package_path = package_path.resolve()
@@ -332,9 +365,12 @@ def apply_update(
             transaction / "state.json",
             {"phase": "waiting", "package": str(package_path), "install_dir": str(install_dir), "target_version": target_version},
         )
+        _log("Waiting for main process to exit...")
         if not _wait_for_pid(pid, timeout=timeout):
+            _log("Timeout waiting for main process exit")
             raise TimeoutError("Main application did not exit before the update timeout")
 
+        _log("Main process exited. Swapping files...")
         ui.tick()
         backup: Path | None = None
         kind = "full"
@@ -345,15 +381,19 @@ def apply_update(
             ui.tick()
             backup = _apply_delta(package_path, install_dir, transaction) if kind == "delta" else _apply_full(package_path, install_dir, transaction)
             ui.tick()
+            _log(f"Files replaced successfully ({kind}). Launching updated application...")
             executable = install_dir / "MapleClassicReporter.exe"
             if not executable.is_file():
+                _log("Updated executable is missing!")
                 raise ValueError("Updated executable is missing")
             marker = update_dir / f"success-{token}.json"
             process = _launch(executable, token)
+            _log(f"New process launched, waiting for confirmation token {token}...")
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 ui.tick()
                 if marker.is_file():
+                    _log("Confirmed new process is running successfully!")
                     _write_json(transaction / "state.json", {"phase": "confirmed", "kind": kind, "target_version": target_version})
                     if backup and backup.exists():
                         shutil.rmtree(backup, ignore_errors=True)
@@ -378,16 +418,19 @@ def apply_update(
                         pass
                     return True
                 if process.poll() is not None and process.returncode not in (0, None):
+                    _log(f"New process exited early with code {process.returncode}")
                     break
                 time.sleep(0.25)
+            _log("Timeout or early exit waiting for new process confirmation")
             raise TimeoutError("Updated application did not report a healthy startup")
-        except Exception:
+        except Exception as err:
+            _log(f"Exception during update application: {err}")
             LOGGER.exception("Update transaction failed; attempting rollback")
             try:
                 if kind == "full" and backup and backup.exists():
                     if install_dir.exists():
                         shutil.rmtree(install_dir, ignore_errors=True)
-                    os.replace(backup, install_dir)
+                    _safe_move_directory(backup, install_dir)
                 elif kind == "delta":
                     index_path = transaction / "backup-index.json"
                     if index_path.is_file():
