@@ -138,7 +138,94 @@ class TestPyWebViewBridge(unittest.TestCase):
         self.assertEqual(enabled_result["map_name"], "recognized-map")
         self.assertEqual(enabled_result["ocr_map_name"], "recognized-map")
         self.assertEqual(enabled_result["map_name_source"], "ocr")
-        recognize_map.assert_called_once_with([screenshot], on_progress=ANY)
+        recognize_map.assert_called_once_with(
+            [screenshot], on_progress=ANY, cancel_checker=ANY
+        )
+
+    def test_cancel_ocr_stops_the_current_pipeline(self):
+        bridge = PyWebViewBridge.__new__(PyWebViewBridge)
+        bridge.config = {
+            "default_map": "fallback-map",
+            "ocr_autofill_id": True,
+            "ocr_autofill_map": True,
+            "whitelist": [],
+        }
+        screenshot = Image.new("RGB", (32, 32), color="white")
+
+        def cancel_during_map(*_args, **_kwargs):
+            bridge.cancel_ocr()
+            return "ignored-map"
+
+        with (
+            patch.object(PyWebViewBridge, "_emit_event"),
+            patch(
+                "maple_reporter.gui.pywebview_bridge.recognize_map_name_from_image_list",
+                side_effect=cancel_during_map,
+            ),
+            patch(
+                "maple_reporter.gui.pywebview_bridge.recognize_candidates_from_image_list"
+            ) as recognize_candidates,
+        ):
+            result = bridge._perform_ocr([screenshot])
+
+        self.assertTrue(result["cancelled"])
+        recognize_candidates.assert_not_called()
+
+    def test_high_resolution_ocr_keeps_all_representative_frames_and_candidates(self):
+        bridge = PyWebViewBridge.__new__(PyWebViewBridge)
+        bridge.config = {
+            "default_map": "fallback-map",
+            "ocr_autofill_id": True,
+            "ocr_autofill_map": True,
+            "whitelist": [],
+        }
+        high_resolution_frame = Image.new("RGB", (3840, 2036), color="black")
+
+        with (
+            patch.object(PyWebViewBridge, "_emit_event"),
+            patch(
+                "maple_reporter.gui.pywebview_bridge.recognize_map_name_from_image_list",
+                return_value="",
+            ),
+            patch(
+                "maple_reporter.gui.pywebview_bridge.recognize_candidates_from_image_list",
+                return_value=["sample-player", "another-player"],
+            ) as recognize_candidates,
+        ):
+            result = bridge._perform_ocr([high_resolution_frame] * 12)
+
+        self.assertEqual(
+            result["suspect_ids"], ["sample-player", "another-player"]
+        )
+        sampled_frames = recognize_candidates.call_args.args[0]
+        self.assertEqual(len(sampled_frames), 12)
+
+    def test_recognize_video_frame_uses_the_requested_paused_timestamp(self):
+        frame = Image.new("RGB", (320, 180), color="black")
+        ocr_result = {
+            "status": "success",
+            "suspect_ids": ["sample-player"],
+            "map_name": "Test Map",
+            "ocr_map_name": "Test Map",
+            "map_name_source": "ocr",
+        }
+
+        with (
+            patch("maple_reporter.gui.bridge.media_bridge.os.path.exists", return_value=True),
+            patch.object(
+                self.bridge.capture_controller,
+                "capture_video_frame",
+                return_value=frame,
+            ) as capture_frame,
+            patch.object(self.bridge, "_perform_ocr", return_value=ocr_result) as perform_ocr,
+        ):
+            result = self.bridge.recognize_video_frame("evidence.mp4", 4.25)
+
+        capture_frame.assert_called_once_with("evidence.mp4", 4.25)
+        perform_ocr.assert_called_once_with([frame])
+        self.assertEqual(result["suspect_ids"], ["sample-player"])
+        self.assertEqual(result["media_path"], "evidence.mp4")
+        self.assertEqual(result["media_type"], "video")
 
     @patch("maple_reporter.gui.pywebview_bridge.save_config", side_effect=OSError("disk full"))
     def test_config_save_failure_does_not_mutate_bridge_state(self, _mock_save):

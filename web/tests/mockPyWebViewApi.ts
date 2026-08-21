@@ -90,6 +90,7 @@ export function createMockPyWebViewApi(
     }),
     start_recording: vi.fn().mockResolvedValue(true),
     cancel_recording: vi.fn().mockResolvedValue(true),
+    cancel_ocr: vi.fn().mockResolvedValue(true),
     start_replay: vi.fn().mockResolvedValue(true),
     stop_replay: vi.fn().mockResolvedValue(true),
     save_replay: vi.fn().mockResolvedValue(true),
@@ -124,6 +125,13 @@ export function createMockPyWebViewApi(
     open_media_file: vi.fn(),
     get_media_preview: vi.fn().mockResolvedValue(''),
     get_media_stream_url: vi.fn().mockResolvedValue(''),
+    recognize_video_frame: vi.fn().mockResolvedValue({
+      status: 'success',
+      suspect_ids: [],
+      map_name: '',
+      media_path: '',
+      media_type: 'video',
+    }),
     trim_video_segment: vi.fn().mockResolvedValue({ success: false, error: 'No trim result' }),
     restore_original_video: vi
       .fn()

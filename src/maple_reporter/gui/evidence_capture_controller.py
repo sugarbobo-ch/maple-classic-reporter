@@ -114,5 +114,40 @@ class EvidenceCaptureController:
             capture.release()
         return keyframes
 
+    def capture_video_frame(
+        self, file_path: str, timestamp_sec: float
+    ) -> Image.Image | None:
+        """Decode one video frame at the requested playback timestamp."""
+
+        if not file_path or not os.path.exists(file_path):
+            return None
+
+        capture = cv2.VideoCapture(file_path)
+        try:
+            if not capture.isOpened():
+                return None
+
+            fps = max(1.0, float(capture.get(cv2.CAP_PROP_FPS) or 20.0))
+            total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            timestamp = max(0.0, float(timestamp_sec))
+            if total_frames > 0:
+                duration = max(0.0, (total_frames - 1) / fps)
+                timestamp = min(timestamp, duration)
+
+            capture.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                capture.set(cv2.CAP_PROP_POS_FRAMES, int(round(timestamp * fps)))
+                ok, frame = capture.read()
+            if not ok or frame is None:
+                return None
+
+            return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        except (OSError, TypeError, ValueError) as error:
+            LOGGER.warning("讀取目前影片畫面失敗 (%s)", type(error).__name__)
+            return None
+        finally:
+            capture.release()
+
 
 __all__ = ["EvidenceCaptureController"]

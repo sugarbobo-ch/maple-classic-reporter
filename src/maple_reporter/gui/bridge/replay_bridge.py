@@ -84,11 +84,15 @@ class ReplayBridgeMixin:
         except Exception as err:
             LOGGER.error("Failed to perform OCR on replay: %s", err)
             ocr_res = {
+                "cancelled": False,
                 "suspect_ids": [],
                 "map_name": self.config.get("default_map", ""),
                 "ocr_map_name": "",
                 "map_name_source": "default",
             }
+        if ocr_res.get("cancelled"):
+            LOGGER.info("Replay OCR was cancelled before publishing its result")
+            return
         self._emit_event(
             "OCR_RESULT",
             {

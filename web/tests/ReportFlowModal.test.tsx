@@ -309,4 +309,77 @@ describe('ReportFlowModal evidence selection', () => {
     const matches = screen.getAllByText(/已關閉自動辨識角色 ID/);
     expect(matches).toHaveLength(1);
   });
+
+  it('recognizes the paused video frame from the evidence action column', async () => {
+    const onRecognizeCurrentFrame = vi.fn().mockResolvedValue({
+      status: 'success',
+      suspect_ids: ['sample-player'],
+      map_name: 'Test Map',
+      media_path: 'C:\\test\\evidence.mp4',
+      media_type: 'video',
+    });
+    installMockPyWebView({
+      get_media_stream_url: vi.fn().mockResolvedValue('http://127.0.0.1:1234/evidence'),
+    });
+
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="form"
+          config={TEST_CONFIG}
+          ocrResults={{
+            status: 'success',
+            suspect_ids: [],
+            map_name: 'Test Map',
+            media_path: 'C:\\test\\evidence.mp4',
+            media_type: 'video',
+          }}
+          onClose={vi.fn()}
+          onRecognizeCurrentFrame={onRecognizeCurrentFrame}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    const video = await waitFor(() => {
+      const element = document.querySelector('video');
+      expect(element).toBeTruthy();
+      return element as HTMLVideoElement;
+    });
+    Object.defineProperty(video, 'currentTime', { configurable: true, value: 4.25 });
+    fireEvent.pause(video);
+
+    const recognizeButton = screen.getByTestId('recognize-current-frame-button');
+    expect(recognizeButton).toBeEnabled();
+    fireEvent.click(recognizeButton);
+
+    await waitFor(() => {
+      expect(onRecognizeCurrentFrame).toHaveBeenCalledWith('C:\\test\\evidence.mp4', 4.25);
+    });
+  });
+
+  it('hides paused-frame recognition for screenshot evidence', () => {
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="form"
+          config={TEST_CONFIG}
+          ocrResults={{
+            status: 'success',
+            suspect_ids: [],
+            map_name: 'Test Map',
+            media_path: 'C:\\test\\evidence.png',
+            media_type: 'image',
+          }}
+          onClose={vi.fn()}
+          onRecognizeCurrentFrame={vi.fn()}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    expect(screen.queryByTestId('recognize-current-frame-button')).not.toBeInTheDocument();
+  });
 });

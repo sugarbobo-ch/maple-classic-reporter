@@ -256,6 +256,7 @@ declare global {
           audioCaptureMode?: AudioCaptureMode
         ) => Promise<boolean>;
         cancel_recording: () => Promise<boolean>;
+        cancel_ocr: () => Promise<boolean>;
         start_replay: (
           windowTitle?: string,
           fps?: number,
@@ -281,6 +282,10 @@ declare global {
         open_media_file: (filePath: string) => void;
         get_media_preview: (filePath: string) => Promise<string>;
         get_media_stream_url: (filePath: string) => Promise<string>;
+        recognize_video_frame: (
+          filePath: string,
+          timestampSec: number
+        ) => Promise<OcrResultData & { frame_time?: number }>;
         trim_video_segment: (
           filePath: string,
           cutStart: number,

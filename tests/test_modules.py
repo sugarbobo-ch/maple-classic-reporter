@@ -190,6 +190,7 @@ class TestMapleReporter(unittest.TestCase):
         self.assertTrue(is_valid_suspect_id("Richard"))
         self.assertTrue(is_valid_suspect_id("Oliver"))
         self.assertTrue(is_valid_suspect_id("NewType"))
+        self.assertTrue(is_valid_suspect_id("MapleRabbit"))
         self.assertFalse(is_valid_suspect_id("ch"))
         self.assertFalse(is_valid_suspect_id("lv"))
         self.assertFalse(is_valid_suspect_id("新楓之谷"))

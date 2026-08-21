@@ -81,12 +81,38 @@ export default function App() {
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatusData | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [reportWorkflowId, setReportWorkflowId] = useState(0);
   const [ocrResults, setOcrResults] = useState<OcrResultData>({
     suspect_ids: [],
     map_name: '',
     media_path: '',
     media_type: 'video',
   });
+  const ocrCancelledRef = useRef(false);
+  const frameOcrActiveRef = useRef(false);
+
+  const resetOcrResultsForWorkflow = (
+    mediaPath = '',
+    mediaType: OcrResultData['media_type'] = 'video'
+  ) => {
+    setOcrResults({
+      suspect_ids: [],
+      map_name: '',
+      ocr_map_name: '',
+      map_name_source: undefined,
+      media_path: mediaPath,
+      media_type: mediaType,
+    });
+  };
+
+  const beginOcrWorkflow = (
+    mediaPath = '',
+    mediaType: OcrResultData['media_type'] = 'video'
+  ) => {
+    ocrCancelledRef.current = false;
+    setReportWorkflowId((previous) => previous + 1);
+    resetOcrResultsForWorkflow(mediaPath, mediaType);
+  };
 
   // Quick Link In-place Modal State
   const [quickLinkModalOpen, setQuickLinkModalOpen] = useState(false);
@@ -126,6 +152,7 @@ export default function App() {
       setRecordingTime((prev) => Math.max(prev, data.elapsed));
     },
     RECORDING_FINISHED: (data?: { file_path?: string }) => {
+      beginOcrWorkflow(data?.file_path || '', 'video');
       cancelAnim();
       setStatusState('idle');
       setRecordingTime(0);
@@ -133,18 +160,9 @@ export default function App() {
       setCountdownFraction(undefined);
       setRecordingFraction(undefined);
       setSubmissionStatus(null);
-      if (modalStageRef.current !== 'form') {
-        setModalStage('progress');
-        setModalProgress(35);
-        setModalStatusText('錄影已完成，正在解析關鍵影格...');
-      }
-      if (data?.file_path) {
-        setOcrResults((prev) => ({
-          ...prev,
-          media_path: data.file_path || prev.media_path,
-          media_type: 'video',
-        }));
-      }
+      setModalStage('progress');
+      setModalProgress(35);
+      setModalStatusText('錄影已完成，正在解析關鍵影格...');
       setModalOpen(true);
     },
     RECORDING_CANCELED: () => {
@@ -175,19 +193,11 @@ export default function App() {
       setReplayTime(Math.floor(data.duration));
     },
     REPLAY_SAVED: (data?: { file_path?: string }) => {
+      beginOcrWorkflow(data?.file_path || '', 'video');
       setSubmissionStatus(null);
-      if (modalStageRef.current !== 'form') {
-        setModalStage('progress');
-        setModalProgress(40);
-        setModalStatusText('已儲存循環錄影，正在解析關鍵影格...');
-      }
-      if (data?.file_path) {
-        setOcrResults((prev) => ({
-          ...prev,
-          media_path: data.file_path || prev.media_path,
-          media_type: 'video',
-        }));
-      }
+      setModalStage('progress');
+      setModalProgress(40);
+      setModalStatusText('已儲存循環錄影，正在解析關鍵影格...');
       setModalOpen(true);
     },
     REPLAY_ERROR: (data: { message: string }) => {
@@ -195,6 +205,7 @@ export default function App() {
       setModalOpen(false);
     },
     OCR_STATUS: (data: { status: string; percent: number; step?: string }) => {
+      if (ocrCancelledRef.current) return;
       if (modalStageRef.current !== 'form') {
         setModalProgress(data.percent || 50);
         if (data.status) {
@@ -203,6 +214,7 @@ export default function App() {
       }
     },
     OCR_RESULT: (data: OcrResultData) => {
+      if (ocrCancelledRef.current) return;
       setOcrResults((prev) => normalizeOcrResult(data, prev, config));
       setSubmissionStatus(null);
       setModalProgress(100);
@@ -387,6 +399,7 @@ export default function App() {
 
   // Action Triggers
   const handleCaptureScreenshot = async () => {
+    beginOcrWorkflow('', 'image');
     setSubmissionStatus(null);
     setModalStage('progress');
     setModalProgress(30);
@@ -396,6 +409,7 @@ export default function App() {
     if (window.pywebview && window.pywebview.api) {
       try {
         const result = await window.pywebview.api.capture_screenshot('window');
+        if (ocrCancelledRef.current) return;
         if (result && result.status === 'success') {
           setOcrResults((prev) => normalizeOcrResult(result, prev, config));
           setModalProgress(100);
@@ -408,6 +422,7 @@ export default function App() {
           return;
         }
       } catch (e: any) {
+        if (ocrCancelledRef.current) return;
         toast.error('截圖辨識發生異常', e?.message || String(e));
         setModalOpen(false);
         return;
@@ -416,6 +431,7 @@ export default function App() {
 
     // Browser fallback when not in pywebview
     setTimeout(() => {
+      if (ocrCancelledRef.current) return;
       setOcrResults((prev) =>
         normalizeOcrResult(
           {
@@ -474,7 +490,8 @@ export default function App() {
           setRecordingTime(recSec);
           animFrameRef.current = null;
           if (!window.pywebview || !window.pywebview.api) {
-            setTimeout(() => {
+          setTimeout(() => {
+              if (ocrCancelledRef.current) return;
               setStatusState('idle');
               setRecordingFraction(undefined);
               setCountdownFraction(undefined);
@@ -482,6 +499,7 @@ export default function App() {
               setModalProgress(50);
               setModalOpen(true);
               setTimeout(() => {
+                if (ocrCancelledRef.current) return;
                 setOcrResults((prev) =>
                   normalizeOcrResult(
                     {
@@ -539,6 +557,7 @@ export default function App() {
     const cd = config.record_countdown_sec || 0;
     const dur = config.record_duration_sec || 8;
 
+    beginOcrWorkflow('', 'video');
     setIsResetting(true);
     if (window.pywebview && window.pywebview.api) {
       try {
@@ -598,6 +617,11 @@ export default function App() {
   };
 
   const handleSkipOcr = () => {
+    ocrCancelledRef.current = true;
+    const cancelPromise = window.pywebview?.api?.cancel_ocr?.();
+    if (cancelPromise) {
+      cancelPromise.catch(() => undefined);
+    }
     setModalStage('form');
     setModalProgress(100);
     setModalStatusText('已略過辨識');
@@ -610,6 +634,7 @@ export default function App() {
   };
 
   const handleSaveReplay = async () => {
+    beginOcrWorkflow('', 'video');
     setSubmissionStatus(null);
     if (window.pywebview && window.pywebview.api) {
       try {
@@ -655,12 +680,17 @@ export default function App() {
       try {
         const filePath = await window.pywebview.api.select_local_file();
         if (filePath) {
+          beginOcrWorkflow(
+            filePath,
+            /\.(mp4|mkv|avi|mov)$/i.test(filePath) ? 'video' : 'image'
+          );
           setSubmissionStatus(null);
           setModalStage('progress');
           setModalProgress(25);
           setModalStatusText('已選取檢舉證據檔案，正在分析畫面...');
           setModalOpen(true);
           const res = await window.pywebview.api.process_imported_file(filePath);
+          if (ocrCancelledRef.current) return;
           if (res && res.status === 'success') {
             setOcrResults((prev) => normalizeOcrResult(res, prev, config));
             setModalProgress(100);
@@ -672,14 +702,17 @@ export default function App() {
           }
         }
       } catch (e: any) {
+        if (ocrCancelledRef.current) return;
         toast.error('檔案選取錯誤', e?.message || String(e));
       }
     } else {
+      beginOcrWorkflow('', 'video');
       setModalStage('progress');
       setModalProgress(40);
       setModalStatusText('正在分析檢舉證據檔案...');
       setModalOpen(true);
       setTimeout(() => {
+        if (ocrCancelledRef.current) return;
         setOcrResults((prev) =>
           normalizeOcrResult(
             {
@@ -712,6 +745,55 @@ export default function App() {
       window.pywebview.api.open_external_url(targetUrl);
     } else {
       window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleRecognizeCurrentFrame = async (
+    filePath: string,
+    timestampSec: number
+  ): Promise<OcrResultData | null> => {
+    const recognizeFrame = window.pywebview?.api?.recognize_video_frame;
+    if (!recognizeFrame) {
+      toast.warning('目前版本不支援目前畫面辨識', '請重新建置最新版本後再試。');
+      return null;
+    }
+
+    frameOcrActiveRef.current = true;
+    ocrCancelledRef.current = false;
+    try {
+      const result = await recognizeFrame(filePath, timestampSec);
+      if (ocrCancelledRef.current) return null;
+      if (result?.status !== 'success') {
+        toast.warning('目前畫面辨識失敗', result?.message || '無法辨識暫停畫面');
+        return null;
+      }
+
+      setOcrResults((previous) =>
+        normalizeOcrResult(
+          {
+            ...result,
+            map_name:
+              result.map_name_source === 'ocr' ? result.map_name : previous.map_name,
+            map_name_source:
+              result.map_name_source === 'ocr'
+                ? 'ocr'
+                : previous.map_name_source || 'default',
+            media_path: previous.media_path,
+            media_type: previous.media_type,
+          },
+          previous,
+          config
+        )
+      );
+      setModalStatusText(`已辨識目前畫面（${timestampSec.toFixed(2)} 秒）`);
+      return result;
+    } catch (error: any) {
+      if (!ocrCancelledRef.current) {
+        toast.error('目前畫面辨識異常', error?.message || String(error));
+      }
+      return null;
+    } finally {
+      frameOcrActiveRef.current = false;
     }
   };
 
@@ -856,6 +938,20 @@ export default function App() {
       setIsSubmittingReport(false);
       setModalOpen(false);
     }
+  };
+
+  const handleCloseReport = () => {
+    if (modalStageRef.current === 'progress' || frameOcrActiveRef.current) {
+      ocrCancelledRef.current = true;
+      const cancelPromise = window.pywebview?.api?.cancel_ocr?.();
+      if (cancelPromise) {
+        cancelPromise.catch(() => undefined);
+      }
+    }
+    setModalOpen(false);
+    setModalProgress(0);
+    setModalStatusText('');
+    setSubmissionStatus(null);
   };
 
   const handleRefreshWindows = useCallback(
@@ -1199,6 +1295,7 @@ export default function App() {
       {modalOpen && (
         <Suspense fallback={null}>
           <ReportFlowModal
+            key={reportWorkflowId}
             stage={modalStage}
             progressPercent={modalProgress}
             progressStatus={modalStatusText}
@@ -1207,14 +1304,10 @@ export default function App() {
             ocrResults={ocrResults}
             config={config}
             history={history}
-            onClose={() => {
-              setModalOpen(false);
-              setModalProgress(0);
-              setModalStatusText('');
-              setSubmissionStatus(null);
-            }}
+            onClose={handleCloseReport}
             onSkipOcr={handleSkipOcr}
             onSubmitReport={handleSubmitReport}
+            onRecognizeCurrentFrame={handleRecognizeCurrentFrame}
             onOpenFilePath={(p) => {
               if (window.pywebview && window.pywebview.api) {
                 window.pywebview.api.open_media_file(p);
@@ -1229,6 +1322,9 @@ export default function App() {
               updateConfig('whitelist', newWhitelist);
               toast.success('略過名單已更新');
             }}
+            onPersistFormSubmitHeadless={(enabled) =>
+              updateConfig('form_submit_headless', enabled)
+            }
           />
         </Suspense>
       )}

@@ -119,6 +119,7 @@ def _select_map_line(lines: list[tuple[str, float]]) -> str:
 def recognize_map_name_from_image_list(
     pil_images: List[Image.Image],
     on_progress: Optional[Callable[[int, int], None]] = None,
+    cancel_checker: Optional[Callable[[], bool]] = None,
 ) -> str:
     """Recognize the mini-map title and vote across keyframes."""
 
@@ -128,6 +129,8 @@ def recognize_map_name_from_image_list(
     detections: list[str] = []
     total_frames = len(pil_images)
     for frame_index, image in enumerate(pil_images, 1):
+        if cancel_checker and cancel_checker():
+            return ""
         if on_progress:
             try:
                 on_progress(frame_index, total_frames)
@@ -188,6 +191,8 @@ def recognize_map_name_from_image_list(
     # strict offline catalogue match in that fallback region.
     if not detections and len(pil_images) > 0:
         for image in pil_images[:2]:
+            if cancel_checker and cancel_checker():
+                return ""
             if image.mode != "RGB":
                 image = image.convert("RGB")
             try:
@@ -216,12 +221,15 @@ def recognize_candidates_from_image_list(
     pil_images: List[Image.Image],
     detected_map_name: str = "",
     on_progress: Optional[Callable[[int, int], None]] = None,
+    cancel_checker: Optional[Callable[[], bool]] = None,
 ) -> List[str]:
     """Extract, filter, and rank player ID candidates from keyframes."""
 
     observations: list[CandidateObservation] = []
     total_frames = len(pil_images)
     for frame_index, raw_image in enumerate(pil_images, 1):
+        if cancel_checker and cancel_checker():
+            return []
         if on_progress:
             try:
                 on_progress(frame_index, total_frames)

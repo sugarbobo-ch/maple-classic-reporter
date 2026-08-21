@@ -6,6 +6,188 @@ import { ToastProvider } from '../src/components/ui';
 import { TEST_CONFIG, installMockPyWebView } from './mockPyWebViewApi';
 
 describe('App submission workflow', () => {
+  it('replaces a stale suspect candidate when a new replay is recognized', async () => {
+    const api = installMockPyWebView();
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+
+    dispatchPyWebViewEvent({
+      type: 'OCR_RESULT',
+      data: {
+        status: 'success',
+        suspect_ids: ['old-suspect'],
+        map_name: 'Test Map',
+        map_name_source: 'ocr',
+        media_path: 'C:\\test\\old-replay.mp4',
+        media_type: 'video',
+      },
+    });
+
+    const suspectInput = await screen.findByTestId('report-suspect-id');
+    expect(suspectInput).toHaveValue('old-suspect');
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    await waitFor(() => expect(screen.queryByTestId('report-suspect-id')).not.toBeInTheDocument());
+
+    dispatchPyWebViewEvent({
+      type: 'REPLAY_SAVED',
+      data: { file_path: 'C:\\test\\new-replay.mp4' },
+    });
+    await screen.findByText('已儲存循環錄影，正在解析關鍵影格...');
+
+    dispatchPyWebViewEvent({
+      type: 'OCR_RESULT',
+      data: {
+        status: 'success',
+        suspect_ids: ['new-suspect'],
+        map_name: 'Test Map',
+        map_name_source: 'ocr',
+        media_path: 'C:\\test\\new-replay.mp4',
+        media_type: 'video',
+      },
+    });
+
+    expect(await screen.findByTestId('report-suspect-id')).toHaveValue('new-suspect');
+  });
+
+  it('cancels pending recognition and ignores late OCR events', async () => {
+    const cancelOcr = vi.fn().mockResolvedValue(true);
+    const api = installMockPyWebView({ cancel_ocr: cancelOcr });
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+
+    dispatchPyWebViewEvent({
+      type: 'REPLAY_SAVED',
+      data: { file_path: 'C:\\test\\replay.mp4' },
+    });
+    await screen.findByText('已儲存循環錄影，正在解析關鍵影格...');
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    await waitFor(() => expect(cancelOcr).toHaveBeenCalledTimes(1));
+
+    dispatchPyWebViewEvent({
+      type: 'OCR_RESULT',
+      data: {
+        status: 'success',
+        suspect_ids: ['late-suspect'],
+        map_name: 'Test Map',
+        media_path: 'C:\\test\\replay.mp4',
+        media_type: 'video',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByTestId('report-suspect-id')).not.toBeInTheDocument();
+    expect(screen.queryByText('檢舉證據回報表單')).not.toBeInTheDocument();
+
+    dispatchPyWebViewEvent({
+      type: 'REPLAY_STATE_CHANGED',
+      data: { state: 'ready', duration: 30, total: 30 },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '儲存影片片段' }));
+    await waitFor(() => expect(api.save_replay).toHaveBeenCalledTimes(1));
+  });
+
+  it('persists the background submission mode changed in the report form', async () => {
+    const saveConfigKey = vi.fn().mockResolvedValue(true);
+    const api = installMockPyWebView({ save_config_key: saveConfigKey });
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+
+    dispatchPyWebViewEvent({
+      type: 'OCR_RESULT',
+      data: {
+        status: 'success',
+        suspect_ids: ['suspect-42'],
+        map_name: 'Test Map',
+        media_path: 'C:\\test\\replay.mp4',
+        media_type: 'video',
+      },
+    });
+
+    const submissionModeSwitch = await screen.findByRole('switch');
+    expect(submissionModeSwitch).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(submissionModeSwitch);
+
+    await waitFor(() => {
+      expect(saveConfigKey).toHaveBeenCalledWith('form_submit_headless', false);
+    });
+    expect(submissionModeSwitch).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    await waitFor(() => expect(screen.queryByRole('switch')).not.toBeInTheDocument());
+    dispatchPyWebViewEvent({
+      type: 'OCR_RESULT',
+      data: {
+        status: 'success',
+        suspect_ids: ['next-suspect'],
+        map_name: 'Test Map',
+        media_path: 'C:\\test\\next-replay.mp4',
+        media_type: 'video',
+      },
+    });
+    expect(await screen.findByRole('switch')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('recognizes a paused evidence video frame through the bridge', async () => {
+    const recognizeVideoFrame = vi.fn().mockResolvedValue({
+      status: 'success',
+      suspect_ids: ['frame-player'],
+      map_name: 'Test Map',
+      map_name_source: 'ocr',
+      ocr_map_name: 'Test Map',
+      media_path: 'C:\\test\\evidence.mp4',
+      media_type: 'video',
+    });
+    const api = installMockPyWebView({
+      recognize_video_frame: recognizeVideoFrame,
+      get_media_stream_url: vi.fn().mockResolvedValue('http://127.0.0.1:1234/evidence'),
+    });
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+    dispatchPyWebViewEvent({
+      type: 'OCR_RESULT',
+      data: {
+        status: 'success',
+        suspect_ids: [],
+        map_name: 'Test Map',
+        media_path: 'C:\\test\\evidence.mp4',
+        media_type: 'video',
+      },
+    });
+
+    const recognizeButton = await screen.findByTestId('recognize-current-frame-button');
+    fireEvent.click(recognizeButton);
+
+    await waitFor(() => {
+      expect(recognizeVideoFrame).toHaveBeenCalledWith('C:\\test\\evidence.mp4', 0);
+    });
+    expect(await screen.findByText('frame-player')).toBeInTheDocument();
+  });
+
   it('keeps the form open and exposes the failure when submission fails', async () => {
     const submitReport = vi.fn().mockResolvedValue({
       status: 'error',

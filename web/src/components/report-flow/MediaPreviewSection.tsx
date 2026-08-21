@@ -7,6 +7,7 @@ import {
   Scissors,
   RotateCcw,
   Clock,
+  ScanLine,
 } from 'lucide-react';
 import { Button, Badge } from '../ui';
 
@@ -27,6 +28,8 @@ export interface MediaPreviewSectionProps {
   formatTime: (seconds: number) => string;
   onLoadedMetadata: () => void;
   onTimeUpdate: () => void;
+  onVideoPlay: () => void;
+  onVideoPause: () => void;
   onTimelineMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
   onSetCutStart: () => void;
   onSetCutEnd: () => void;
@@ -36,6 +39,9 @@ export interface MediaPreviewSectionProps {
   onToggleTrimOpen: () => void;
   onOpenFilePath?: (path: string) => void;
   onOpenFileLocation?: (path: string) => void;
+  onRecognizeCurrentFrame?: () => void | Promise<void>;
+  isRecognizingCurrentFrame?: boolean;
+  isVideoPaused?: boolean;
 }
 
 export default function MediaPreviewSection({
@@ -55,6 +61,8 @@ export default function MediaPreviewSection({
   formatTime,
   onLoadedMetadata,
   onTimeUpdate,
+  onVideoPlay,
+  onVideoPause,
   onTimelineMouseDown,
   onSetCutStart,
   onSetCutEnd,
@@ -64,6 +72,9 @@ export default function MediaPreviewSection({
   onToggleTrimOpen,
   onOpenFilePath,
   onOpenFileLocation,
+  onRecognizeCurrentFrame,
+  isRecognizingCurrentFrame = false,
+  isVideoPaused = true,
 }: MediaPreviewSectionProps) {
   return (
     <div className="step-block">
@@ -95,6 +106,8 @@ export default function MediaPreviewSection({
                 preload="auto"
                 onLoadedMetadata={onLoadedMetadata}
                 onTimeUpdate={onTimeUpdate}
+                onPlay={onVideoPlay}
+                onPause={onVideoPause}
                 className="media-video-element"
                 playsInline
               />
@@ -255,6 +268,43 @@ export default function MediaPreviewSection({
 
         {/* Right Column: Action Buttons */}
         <div className="media-actions-column">
+          {isVideo && onRecognizeCurrentFrame && (
+            <Button
+              variant="primary"
+              size="md"
+              icon={ScanLine}
+              onClick={onRecognizeCurrentFrame}
+              disabled={
+                !currentMediaPath ||
+                !mediaStreamUrl ||
+                !isVideoPaused ||
+                isRecognizingCurrentFrame
+              }
+              loading={isRecognizingCurrentFrame}
+              data-testid="recognize-current-frame-button"
+              title={
+                !mediaStreamUrl
+                  ? '影片載入完成後，請先暫停影片再辨識'
+                  : isVideoPaused
+                  ? '以目前暫停位置擷取畫面並重新辨識'
+                  : '請先暫停影片，再辨識目前畫面'
+              }
+              style={{
+                width: '100%',
+                justifyContent: 'flex-start',
+                fontSize: '0.78rem',
+                paddingInline: '10px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {!mediaStreamUrl
+                ? '影片載入中'
+                : isVideoPaused
+                  ? '於當前畫面進行辨識'
+                  : '請先暫停影片'}
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="md"

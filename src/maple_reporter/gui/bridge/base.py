@@ -18,6 +18,8 @@ from PIL import Image
 from maple_reporter.update.service import UpdateService
 
 LOGGER = logging.getLogger(__name__)
+OCR_MAP_TIMEOUT_SECONDS = 15.0
+OCR_CANDIDATE_TIMEOUT_SECONDS = 25.0
 
 
 def _bridge_mod():
@@ -54,6 +56,9 @@ class BaseBridgeMixin:
         self._recording_thread: threading.Thread | None = None
         self._submission_lock = threading.Lock()
         self._config_lock = threading.RLock()
+        self._ocr_lock = threading.Lock()
+        self._ocr_generation = 0
+        self._ocr_cancel_event = threading.Event()
 
         self.update_service = UpdateService(
             emit_event=self._emit_event,
@@ -124,22 +129,80 @@ class BaseBridgeMixin:
             {"step": step, "status": status, "message": message},
         )
 
+    def _ensure_ocr_state(self) -> None:
+        """Lazily initialize OCR cancellation state for lightweight test bridges."""
+        if not hasattr(self, "_ocr_lock") or self._ocr_lock is None:
+            self._ocr_lock = threading.Lock()
+        if not hasattr(self, "_ocr_generation"):
+            self._ocr_generation = 0
+        if not hasattr(self, "_ocr_cancel_event") or self._ocr_cancel_event is None:
+            self._ocr_cancel_event = threading.Event()
+
+    def _begin_ocr(self) -> tuple[int, threading.Event]:
+        """Cancel any previous OCR run and return the token for a new run."""
+        self._ensure_ocr_state()
+        with self._ocr_lock:
+            self._ocr_cancel_event.set()
+            self._ocr_generation += 1
+            generation = self._ocr_generation
+            cancel_event = threading.Event()
+            self._ocr_cancel_event = cancel_event
+        return generation, cancel_event
+
+    def _is_ocr_active(self, generation: int, cancel_event: threading.Event) -> bool:
+        self._ensure_ocr_state()
+        with self._ocr_lock:
+            return (
+                self._ocr_generation == generation
+                and self._ocr_cancel_event is cancel_event
+                and not cancel_event.is_set()
+            )
+
+    def cancel_ocr(self) -> bool:
+        """Cancel the active OCR run and invalidate all of its future events."""
+        self._ensure_ocr_state()
+        with self._ocr_lock:
+            self._ocr_generation += 1
+            self._ocr_cancel_event.set()
+        return True
+
     def _perform_ocr(self, keyframes: list[Image.Image]) -> dict[str, Any]:
         """Run rapid OCR in stages with event callbacks and timeout safeguards."""
         mod = _bridge_mod()
         default_map = str(self.config.get("default_map", "") or "").strip()
-        if not keyframes:
+        generation, cancel_event = self._begin_ocr()
+
+        def is_active() -> bool:
+            return self._is_ocr_active(generation, cancel_event)
+
+        def cancelled_result() -> dict[str, Any]:
             return {
+                "cancelled": True,
                 "suspect_ids": [],
                 "map_name": default_map,
                 "ocr_map_name": "",
                 "map_name_source": "default",
             }
 
+        if not is_active():
+            return cancelled_result()
+        if not keyframes:
+            return {
+                "cancelled": False,
+                "suspect_ids": [],
+                "map_name": default_map,
+                "ocr_map_name": "",
+                "map_name_source": "default",
+            }
         try:
-            # Subsample keyframes if there are too many (cap at 12 frames for thorough coverage and fast OCR)
-            if len(keyframes) > 12:
-                indices = np.linspace(0, len(keyframes) - 1, num=12, dtype=int)
+            # Keep the full representative set. A player name may only be
+            # visible in one replay frame, so thinning 4K replays can silently
+            # drop a legitimate candidate even when OCR would read it.
+            max_keyframes = 12
+            if len(keyframes) > max_keyframes:
+                indices = np.linspace(
+                    0, len(keyframes) - 1, num=max_keyframes, dtype=int
+                )
                 sampled_keyframes = [keyframes[int(i)] for i in indices]
             else:
                 sampled_keyframes = keyframes
@@ -152,6 +215,8 @@ class BaseBridgeMixin:
             candidates = []
 
             def on_map_progress(curr: int, tot: int):
+                if not is_active():
+                    return
                 pct = 45 + int(20 * curr / max(1, tot))
                 self._emit_event(
                     "OCR_STATUS",
@@ -165,6 +230,8 @@ class BaseBridgeMixin:
                 )
 
             def on_id_progress(curr: int, tot: int):
+                if not is_active():
+                    return
                 pct = 65 + int(30 * curr / max(1, tot))
                 self._emit_event(
                     "OCR_STATUS",
@@ -177,6 +244,8 @@ class BaseBridgeMixin:
                     },
                 )
 
+            if not is_active():
+                return cancelled_result()
             self._emit_event(
                 "OCR_STATUS",
                 {
@@ -194,13 +263,23 @@ class BaseBridgeMixin:
                             mod.recognize_map_name_from_image_list,
                             sampled_keyframes,
                             on_progress=on_map_progress,
+                            cancel_checker=lambda: not is_active(),
                         )
-                        detected_map = future.result(timeout=6.0) or ""
+                        detected_map = future.result(timeout=OCR_MAP_TIMEOUT_SECONDS) or ""
                 except concurrent.futures.TimeoutError:
-                    LOGGER.warning("Map name recognition timed out (6s limit reached)")
+                    if not is_active():
+                        return cancelled_result()
+                    LOGGER.warning(
+                        "Map name recognition timed out (%.1fs limit reached)",
+                        OCR_MAP_TIMEOUT_SECONDS,
+                    )
                 except Exception as err:
+                    if not is_active():
+                        return cancelled_result()
                     LOGGER.warning("Map name recognition failed: %s", err)
 
+            if not is_active():
+                return cancelled_result()
             self._emit_event(
                 "OCR_STATUS",
                 {
@@ -219,35 +298,49 @@ class BaseBridgeMixin:
                             sampled_keyframes,
                             detected_map_name=detected_map,
                             on_progress=on_id_progress,
+                            cancel_checker=lambda: not is_active(),
                         )
-                        raw_candidates = future.result(timeout=8.0) or []
+                        raw_candidates = future.result(timeout=OCR_CANDIDATE_TIMEOUT_SECONDS) or []
                     seen = set()
                     for cand in raw_candidates:
                         if cand not in seen and cand not in whitelist:
                             seen.add(cand)
                             candidates.append(cand)
                 except concurrent.futures.TimeoutError:
-                    LOGGER.warning("Candidate recognition timed out (8s limit reached)")
+                    if not is_active():
+                        return cancelled_result()
+                    LOGGER.warning(
+                        "Candidate recognition timed out (%.1fs limit reached)",
+                        OCR_CANDIDATE_TIMEOUT_SECONDS,
+                    )
                 except Exception as err:
+                    if not is_active():
+                        return cancelled_result()
                     LOGGER.warning("Candidate recognition failed: %s", err)
 
+            if not is_active():
+                return cancelled_result()
             self._emit_event(
                 "OCR_STATUS",
                 {"step": "done", "status": "整理資料完成", "percent": 100},
             )
             return {
+                "cancelled": False,
                 "suspect_ids": candidates,
                 "map_name": detected_map or default_map,
                 "ocr_map_name": detected_map,
                 "map_name_source": "ocr" if detected_map else "default",
             }
         except Exception as err:
+            if not is_active():
+                return cancelled_result()
             LOGGER.error("OCR execution exception: %s", err)
             self._emit_event(
                 "OCR_STATUS",
                 {"step": "error", "status": f"辨識完成 (發生部分異常: {err})", "percent": 100},
             )
             return {
+                "cancelled": False,
                 "suspect_ids": [],
                 "map_name": default_map,
                 "ocr_map_name": "",

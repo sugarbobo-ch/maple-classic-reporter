@@ -60,7 +60,7 @@ export function normalizeOcrResult(
     ...previous,
     ...data,
     suspect_ids:
-      Array.isArray(data.suspect_ids) && data.suspect_ids.length > 0
+      Array.isArray(data.suspect_ids)
         ? data.suspect_ids
         : previous.suspect_ids,
     map_name: mapName,

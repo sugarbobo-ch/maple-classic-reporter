@@ -184,6 +184,9 @@ class RecordingBridgeMixin:
 
                 self._emit_event("RECORDING_FINISHED", {"file_path": file_path})
                 ocr_res = self._perform_ocr(keyframes)
+                if ocr_res.get("cancelled"):
+                    LOGGER.info("Recording OCR was cancelled before publishing its result")
+                    return
 
                 self._emit_event(
                     "OCR_RESULT",

@@ -53,6 +53,8 @@ class MediaBridgeMixin:
             ext = Path(file_path).suffix.lower()
             media_type = "video" if ext in {".mp4", ".mkv", ".avi", ".mov"} else "image"
             ocr_res = self._perform_ocr(keyframes)
+            if ocr_res.get("cancelled"):
+                return {"status": "cancelled", "message": "辨識已取消"}
 
             return {
                 "status": "success",
@@ -74,6 +76,43 @@ class MediaBridgeMixin:
                 "media_path": file_path,
                 "media_type": "video",
             }
+
+    def recognize_video_frame(
+        self, file_path: str, timestamp_sec: float
+    ) -> dict[str, Any]:
+        """Recognize one paused video frame without replacing the evidence video."""
+        if not file_path or not os.path.exists(file_path):
+            return {"status": "error", "message": "檔案不存在"}
+
+        if Path(file_path).suffix.lower() not in {".mp4", ".mkv", ".avi", ".mov"}:
+            return {"status": "error", "message": "目前證據不是影片"}
+
+        try:
+            timestamp = max(0.0, float(timestamp_sec))
+            frame = self.capture_controller.capture_video_frame(file_path, timestamp)
+            if frame is None:
+                return {"status": "error", "message": "無法擷取目前影片畫面"}
+
+            ocr_res = self._perform_ocr([frame])
+            if ocr_res.get("cancelled"):
+                return {"status": "cancelled", "message": "辨識已取消"}
+
+            return {
+                "status": "success",
+                "suspect_ids": ocr_res.get("suspect_ids", []),
+                "map_name": ocr_res.get("map_name", ""),
+                "ocr_map_name": ocr_res.get("ocr_map_name", ""),
+                "map_name_source": ocr_res.get("map_name_source", "default"),
+                "media_path": file_path,
+                "media_type": "video",
+                "frame_time": timestamp,
+            }
+        except (OSError, TypeError, ValueError) as err:
+            LOGGER.error("recognize_video_frame error: %s", err)
+            return {"status": "error", "message": f"目前畫面辨識失敗: {err}"}
+        except Exception as err:
+            LOGGER.error("recognize_video_frame error: %s", err)
+            return {"status": "error", "message": f"目前畫面辨識失敗: {err}"}
 
     def get_media_preview(self, file_path: str) -> str:
         """Return base64 data URL for an image or video thumbnail."""

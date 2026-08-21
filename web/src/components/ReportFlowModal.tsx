@@ -20,11 +20,16 @@ export interface ReportFlowModalProps {
   config?: AppConfig;
   history?: HistoryRecord[];
   onClose: () => void;
-  onSkipOcr?: () => void;
+  onSkipOcr?: () => void | Promise<void>;
   onSubmitReport: (formData: Record<string, unknown>) => Promise<void> | void;
   onOpenFilePath?: (path: string) => void;
   onOpenFileLocation?: (path: string) => void;
+  onRecognizeCurrentFrame?: (
+    filePath: string,
+    timestampSec: number
+  ) => Promise<OcrResultData | null>;
   onUpdateWhitelist: (newWhitelist: string[]) => void;
+  onPersistFormSubmitHeadless?: (enabled: boolean) => void;
 }
 
 export default function ReportFlowModal({
@@ -64,7 +69,9 @@ export default function ReportFlowModal({
   onSubmitReport,
   onOpenFilePath,
   onOpenFileLocation,
+  onRecognizeCurrentFrame,
   onUpdateWhitelist,
+  onPersistFormSubmitHeadless,
 }: ReportFlowModalProps) {
   const existingWhitelist = Array.isArray(config.whitelist) ? config.whitelist : [];
 
@@ -101,6 +108,8 @@ export default function ReportFlowModal({
   const [isTrimOpen, setIsTrimOpen] = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+  const [isVideoPaused, setIsVideoPaused] = useState(true);
+  const [isRecognizingCurrentFrame, setIsRecognizingCurrentFrame] = useState(false);
   const [cutStart, setCutStart] = useState(0);
   const [cutEnd, setCutEnd] = useState(0);
   const [isTrimming, setIsTrimming] = useState(false);
@@ -218,6 +227,20 @@ export default function ReportFlowModal({
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       setCurrentPlaybackTime(videoRef.current.currentTime);
+    }
+  };
+
+  const handleRecognizeCurrentFrame = async () => {
+    if (!onRecognizeCurrentFrame || !isVideo || !isVideoPaused || !currentMediaPath) return;
+
+    const timestamp = Number(
+      (videoRef.current?.currentTime ?? currentPlaybackTime).toFixed(2)
+    );
+    setIsRecognizingCurrentFrame(true);
+    try {
+      await onRecognizeCurrentFrame(currentMediaPath, timestamp);
+    } finally {
+      setIsRecognizingCurrentFrame(false);
     }
   };
 
@@ -508,6 +531,8 @@ export default function ReportFlowModal({
             formatTime={formatTime}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
+            onVideoPlay={() => setIsVideoPaused(false)}
+            onVideoPause={() => setIsVideoPaused(true)}
             onTimelineMouseDown={handleTimelineMouseDown}
             onSetCutStart={handleSetCutStart}
             onSetCutEnd={handleSetCutEnd}
@@ -520,6 +545,9 @@ export default function ReportFlowModal({
             }}
             onOpenFilePath={onOpenFilePath}
             onOpenFileLocation={onOpenFileLocation}
+            onRecognizeCurrentFrame={handleRecognizeCurrentFrame}
+            isRecognizingCurrentFrame={isRecognizingCurrentFrame}
+            isVideoPaused={isVideoPaused}
           />
 
           {/* Step 2: Suspect ID & Whitelist Selection */}
@@ -551,7 +579,10 @@ export default function ReportFlowModal({
             onServerChange={setServer}
             onMapNameChange={setMapName}
             onNoteChange={setNote}
-            onFormSubmitHeadlessChange={setFormSubmitHeadless}
+            onFormSubmitHeadlessChange={(value) => {
+              setFormSubmitHeadless(value);
+              onPersistFormSubmitHeadless?.(value);
+            }}
           />
         </form>
       )}
