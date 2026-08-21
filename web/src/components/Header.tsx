@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Download, History, Minus, RefreshCw, Settings, Square, Sun, Moon, X } from 'lucide-react';
-import { IconButton, Badge, Button, CircularProgress } from './ui';
+import { IconButton, Badge } from './ui';
 import { usePyWebViewEvents, useTheme } from '../hooks';
 import { UpdateStatus, ViewType } from '../types';
 import appLogo from '../assets/icon.png';
@@ -47,9 +47,6 @@ export default function Header({
   theme: configTheme,
   onUpdateTheme,
   updateStatus,
-  updateBusy = false,
-  onStartUpdateDownload,
-  onRestartAndApplyUpdate,
   onOpenUpdateDetails,
 }: HeaderProps) {
   const { isDark, toggleTheme } = useTheme(configTheme, onUpdateTheme);
