@@ -37,7 +37,7 @@ VSVersionInfo(
             StringStruct('LegalCopyright', 'Copyright (C) 2026'),
             StringStruct('OriginalFilename', 'MapleClassicReporter.exe'),
             StringStruct('ProductName', '新楓之谷：經典版《自動外掛檢舉工具》'),
-            StringStruct('ProductVersion', '2.0.0.0'),
+            StringStruct('ProductVersion', '2.0.0'),
           ]
         )
       ]

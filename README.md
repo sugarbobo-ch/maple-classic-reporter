@@ -1,4 +1,4 @@
-# 新楓之谷：經典版《自動外掛檢舉工具》 v2.0.0-pre (MapleStory Classic Auto Reporter)
+# 新楓之谷：經典版《自動外掛檢舉工具》 v2.0.0 (MapleStory Classic Auto Reporter)
 
 開源桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，快速舉報違規外掛。全新一代採用 **PyWebView + React 18 + TypeScript + Vite** 現代化架構，提供極致流暢之暗色毛玻璃美學介面。
 
@@ -70,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 ```powershell
 Compress-Archive `
   -LiteralPath .\dist\MapleClassicReporter `
-  -DestinationPath .\dist\MapleClassicReporter-v2.0.0-pre-windows-x64.zip `
+  -DestinationPath .\dist\MapleClassicReporter-v2.0.0-windows-x64.zip `
   -CompressionLevel Optimal -Force
 ```
 

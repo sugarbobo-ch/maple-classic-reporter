@@ -4,8 +4,8 @@
 
 > **Window behavior work:** For mixed-DPI dragging, cursor anchors, maximize/restore, frameless resize, or Windows Snap changes, read [`docs/WINDOW_DPI_DRAG_BEHAVIOR.md`](docs/WINDOW_DPI_DRAG_BEHAVIOR.md) before editing. Its behavior contract and hardware acceptance matrix are mandatory.
 
-- **Version**: `2.0.0-pre`
-- **Windows release**: `MapleClassicReporter-v2.0.0-pre-windows-x64.zip`
+- **Version**: `2.0.0`
+- **Windows release**: `MapleClassicReporter-v2.0.0-windows-x64.zip`
 - **Tutorial & Forum Post**: [巴哈姆特詳細教學文章](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)
 - **Documentation Index**: [`docs/README.md`](docs/README.md)
 - **Distribution**: ZIP contains the complete `MapleClassicReporter/` onedir bundle. The executable, Playwright Chromium, its driver, and RapidOCR ONNX models stay together in the extracted folder; users must not move the EXE out by itself.
