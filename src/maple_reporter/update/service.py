@@ -577,6 +577,7 @@ class UpdateService:
                     self._set_status(UpdateState.DOWNLOADING, downloaded_bytes=downloaded_total + downloaded, total_bytes=total, progress_percent=int((downloaded_total + downloaded) * 100 / max(1, total)))
             output_hash = sha256_file(partial)
             if asset.digest and output_hash.lower() != asset.digest.lower():
+                partial.unlink(missing_ok=True)
                 raise ValueError(f"Downloaded update SHA-256 does not match {asset.name}")
             os.replace(partial, destination)
             package_paths.append(destination)
