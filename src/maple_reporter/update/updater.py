@@ -305,6 +305,7 @@ class UpdateProgressUI:
 
     def __init__(self, target_version: str = "", install_dir: Path | None = None) -> None:
         self._root = None
+        self._status_var = None
         try:
             import tkinter as tk
             from tkinter import ttk
@@ -336,25 +337,63 @@ class UpdateProgressUI:
             frame = ttk.Frame(root, padding="16 16 16 16")
             frame.pack(fill="both", expand=True)
 
-            title_text = f"正在套用新版本 v{target_version}…" if target_version else "正在套用更新…"
-            lbl = ttk.Label(frame, text=title_text, font=("Microsoft JhengHei UI", 10, "bold"))
+            self._status_var = tk.StringVar(
+                value=f"正在套用新版本 v{target_version}…" if target_version else "正在套用更新…"
+            )
+            lbl = ttk.Label(
+                frame,
+                textvariable=self._status_var,
+                font=("Microsoft JhengHei UI", 10, "bold"),
+            )
             lbl.pack(anchor="w", pady=(0, 8))
 
             progress = ttk.Progressbar(frame, mode="indeterminate", length=340)
             progress.pack(fill="x", pady=(0, 4))
-            progress.start(15)
+            progress.start(10)
 
             self._root = root
             self._root.update()
         except Exception:
             self._root = None
 
-    def tick(self) -> None:
-        if self._root:
+    def set_status(self, text: str) -> None:
+        if self._status_var and self._root:
+            try:
+                self._status_var.set(text)
+                self._root.update_idletasks()
+            except Exception:
+                pass
+
+    def run_with_worker(self, worker_func: Any) -> Any:
+        """Run worker function in background thread while keeping UI responsive."""
+        if not self._root:
+            return worker_func(lambda _s: None)
+
+        import threading
+
+        result_container: dict[str, Any] = {"result": None, "error": None, "done": False}
+
+        def _bg_thread() -> None:
+            try:
+                result_container["result"] = worker_func(self.set_status)
+            except Exception as err:
+                result_container["error"] = err
+            finally:
+                result_container["done"] = True
+
+        t = threading.Thread(target=_bg_thread, daemon=True)
+        t.start()
+
+        while not result_container["done"]:
             try:
                 self._root.update()
             except Exception:
-                pass
+                break
+            time.sleep(0.02)
+
+        if result_container["error"]:
+            raise result_container["error"]
+        return result_container["result"]
 
     def close(self) -> None:
         if self._root:
@@ -377,6 +416,7 @@ def apply_update(
     """Apply a full ZIP or delta package and verify a clean relaunch."""
 
     log_path = update_dir / "updater.log"
+
     def _log(msg: str) -> None:
         try:
             with open(log_path, "a", encoding="utf-8") as f:
@@ -386,35 +426,36 @@ def apply_update(
 
     _log(f"Starting update: package={package_path}, install_dir={install_dir}, pid={pid}, target={target_version}")
     ui = UpdateProgressUI(target_version=target_version, install_dir=install_dir)
-    try:
-        package_path = package_path.resolve()
-        install_dir = install_dir.resolve()
+
+    def _do_update(update_status: Any) -> bool:
+        package_file = package_path.resolve()
+        target_dir = install_dir.resolve()
         update_dir.mkdir(parents=True, exist_ok=True)
         token = uuid.uuid4().hex
         transaction = update_dir / f"transaction-{token}"
         transaction.mkdir(parents=True, exist_ok=True)
         _write_json(
             transaction / "state.json",
-            {"phase": "waiting", "package": str(package_path), "install_dir": str(install_dir), "target_version": target_version},
+            {"phase": "waiting", "package": str(package_file), "install_dir": str(target_dir), "target_version": target_version},
         )
         _log("Waiting for main process to exit...")
+        update_status("正在等待應用程式關閉…")
         if not _wait_for_pid(pid, timeout=timeout):
             _log("Timeout waiting for main process exit")
             raise TimeoutError("Main application did not exit before the update timeout")
 
         _log("Main process exited. Swapping files...")
-        ui.tick()
+        update_status("正在解壓縮並套用更新檔案…")
         backup: Path | None = None
         kind = "full"
         try:
-            with zipfile.ZipFile(package_path) as archive:
+            with zipfile.ZipFile(package_file) as archive:
                 names = set(archive.namelist())
             kind = "delta" if "patch.json" in names else "full"
-            ui.tick()
-            backup = _apply_delta(package_path, install_dir, transaction) if kind == "delta" else _apply_full(package_path, install_dir, transaction)
-            ui.tick()
+            backup = _apply_delta(package_file, target_dir, transaction) if kind == "delta" else _apply_full(package_file, target_dir, transaction)
             _log(f"Files replaced successfully ({kind}). Launching updated application...")
-            executable = install_dir / "MapleClassicReporter.exe"
+            update_status("正在啟動全新版本…")
+            executable = target_dir / "MapleClassicReporter.exe"
             if not executable.is_file():
                 _log("Updated executable is missing!")
                 raise ValueError("Updated executable is missing")
@@ -423,7 +464,6 @@ def apply_update(
             _log(f"New process launched, waiting for confirmation token {token}...")
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
-                ui.tick()
                 if marker.is_file():
                     _log("Confirmed new process is running successfully!")
                     _write_json(transaction / "state.json", {"phase": "confirmed", "kind": kind, "target_version": target_version})
@@ -445,7 +485,7 @@ def apply_update(
                             pass
                     shutil.rmtree(transaction, ignore_errors=True)
                     try:
-                        package_path.unlink(missing_ok=True)
+                        package_file.unlink(missing_ok=True)
                     except Exception:
                         pass
                     return True
@@ -460,17 +500,20 @@ def apply_update(
             LOGGER.exception("Update transaction failed; attempting rollback")
             try:
                 if kind == "full" and backup and backup.exists():
-                    if install_dir.exists():
-                        shutil.rmtree(install_dir, ignore_errors=True)
-                    _safe_move_directory(backup, install_dir)
+                    if target_dir.exists():
+                        shutil.rmtree(target_dir, ignore_errors=True)
+                    _safe_move_directory(backup, target_dir)
                 elif kind == "delta":
                     index_path = transaction / "backup-index.json"
                     if index_path.is_file():
                         records = _read_json(index_path).get("records", [])
-                        _restore_patch(install_dir, transaction / "backup", records)
+                        _restore_patch(target_dir, transaction / "backup", records)
             finally:
                 shutil.rmtree(transaction, ignore_errors=True)
             raise
+
+    try:
+        return ui.run_with_worker(_do_update)
     finally:
         ui.close()
 
