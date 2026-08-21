@@ -237,13 +237,9 @@ def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path) ->
 
 
 def _launch(executable: Path, token: str) -> subprocess.Popen[Any]:
-    creationflags = 0
-    if os.name == "nt":
-        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
     return subprocess.Popen(
         [str(executable), "--post-update", f"--update-token={token}"],
         cwd=str(executable.parent),
-        creationflags=creationflags,
         close_fds=True,
     )
 
@@ -290,12 +286,25 @@ def apply_update(
                 _write_json(transaction / "state.json", {"phase": "confirmed", "kind": kind, "target_version": target_version})
                 if backup and backup.exists():
                     shutil.rmtree(backup, ignore_errors=True)
-                marker.unlink(missing_ok=True)
-                (update_dir / "pending-update.json").unlink(missing_ok=True)
+                try:
+                    marker.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    (update_dir / "pending-update.json").unlink(missing_ok=True)
+                except Exception:
+                    pass
                 for helper_copy in update_dir.glob("MapleClassicReporterUpdater-*.exe"):
-                    helper_copy.unlink(missing_ok=True)
+                    try:
+                        if helper_copy.resolve() != Path(sys.executable).resolve():
+                            helper_copy.unlink(missing_ok=True)
+                    except Exception:
+                        pass
                 shutil.rmtree(transaction, ignore_errors=True)
-                package_path.unlink(missing_ok=True)
+                try:
+                    package_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
                 return True
             if process.poll() is not None and process.returncode not in (0, None):
                 break
