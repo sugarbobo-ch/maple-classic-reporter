@@ -432,10 +432,7 @@ export default function SettingsView({
       return;
     }
     if (!isValidDiscordWebhookUrl(discordWebhook)) {
-      toast.warning(
-        'Discord 頻道連結格式不符',
-        '請輸入有效的 Discord HTTPS 連結'
-      );
+      toast.warning('Discord 頻道連結格式不符', '請輸入有效的 Discord HTTPS 連結');
       return;
     }
     setTestingDiscord(true);
@@ -509,13 +506,16 @@ export default function SettingsView({
     setClearModalOpen(true);
   };
 
-  const handleOpenGitHub = () => {
-    const url = 'https://github.com/sugarbobo-ch/maple-classic-reporter';
+  const handleOpenExternalUrl = (url: string) => {
     if (window.pywebview && window.pywebview.api) {
       window.pywebview.api.open_external_url(url);
     } else {
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
+  };
+
+  const handleOpenGitHub = () => {
+    handleOpenExternalUrl('https://github.com/sugarbobo-ch/maple-classic-reporter');
   };
 
   const handleOpenLogFile = async () => {
@@ -814,6 +814,7 @@ export default function SettingsView({
               config={config}
               onUpdateConfig={onUpdateConfig}
               onOpenGitHub={handleOpenGitHub}
+              onOpenExternalUrl={handleOpenExternalUrl}
               onOpenLogFile={handleOpenLogFile}
               onOpenLogFolder={handleOpenLogFolder}
               updateStatus={updateStatus}

@@ -44,3 +44,6 @@ export type { DynamicIconProps } from './DynamicIcon';
 
 export { default as CircularProgress } from './CircularProgress';
 export type { CircularProgressProps } from './CircularProgress';
+
+export { default as MarkdownContent } from './MarkdownContent';
+export type { MarkdownContentProps } from './MarkdownContent';
