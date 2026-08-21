@@ -244,6 +244,71 @@ def _launch(executable: Path, token: str) -> subprocess.Popen[Any]:
     )
 
 
+class UpdateProgressUI:
+    """Lightweight Windows progress dialog with project camera icon."""
+
+    def __init__(self, target_version: str = "", install_dir: Path | None = None) -> None:
+        self._root = None
+        try:
+            import tkinter as tk
+            from tkinter import ttk
+
+            root = tk.Tk()
+            root.title("新楓之谷：經典版 - 套用更新")
+            root.geometry("380x130")
+            root.resizable(False, False)
+            root.attributes("-topmost", True)
+
+            # Set camera icon if available
+            if install_dir:
+                icon_path = install_dir / "assets" / "icon.ico"
+                if not icon_path.is_file():
+                    icon_path = install_dir / "_internal" / "assets" / "icon.ico"
+                if icon_path.is_file():
+                    try:
+                        root.iconbitmap(str(icon_path))
+                    except Exception:
+                        pass
+
+            root.update_idletasks()
+            width = root.winfo_width()
+            height = root.winfo_height()
+            x = (root.winfo_screenwidth() // 2) - (width // 2)
+            y = (root.winfo_screenheight() // 2) - (height // 2)
+            root.geometry(f"+{x}+{y}")
+
+            frame = ttk.Frame(root, padding="16 16 16 16")
+            frame.pack(fill="both", expand=True)
+
+            title_text = f"正在套用新版本 v{target_version}…" if target_version else "正在套用更新…"
+            lbl = ttk.Label(frame, text=title_text, font=("Microsoft JhengHei UI", 10, "bold"))
+            lbl.pack(anchor="w", pady=(0, 8))
+
+            progress = ttk.Progressbar(frame, mode="indeterminate", length=340)
+            progress.pack(fill="x", pady=(0, 4))
+            progress.start(15)
+
+            self._root = root
+            self._root.update()
+        except Exception:
+            self._root = None
+
+    def tick(self) -> None:
+        if self._root:
+            try:
+                self._root.update()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        if self._root:
+            try:
+                self._root.destroy()
+            except Exception:
+                pass
+            self._root = None
+
+
 def apply_update(
     *,
     package_path: Path,
@@ -255,76 +320,84 @@ def apply_update(
 ) -> bool:
     """Apply a full ZIP or delta package and verify a clean relaunch."""
 
-    package_path = package_path.resolve()
-    install_dir = install_dir.resolve()
-    update_dir.mkdir(parents=True, exist_ok=True)
-    token = uuid.uuid4().hex
-    transaction = update_dir / f"transaction-{token}"
-    transaction.mkdir(parents=True, exist_ok=True)
-    _write_json(
-        transaction / "state.json",
-        {"phase": "waiting", "package": str(package_path), "install_dir": str(install_dir), "target_version": target_version},
-    )
-    if not _wait_for_pid(pid, timeout=timeout):
-        raise TimeoutError("Main application did not exit before the update timeout")
-
-    backup: Path | None = None
-    kind = "full"
+    ui = UpdateProgressUI(target_version=target_version, install_dir=install_dir)
     try:
-        with zipfile.ZipFile(package_path) as archive:
-            names = set(archive.namelist())
-        kind = "delta" if "patch.json" in names else "full"
-        backup = _apply_delta(package_path, install_dir, transaction) if kind == "delta" else _apply_full(package_path, install_dir, transaction)
-        executable = install_dir / "MapleClassicReporter.exe"
-        if not executable.is_file():
-            raise ValueError("Updated executable is missing")
-        marker = update_dir / f"success-{token}.json"
-        process = _launch(executable, token)
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if marker.is_file():
-                _write_json(transaction / "state.json", {"phase": "confirmed", "kind": kind, "target_version": target_version})
-                if backup and backup.exists():
-                    shutil.rmtree(backup, ignore_errors=True)
-                try:
-                    marker.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                try:
-                    (update_dir / "pending-update.json").unlink(missing_ok=True)
-                except Exception:
-                    pass
-                for helper_copy in update_dir.glob("MapleClassicReporterUpdater-*.exe"):
+        package_path = package_path.resolve()
+        install_dir = install_dir.resolve()
+        update_dir.mkdir(parents=True, exist_ok=True)
+        token = uuid.uuid4().hex
+        transaction = update_dir / f"transaction-{token}"
+        transaction.mkdir(parents=True, exist_ok=True)
+        _write_json(
+            transaction / "state.json",
+            {"phase": "waiting", "package": str(package_path), "install_dir": str(install_dir), "target_version": target_version},
+        )
+        if not _wait_for_pid(pid, timeout=timeout):
+            raise TimeoutError("Main application did not exit before the update timeout")
+
+        ui.tick()
+        backup: Path | None = None
+        kind = "full"
+        try:
+            with zipfile.ZipFile(package_path) as archive:
+                names = set(archive.namelist())
+            kind = "delta" if "patch.json" in names else "full"
+            ui.tick()
+            backup = _apply_delta(package_path, install_dir, transaction) if kind == "delta" else _apply_full(package_path, install_dir, transaction)
+            ui.tick()
+            executable = install_dir / "MapleClassicReporter.exe"
+            if not executable.is_file():
+                raise ValueError("Updated executable is missing")
+            marker = update_dir / f"success-{token}.json"
+            process = _launch(executable, token)
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                ui.tick()
+                if marker.is_file():
+                    _write_json(transaction / "state.json", {"phase": "confirmed", "kind": kind, "target_version": target_version})
+                    if backup and backup.exists():
+                        shutil.rmtree(backup, ignore_errors=True)
                     try:
-                        if helper_copy.resolve() != Path(sys.executable).resolve():
-                            helper_copy.unlink(missing_ok=True)
+                        marker.unlink(missing_ok=True)
                     except Exception:
                         pass
+                    try:
+                        (update_dir / "pending-update.json").unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    for helper_copy in update_dir.glob("MapleClassicReporterUpdater-*.exe"):
+                        try:
+                            if helper_copy.resolve() != Path(sys.executable).resolve():
+                                helper_copy.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    shutil.rmtree(transaction, ignore_errors=True)
+                    try:
+                        package_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    return True
+                if process.poll() is not None and process.returncode not in (0, None):
+                    break
+                time.sleep(0.25)
+            raise TimeoutError("Updated application did not report a healthy startup")
+        except Exception:
+            LOGGER.exception("Update transaction failed; attempting rollback")
+            try:
+                if kind == "full" and backup and backup.exists():
+                    if install_dir.exists():
+                        shutil.rmtree(install_dir, ignore_errors=True)
+                    os.replace(backup, install_dir)
+                elif kind == "delta":
+                    index_path = transaction / "backup-index.json"
+                    if index_path.is_file():
+                        records = _read_json(index_path).get("records", [])
+                        _restore_patch(install_dir, transaction / "backup", records)
+            finally:
                 shutil.rmtree(transaction, ignore_errors=True)
-                try:
-                    package_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                return True
-            if process.poll() is not None and process.returncode not in (0, None):
-                break
-            time.sleep(0.25)
-        raise TimeoutError("Updated application did not report a healthy startup")
-    except Exception:
-        LOGGER.exception("Update transaction failed; attempting rollback")
-        try:
-            if kind == "full" and backup and backup.exists():
-                if install_dir.exists():
-                    shutil.rmtree(install_dir, ignore_errors=True)
-                os.replace(backup, install_dir)
-            elif kind == "delta":
-                index_path = transaction / "backup-index.json"
-                if index_path.is_file():
-                    records = _read_json(index_path).get("records", [])
-                    _restore_patch(install_dir, transaction / "backup", records)
-        finally:
-            shutil.rmtree(transaction, ignore_errors=True)
-        raise
+            raise
+    finally:
+        ui.close()
 
 
 def recover_interrupted_update(update_dir: Path) -> None:
