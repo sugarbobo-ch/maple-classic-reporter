@@ -92,8 +92,48 @@ def _safe_zip_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     return members
 
 
+def _get_dir_size(path: Path) -> int:
+    total = 0
+    try:
+        for p in path.rglob("*"):
+            if p.is_file():
+                try:
+                    total += p.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
+
+
 def _extract_safe(archive: zipfile.ZipFile, destination: Path, progress_callback: Any = None) -> None:
     destination.mkdir(parents=True, exist_ok=True)
+    members = _safe_zip_members(archive)
+    total_uncompressed = max(1, sum(m.file_size for m in members))
+    archive_path = Path(archive.filename) if archive.filename else None
+    tar_exe = shutil.which("tar")
+
+    if tar_exe and os.name == "nt" and archive_path and archive_path.is_file():
+        # Use Windows native tar.exe for 100% reliable extraction on Windows
+        proc = subprocess.Popen(
+            [tar_exe, "-xf", str(archive_path), "-C", str(destination)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        while proc.poll() is None:
+            time.sleep(0.1)
+            if progress_callback:
+                current = _get_dir_size(destination)
+                pct = 10.0 + (min(current, total_uncompressed) / total_uncompressed * 75.0)
+                extracted_pct = int(min(100.0, current * 100.0 / total_uncompressed))
+                progress_callback(pct, f"正在解壓縮檔案 ({extracted_pct}%)…")
+        if proc.returncode != 0:
+            raise ValueError(f"tar.exe failed with exit code {proc.returncode}")
+        if progress_callback:
+            progress_callback(85.0, "解壓縮完成，正在準備套用…")
+        return
+
+    # Fallback to Python extraction
     orig_open = archive.open
 
     def _patched_open(name_or_info: Any, mode: str = "r", pwd: Any = None, *, force_zip64: bool = False) -> Any:
@@ -111,8 +151,6 @@ def _extract_safe(archive: zipfile.ZipFile, destination: Path, progress_callback
             raise
 
     archive.open = _patched_open  # type: ignore[method-assign]
-    members = _safe_zip_members(archive)
-    total_bytes = max(1, sum(m.file_size for m in members))
     extracted_bytes = 0
 
     for member in members:
@@ -130,8 +168,8 @@ def _extract_safe(archive: zipfile.ZipFile, destination: Path, progress_callback
                 output.write(chunk)
                 extracted_bytes += len(chunk)
                 if progress_callback:
-                    pct = 10.0 + (extracted_bytes / total_bytes * 70.0)
-                    progress_callback(pct, f"正在解壓縮檔案 ({int(extracted_bytes * 100 / total_bytes)}%)…")
+                    pct = 10.0 + (extracted_bytes / total_uncompressed * 75.0)
+                    progress_callback(pct, f"正在解壓縮檔案 ({int(extracted_bytes * 100 / total_uncompressed)}%)…")
 
 
 def _copy_backup(source: Path, backup_root: Path, relative: str) -> bool:
