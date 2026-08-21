@@ -93,8 +93,38 @@ def _safe_zip_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
 
 
 def _extract_safe(archive: zipfile.ZipFile, destination: Path) -> None:
-    members = _safe_zip_members(archive)
     destination.mkdir(parents=True, exist_ok=True)
+    tar_exe = shutil.which("tar")
+    if tar_exe and os.name == "nt" and archive.filename:
+        archive_path = Path(archive.filename)
+        try:
+            subprocess.run(
+                [tar_exe, "-xf", str(archive_path), "-C", str(destination)],
+                capture_output=True,
+                check=True,
+            )
+            return
+        except Exception:
+            pass
+
+    orig_open = archive.open
+
+    def _patched_open(name_or_info: Any, mode: str = "r", pwd: Any = None, *, force_zip64: bool = False) -> Any:
+        try:
+            return orig_open(name_or_info, mode, pwd, force_zip64=force_zip64)
+        except ValueError as err:
+            if "differ" in str(err):
+                zinfo = name_or_info if isinstance(name_or_info, zipfile.ZipInfo) else archive.getinfo(name_or_info)
+                old_name = zinfo.filename
+                zinfo.filename = zinfo.filename.replace("/", "\\")
+                try:
+                    return orig_open(zinfo, mode, pwd, force_zip64=force_zip64)
+                finally:
+                    zinfo.filename = old_name
+            raise
+
+    archive.open = _patched_open  # type: ignore[method-assign]
+    members = _safe_zip_members(archive)
     for member in members:
         clean_name = member.filename.replace("\\", "/")
         relative = Path(safe_relative_path(clean_name))
@@ -102,17 +132,8 @@ def _extract_safe(archive: zipfile.ZipFile, destination: Path) -> None:
         if destination.resolve() not in target.parents:
             raise ValueError(f"Archive path escaped staging directory: {member.filename}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        if getattr(member, "orig_filename", None):
-            member.filename = member.orig_filename
-        try:
-            with archive.open(member, "r") as source, target.open("wb") as output:
-                shutil.copyfileobj(source, output, length=1024 * 1024)
-        except ValueError as err:
-            if "differ" in str(err):
-                data = archive.read(member)
-                target.write_bytes(data)
-            else:
-                raise
+        with archive.open(member, "r") as source, target.open("wb") as output:
+            shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 def _copy_backup(source: Path, backup_root: Path, relative: str) -> bool:
