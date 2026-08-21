@@ -311,8 +311,8 @@ export default function AboutTab({
 
       <p className="about-intro" style={{ color: 'var(--color-text-secondary)' }}>
         專為《新楓之谷：經典版》打造之外掛自動化檢舉與檢舉證據錄影桌面輔助工具。整合 RapidOCR
-        本地文字辨識、背景自動填表、WASAPI 系統音訊錄音與 Google Drive
-        雲端備份。本工具僅協助玩家錄影檢舉證據與送出官方檢舉表單，請勿用於任何違反遊戲服務條款之用途。
+        本機文字辨識、背景靜默送出檢舉、可選擇的錄音來源與 Google Drive
+        雲端備份。本工具僅協助玩家建立檢舉證據與送出官方檢舉表單，請勿用於任何違反遊戲服務條款之用途。
       </p>
 
       {/* 進階 / 開發者專用設定區塊 */}

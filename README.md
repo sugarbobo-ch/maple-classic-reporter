@@ -1,8 +1,8 @@
 # 新楓之谷：經典版《自動外掛檢舉工具》 v2.0.0 (MapleStory Classic Auto Reporter)
 
-開源桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，快速舉報違規外掛。全新一代採用 **PyWebView + React 18 + TypeScript + Vite** 現代化架構，提供極致流暢之暗色毛玻璃美學介面。
+開源 Windows 桌面工具，專為遊戲橘子《新楓之谷：經典版》玩家設計，協助快速建立檢舉證據並回報疑似外掛。介面採用 **PyWebView + React 18 + TypeScript + Vite**，支援淺色與深色主題、響應式版面及即時狀態提示。
 
-## 示範影片與詳細教學
+## 示範影片與文件
 
 - **巴哈姆特詳細教學**：[【攻略】【工具分享】新楓之谷：經典版《自動外掛檢舉工具》附教學](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)
 - **YouTube 示範影片**：[在 YouTube 觀看功能示範影片](https://youtu.be/mF-QPrEjkdE)
@@ -10,35 +10,37 @@
 
 ## 功能
 
-1. **現代化毛玻璃介面 (PyWebView + React 18)**：採用暗色磨砂玻璃設計系統、流暢微動效與即時響應式狀態列。
-2. **RapidOCR 極速本機識別與候選點選**：從程式介面按下「擷取畫面並辨識」或「錄製影片並辨識」，自動辨識遊戲畫面中的疑似外掛角色 ID，並以標籤晶片呈現，支援一鍵點選填入與快速貼上儲存名稱；RapidOCR 無法使用時會退回 Windows OCR。
-3. **雙區域獨立 OCR 與歷史資訊自動帶入**：自動分離左上角小地圖與角色名稱區塊，精準自動填入所在地圖名稱，並自動記憶與帶入歷史檢舉地圖與常用資料，省去重複輸入。
-4. **背景非同步送出檢舉**：送出檢舉後立即在背景排程上傳事證與 Playwright 自動化填表，不遮擋、不搶遊戲焦點，完全不中斷玩家在遊戲內的戰鬥與操作體驗。
-5. **官方懲處名單比對 (Sanctions Tracker)**：背景自動爬取並快取官方最新停權公告，即時比對涉案外掛是否已被官方封鎖，並在歷史紀錄中明確標註。
-6. **指定視窗自動錄影/截圖**：選擇錄影秒數與 15–60 FPS。採用真實時間動態補幀技術，確保生成的影片總秒數與現實秒數精準 1:1 對應（1.0x 正常播放速度）。
-7. **分層音訊錄音 (Audio)**：可選擇只錄製選定遊戲程序樹、整個系統聲音或不錄音；遊戲模式採用 Windows Process Loopback，系統模式沿用 WASAPI endpoint loopback，最後以 PyAV 合成標準 AAC + H.264 MP4 檔案。
-8. **回放緩衝 (Replay Buffer)**：可持續保留最近 10–60 秒的遊戲畫面與選定音訊來源，發現違規時按「儲存最近片段」即可保存事證；最後 5 秒會以每 0.5 秒一張的密度取樣 OCR 截圖，提高事件尾端的辨識機會。
-9. **全域錄影快捷鍵**：使用 Windows 全域快捷鍵，即使 Unity 遊戲視窗在前景仍可儲存回放或開始一般錄影；設定時只需選擇第三個鍵位，`Ctrl` 與 `Shift` 固定。預設為 `Ctrl+Shift+F9` 儲存最近片段、`Ctrl+Shift+F10` 開始一般錄影；F10 錄影中再次按下會取消，不會排入下一次錄影；回放儲存或預覽處理中再次按 F9 會忽略，也不會排隊。錄影進度固定顯示在主畫面左下角狀態列，不會再開啟覆蓋遊戲的視窗。
-10. **倒數與錄影隨時取消**：倒數、一般錄影與回放儲存流程皆可取消；一般錄影中再次按下「錄製影片並辨識」也會取消，並自動清理未完成的暫存檔。錄影期間狀態列會更新倒數／已錄製秒數與進度條，右側「錄影中（點此取消）」及主畫面的灰色「取消錄影」都可立即取消。
-11. **事證目的地二選一**：Google Drive 適合官方審查；Discord 適合 10 MiB 內的短片快速分享。
-12. **安全的 Google OAuth 與設定保存**：OAuth refresh token 與 Discord Webhook 使用 Windows DPAPI 保護，不把使用者機密寫入明文設定檔。
-13. **上傳成功確認與安全清理**：只有在雲端上傳及官方表單收到明確成功回應後，才會依設定刪除本機事證，避免誤刪未送出的證據。
-14. **一鍵開啟雲端資料夾與歷史紀錄**：提供 Google Drive 資料夾、事證網址與過往檢舉歷史的快速開啟功能。
+1. **現代化桌面介面（PyWebView + React 18）**：提供淺色與深色主題、響應式版面、清楚的操作狀態與錄影進度提示。
+2. **本機文字辨識（OCR）**：使用「截圖」或「錄影」取得遊戲畫面後，由 RapidOCR 在本機辨識疑似外掛角色 ID，並提供候選名單供你選擇；RapidOCR 無法使用時會改用 Windows OCR。
+3. **角色 ID 與地圖名稱分區辨識**：分別辨識左上角小地圖與其他畫面區域，自動填入所在地圖名稱並排除不應列為角色 ID 的文字。確認頁也會帶入歷史紀錄中的地圖與常用資料，減少重複輸入。
+4. **背景靜默送出檢舉**：確認送出後，在背景上傳檢舉證據並以 Playwright 填寫官方表單，不遮擋遊戲或搶走焦點；關閉背景模式時，則會開啟瀏覽器顯示填表過程。
+5. **官方處分狀態**：定期取得並快取官方處分公告，比對歷史紀錄中的角色是否已被封鎖，並顯示處分結果與公告來源。
+6. **指定視窗截圖與錄影**：鎖定所選 Windows 視窗進行截圖或錄影。一般錄影支援 1～60 秒與 15～60 FPS，並依實際經過時間補幀，使影片長度與播放速度維持正常。
+7. **可選擇錄音來源**：可選擇「僅遊戲聲音」、「所有系統聲音」或「不錄音」。「僅遊戲聲音」會跟隨目前選擇的錄影視窗及其子程序，不會錄入其他應用程式或系統通知；完成後以 PyAV 合成 AAC + H.264 MP4 檔案。
+8. **循環錄影**：像行車記錄器一樣在背景持續保留最近 10～30 秒的遊戲畫面與所選聲音；按下「儲存循環錄影」即可輸出目前保留的片段，並分析最後 5 秒畫面以提高事件尾端的 OCR 辨識機會。儲存完成後，背景循環錄影不會中斷。
+9. **全域錄影快捷鍵**：即使遊戲視窗在前景，也能使用 Windows 全域快捷鍵控制循環錄影或一般錄影。`Ctrl` 與 `Shift` 固定，只需選擇最後一個鍵位；預設 `Ctrl+Shift+F9` 啟動或儲存循環錄影，`Ctrl+Shift+F10` 開始一般錄影。一般錄影中再次按 F10 會取消；循環錄影片段正在儲存或處理時再次按 F9 會忽略，不會重複排程。
+10. **倒數與錄影隨時取消**：倒數與一般錄影皆可取消，並自動清理未完成的暫存檔。錄影期間，主畫面狀態列會顯示倒數、已錄製秒數及進度，不會另開遮擋遊戲的提示視窗；循環錄影也可從狀態列停止。
+11. **優先上傳目的地**：可選 Google Drive 或 Discord。Google Drive 適合保存供官方審查的檢舉證據；Discord 適合上傳 10 MiB 內的短片。
+12. **受保護的帳號與頻道資料**：Google OAuth refresh token 與 Discord 頻道連結使用 Windows DPAPI 保護，不會寫入一般明文設定檔。
+13. **自動刪除已確認檢舉證據**：只有檢舉證據上傳及官方表單送出都成功後，才會依偏好設定刪除程式產生的本機暫存檔，避免誤刪尚未送出的檔案。
+14. **雲端證據與歷史紀錄**：可直接開啟 Google Drive 資料夾、雲端證據連結與官方處分公告，並在歷史紀錄查看過往回報結果。
 15. **可攜式 onedir 發行版**：Windows 版以 onedir bundle 發行，Chromium、driver 與 RapidOCR 資源隨資料夾提供，不需要安裝 Python、uv、pnpm 或 Chrome，也不會每次啟動解壓大型 one-file EXE。
+16. **安全的應用程式自動更新**：啟動後在背景檢查 GitHub Releases，可選穩定版或預覽版頻道，優先下載較小的差分包並在必要時改用完整包。下載前會檢查磁碟空間，套用前驗證 SHA-256 與 Ed25519 簽章；更新內容可在「關於」頁面展開閱讀，重啟套用時會顯示即時進度，且不會覆蓋使用者資料。
 
 ## 快速開始
 
-### 環境需求 (開發者)
+### 開發環境需求
+
 - Windows 10 / 11 (x64)
 - Python 3.11+
-- [uv](https://github.com/astral-sh/uv) Python 包管理器
-- [pnpm](https://pnpm.io/) Node.js 套件管理器 (禁用 npm)
+- [uv](https://github.com/astral-sh/uv) Python 套件管理器
+- [pnpm](https://pnpm.io/) Node.js 套件管理器（請勿使用 npm）
 
 下載版使用者不需要安裝 Python、uv、pnpm、Playwright 或 Chrome；以下安裝步驟只適用於從原始碼執行或自行打包。
 
 ### 安裝與開發步驟
 
-```bash
+```powershell
 # 1. 進入專案資料夾
 cd d:\Projects\maple-classic-reporter
 
@@ -78,13 +80,13 @@ ZIP 會包含完整的 `MapleClassicReporter/` 資料夾。解壓縮後請從資
 
 若只要清掉 PyInstaller 中間檔與本機測試資料、保留發行資料夾，可執行 `powershell -ExecutionPolicy Bypass -File scripts/clean_release.ps1`。
 
-### Release 檔案格式
+### 發行檔案格式
 
 - 發行檔：`MapleClassicReporter-v<version>-windows-x64.zip`
 - ZIP 內容：`MapleClassicReporter/` 資料夾，包含 EXE、`_internal/`、Playwright Chromium 與 RapidOCR 資源。
 - SHA-256：以對應 GitHub Release 的實際 ZIP 為準。
 
-## 下載 EXE 版的安裝與資料夾說明
+## 安裝 Windows 可攜版
 
 下載版不需要安裝 Python、uv 或 Chrome。下載 `MapleClassicReporter-v<version>-windows-x64.zip` 後，請將整個 `MapleClassicReporter/` 資料夾解壓縮，再執行其中的 `MapleClassicReporter.exe`。程式會直接使用資料夾內的 Playwright Chromium，不會在每次啟動時把整個瀏覽器解壓到暫存目錄；若瀏覽器檔案損壞或遺失，程式會顯示完整可複製的錯誤欄位與官方下載說明網址。
 
@@ -97,14 +99,14 @@ MapleClassicReporter\
    └─ ms-playwright\              # Chromium 與其 DLL／資源
 ```
 
-錄影、一般設定與回報歷史都會寫入使用者專屬目錄 `%LOCALAPPDATA%\MapleClassicReporter\`；舊版 `data/config/` 的一般設定會在啟動時自動遷移。Discord Webhook 以 Windows DPAPI 保護，不會寫入 JSON：
+錄影、偏好設定與歷史紀錄都會寫入使用者專屬目錄 `%LOCALAPPDATA%\MapleClassicReporter\`；舊版 `data/config/` 的一般設定會在啟動時自動遷移。Discord 頻道連結以 Windows DPAPI 保護，不會寫入 JSON：
 
 ```text
 %LOCALAPPDATA%\MapleClassicReporter\discord_webhook_url.dpapi
 %LOCALAPPDATA%\MapleClassicReporter\recordings\
 ```
 
-正式發行資料夾內嵌的是應用程式共用的 OAuth Desktop client 設定；它只是用來識別 Maple Classic Reporter，不包含任何使用者授權。每位使用者首次登入後取得的 refresh token 會以 Windows DPAPI 保護，寫入自己的使用者資料夾：
+正式發行資料夾內嵌的是應用程式共用的 OAuth Desktop client 設定；它只用來識別 Maple Classic Reporter，不包含任何使用者授權。每位使用者首次登入後取得的 refresh token 會以 Windows DPAPI 保護，寫入自己的使用者資料夾：
 
 ```text
 %LOCALAPPDATA%\MapleClassicReporter\oauth_token.dpapi
@@ -116,33 +118,42 @@ MapleClassicReporter\
 
 `.gitignore` 已排除舊版 `data/config/`、OAuth 憑證與 `data/recordings/`；目前的使用者資料位於 `%LOCALAPPDATA%`。提交或推送前仍應檢查 `git status`，確認沒有把本機 `data/`、`.env`、憑證、Webhook URL 或 API Key 加入版本庫。
 
-若要搬移電腦，請重新執行程式並重新連結 Google 帳號；程式資料夾不包含使用者設定或授權。若要保留設定，需在同一 Windows 使用者下搬移 `%LOCALAPPDATA%\MapleClassicReporter\`，若不想轉移帳號授權則只不要搬移 `oauth_token.dpapi`。
+若要搬移電腦，請在新電腦重新啟動程式並登入 Google 帳號；程式資料夾不包含使用者偏好設定或授權。若只是在同一 Windows 使用者環境搬移程式，可另外備份 `%LOCALAPPDATA%\MapleClassicReporter\`；不需要保留 Google 授權時，請勿搬移 `oauth_token.dpapi`。
 
 Windows DPAPI 可防止其他 Windows 使用者或單純外洩檔案直接讀出 refresh token，但無法防禦已在同一 Windows 使用者權限下執行的惡意程式。OAuth client JSON 內嵌於發行包也屬 Installed App 的公開識別設定，不應把它當成可保密的 server secret。
 
-## 使用與設定步驟
+## 使用與偏好設定
 
 ### 1. 第一次啟動
 
 1. 執行 `dist/MapleClassicReporter/MapleClassicReporter.exe`；以原始碼執行時則使用 `uv run maple-reporter`。
 2. Windows 顯示 SmartScreen 時，請先確認程式來源後選擇「其他資訊」→「仍要執行」。未簽章的個人開源程式可能會出現這個提醒。
-3. 在首次引導視窗確認流程：設定事證上傳目的地、選擇遊戲視窗，再以程式內按鈕擷取事證。
+3. 在首次引導視窗確認流程：設定優先上傳目的地、選擇遊戲視窗，再使用主畫面的「截圖」、「錄影」或「循環錄影」建立檢舉證據。
 
-### 2. 設定錄影與 OCR
+### 2. 設定錄影與文字辨識
 
 1. 在主畫面選擇《新楓之谷：經典版》遊戲視窗。
 2. 選擇錄影秒數與 FPS。錄得更久會提供更多影格供 OCR 辨識角色 ID 與地圖名稱，但影片也會更大；建議先使用 8–15 秒與 30 FPS。
-3. 可勾選 **「同步錄製系統聲音 (Audio)」**，錄製遊戲聲音音效。
-4. 在 **「全域快捷鍵」** 開啟快捷鍵，只選擇最後一個鍵位即可，`Ctrl` 與 `Shift` 固定。預設 `Ctrl+Shift+F9` 儲存最近片段，`Ctrl+Shift+F10` 開始一般錄影；第一次按 F9 會先啟動回放緩衝，累積幾秒後再次按 F9 才會儲存片段。F10 會使用主畫面左下角狀態列顯示倒數、錄影秒數、進度條與取消按鈕。若快捷鍵已被其他程式使用，請換一個鍵位後重新儲存。
-5. 可勾選 **「上傳成功後自動刪除本機事證檔案」** 節省磁碟空間；或隨時使用 **「一鍵清理所有錄製檔案」** 刪除所有本機暫存。
-6. 錄影時不會另開提示視窗，倒數與錄影進度固定顯示在主畫面左下角狀態列；錄影中會顯示灰色的「錄影中（點此取消）」按鈕。按「擷取畫面並辨識」完成畫面拉框，或按「錄製影片並辨識」直接錄製遊戲視窗；完成後會開啟送出前確認頁。
+3. 在 **「錄音來源」** 選擇「僅遊戲聲音」、「所有系統聲音」或「不錄音」。選擇「僅遊戲聲音」時，音訊會跟隨上方選擇的錄影視窗及其子程序；選擇「所有系統聲音」時，需再指定系統聲音輸出裝置。
+4. 在 **「全域快捷鍵」** 開啟快捷鍵，只選擇最後一個鍵位即可，`Ctrl` 與 `Shift` 固定。預設 `Ctrl+Shift+F9` 啟動或儲存循環錄影，`Ctrl+Shift+F10` 開始一般錄影；第一次按 F9 會啟動循環錄影，累積幾秒後再次按 F9 才會儲存目前片段。F10 會在主畫面狀態列顯示倒數、錄影秒數、進度條與取消按鈕。若快捷鍵已被其他程式使用，請更換鍵位後重新儲存。
+5. 可在「一般與表單預設」開啟 **「自動刪除已確認檢舉證據」**，或在「錄影與音訊」使用 **「清理暫存檔案」** 釋放本機空間。
+6. 一般錄影期間，主畫面狀態列會顯示倒數、已錄製秒數、進度條與「取消錄影」。按下主畫面的「截圖」或「錄影」後，程式會自動辨識畫面並開啟「檢舉證據回報表單」。
 
 ### 3. 填寫並送出檢舉
 
-1. 在確認頁檢查或修正角色 ID、伺服器、地圖名稱與違規描述。若隱藏地圖未在畫面顯示名稱，OCR 不會猜測錯誤地圖；請直接在「所在地圖名稱」欄位輸入正確名稱。預設違規範本可在主畫面管理、修改或新增。
-2. 選擇一種事證目的地：Google Drive 適合官方長期審查（主介面可按 **「前往雲端資料夾」** 查看）；Discord 適合 10 MiB 內的短片。
-3. 按「確認內容並上傳事證」。程式會顯示上傳中狀態；成功後自動取得網址、填入官方表單的事證欄位並完成送出；之後可於歷史紀錄雙擊網址開啟檢視。
-4. 若上傳失敗，表單不會送出。修正設定或改用另一個目的地後再試即可。
+1. 在「檢舉證據回報表單」檢查或修正角色 ID、伺服器、所在地圖名稱與違規描述。若隱藏地圖未顯示名稱，請直接輸入正確地圖；可在「一般與表單預設」管理違規描述範本。
+2. 在「上傳與帳號」選擇 **「優先上傳目的地」**：Google Drive 適合長期保存供官方審查；Discord 適合 10 MiB 內的短片。使用 Google Drive 時可按 **「前往雲端資料夾」** 查看檔案。
+3. 按 **「送出檢舉證據」**。程式會先上傳檔案，取得雲端證據連結，再填入官方表單並送出；成功後會自動加入歷史紀錄。
+4. 上傳失敗時不會送出官方表單。請檢查帳號或 Discord 頻道連結，也可以切換優先上傳目的地後重試。
+
+### 4. 應用程式更新
+
+1. 程式啟動後會自動檢查更新；可在「關於與更新」開關自動下載，並選擇「穩定版」或「預覽版」頻道。
+2. 發現新版本時，「關於與更新」會顯示套件類型、下載大小、所需與可用磁碟空間；展開「更新內容」可閱讀經安全過濾的 GitHub Release Markdown，或前往 GitHub 查看完整說明。
+3. 自動下載關閉時可按「立即下載」；下載期間會顯示百分比並可取消。完成後按「重啟應用」即可套用，若仍在錄影、處理影片或送出回報，程式會等待工作結束再重啟。
+4. 套用視窗會持續顯示解壓、替換、驗證及重新啟動進度。更新失敗時會保留或還原原安裝內容；使用者設定、授權、歷史與錄影仍保存在 `%LOCALAPPDATA%\MapleClassicReporter\`。
+
+更新機制、發行資產與簽章設定的完整技術說明請見 [docs/UPDATES.md](docs/UPDATES.md)。
 
 ## Google Drive 連結與 OAuth
 
@@ -150,8 +161,8 @@ Windows DPAPI 可防止其他 Windows 使用者或單純外洩檔案直接讀出
 
 一般使用者不需要建立 Google Cloud project、加入測試使用者或下載 `client_secrets.json`。下載並啟動正式 EXE 後：
 
-1. 選擇 **Google Drive** 作為事證目的地。
-2. 按 **「連結 Google 帳號」**。
+1. 選擇 **Google Drive** 作為優先上傳目的地。
+2. 按 **「登入 Google 帳號」**。
 3. 在系統瀏覽器登入自己的 Google 帳號，並同意 `drive.file` 權限。
 
 程式使用專案維護者正式發布的 OAuth Desktop client；每位使用者的授權仍只會連到自己的 Google Drive。首次授權成功後，refresh token 會以 Windows DPAPI 保護在 `%LOCALAPPDATA%\MapleClassicReporter\oauth_token.dpapi`；之後不需再次登入，除非使用者撤銷授權或刪除該檔案。
@@ -176,10 +187,10 @@ Discord 是可選的短片上傳目的地。預設單檔上限為 10 MiB；超�
 
 1. 在 Discord 伺服器建立一個專用文字頻道。
 2. 開啟「伺服器設定」→「整合」→「Webhooks」，建立 Webhook，選擇該頻道並複製 **Webhook URL**。
-3. 在程式的「上傳目的地」選 Discord，將 Webhook URL 貼入設定欄位並儲存。
-4. 上傳成功時，Discord 回傳的 attachment asset URL 會自動顯示於預覽頁，並自動填入 SurveyCake 的事證連結欄位。
+3. 在「上傳與帳號」將 **「優先上傳目的地」** 設為 Discord，把 Webhook URL 貼入 **「Discord 頻道連結」**，再按「測試連線」。
+4. 上傳成功時，Discord 回傳的 attachment asset URL 會自動顯示於預覽頁，並自動填入 SurveyCake 的檢舉證據連結欄位。
 
-Webhook URL 是可直接向頻道發文的敏感憑證；請勿分享、截圖或提交到 Git。Discord attachment URL 可能含有到期簽章，不建議作為唯一的長期官方審查事證。
+Webhook URL 是可直接向頻道發文的敏感憑證；請勿分享、截圖或提交到 Git。Discord attachment URL 可能含有到期簽章，不建議作為唯一的長期官方審查證據。
 
 ## 授權條款
 

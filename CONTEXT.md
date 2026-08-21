@@ -9,7 +9,7 @@
 - **Tutorial & Forum Post**: [巴哈姆特詳細教學文章](https://forum.gamer.com.tw/C.php?bsn=85994&snA=456)
 - **Documentation Index**: [`docs/README.md`](docs/README.md)
 - **Distribution**: ZIP contains the complete `MapleClassicReporter/` onedir bundle. The executable, Playwright Chromium, its driver, and RapidOCR ONNX models stay together in the extracted folder; users must not move the EXE out by itself.
-- **Frontend Architecture**: PyWebView bridge with React 18 + TypeScript + Vite, using CSS design tokens, dark glassmorphism styling, and pnpm package management.
+- **Frontend Architecture**: PyWebView bridge with React 18 + TypeScript + Vite, using CSS design tokens, light and dark themes, responsive layouts, and pnpm package management.
 - **Runtime fallback**: The application checks bundled Playwright Chromium first, uses a local Playwright cache as fallback, and shows a copy-friendly error dialog with the official download URL when both are unavailable.
 
 ## Glossary & Ubiquitous Language
@@ -23,28 +23,28 @@
 - **Image Preprocessing Pipeline (圖像預處理管道)**: 針對遊戲小字體與複雜背景，進行 2.5 倍放大與黑白高對比二值化之 OpenCV 前處理，顯著提昇 OCR 辨識率。
 - **Multi-Frame Video OCR (多影格抽幀 OCR)**: 錄影期間定時抽影格進行 OCR 辨識，並於預覽彈窗提供可編輯下拉選單 (Editable Suspect ID ComboBox) 供玩家選擇。
 - **Asynchronous OCR Worker Thread (非阻塞背景 OCR 線程)**: 將 OCR 辨識移至背景執行緒執行，預覽彈窗秒開不卡頓，並即時動態推播辨識到的候選 ID。
-- **Sanctions Matcher (官方懲處名單比對)**: 背景定期抓取官方懲處公告並解析名單，即時於歷史紀錄與預覽欄位呈現違規角色之官方封鎖懲處狀態。
+- **Sanctions Matcher (官方處分狀態)**: 背景定期取得並解析官方處分公告，在歷史紀錄與預覽欄位顯示角色的官方封鎖狀態。
 - **Recording FPS (錄影幀率)**: 可自訂短影片錄製順暢度之每秒幀率 (15~60 FPS)。
 - **Auto-Remember Defaults (預設值自動記憶)**: 自動記憶玩家上次選取/填寫之伺服器、地圖、備註、視窗等設定值並持久化於設定檔。
 - **Client Area Bounds (視窗畫布邊界)**: 透過 Win32 `GetClientRect` 精準計算除外標題列與外框後的真實遊戲視窗畫布區域。
 - **UI Exclusion & Basic Filtering (UI 排除與基礎過濾)**: 自動排除純數字傷害值、語法標點符號 (`/`, `+`, `:`) 與通用系統 UI 標籤 (`HP`, `MP`, `EXP`, `Lv`, `CH`)。
 - **Dynamic Whitelist System (動態 ID 白名單過濾機制)**: 主介面與預覽彈窗皆可加入白名單；設定會持久化並在未來掃描時自動過濾。
-- **Evidence Media (檢舉事證媒體)**: 外掛違規行為之圖片（PNG/JPG）或影片連結。
-- **Evidence Destination (事證目的地)**: 使用者在 Google Drive 與 Discord Webhook 間二選一。Google Drive 適合長期官方審查；Discord 限制為 10 MiB 內的短片。
-- **Evidence URL (事證連結)**: 上傳成功後由目的地回傳的公開連結。它是唯讀欄位，程式會自動帶入 SurveyCake 表單，不由使用者手動輸入。
+- **Evidence Media (檢舉證據)**: 用來證明疑似外掛行為的圖片（PNG/JPG）或影片。
+- **Evidence Destination (優先上傳目的地)**: Google Drive 或 Discord。Google Drive 適合長期保存供官方審查；Discord 限制為 10 MiB 內的短片。
+- **Evidence URL (雲端證據連結)**: 上傳成功後由目的地回傳的公開連結。它是唯讀欄位，程式會自動帶入 SurveyCake 表單，不由使用者手動輸入。
 - **Google OAuth Client (Google OAuth 用戶端)**: 正式 onedir bundle 的 `_internal` 資源內嵌 `google_oauth_client.json` 作為應用程式識別設定；原始碼開發可用 `MAPLE_REPORTER_GOOGLE_OAUTH_CONFIG` 覆寫，`build_secrets/google_oauth_client.json` 僅供 release build 使用，均不可提交到 Git。
 - **Google OAuth Token (Google OAuth 權杖)**: `%LOCALAPPDATA%\MapleClassicReporter\oauth_token.dpapi` 使用 Windows DPAPI 保護單一使用者授權完成後的 refresh token；舊版 `data/config/token.json` 會自動遷移後刪除，絕不打包或與其他使用者共用。
 - **Discord Webhook URL**: Discord 頻道的寫入憑證，僅保存於使用者 `%LOCALAPPDATA%/MapleClassicReporter/discord_webhook_url.dpapi`，以 Windows DPAPI 保護且 UI 必須遮蔽顯示。
 - **Real-Time Video Pacing (真實時間動態補幀錄影)**: 依據真實經過秒數 (`elapsed * fps`) 動態計算並寫入影片張數，解決畫面擷取延遲與 OpenCV VideoWriter 幀率標頭不符導致影片播放加速與總秒數不符的問題，確保影片播放速度精準為 1.0x 且總長度符合現實時間。
 - **Interactive Cancellation Handling (倒數與錄影中途取消機制)**: 倒數與錄影皆支援按下「取消」按鈕。中途取消時立即停止錄製、釋放資源、自動清理未完成的暫存檔，且不會彈出後續 OCR 與檢舉預覽視窗。
-- **WASAPI System Audio Capture (WASAPI Loopback 系統聲音同步錄音)**: 透過 `soundcard` 模組於背景非同步擷取系統音效/遊戲聲音，並使用 `av` (PyAV) 將 H.264 視訊與 AAC 音訊整合成相容性佳之標準 MP4 檔；音效擷取失敗時自動降級為無聲影片。
-- **Auto-Delete After Upload (上傳成功自動刪除本機事證檔)**: 提供「上傳成功後自動刪除本機事證檔案」設定選項；只有程式自己產生且位於使用者 `%LOCALAPPDATA%/MapleClassicReporter/recordings/` 的圖片/影片會在表單提交與雲端上傳完成後刪除，使用者從檔案選擇器匯入的原始檔不會刪除。
-- **Clear All Recordings (一鍵清理所有錄製檔案)**: 提供一鍵清理按鈕，彈出確認視窗後一次性清空使用者 `%LOCALAPPDATA%/MapleClassicReporter/recordings/` 錄影與截圖暫存資料夾。
+- **Audio Capture Mode (錄音來源)**: 可選「僅遊戲聲音」、「所有系統聲音」或「不錄音」。「僅遊戲聲音」透過 Windows Process Loopback 跟隨所選錄影視窗及其子程序；「所有系統聲音」透過 WASAPI endpoint loopback 擷取指定輸出裝置。錄音會以 `av` (PyAV) 與 H.264 視訊合成 AAC MP4；擷取失敗時降級為無聲影片。
+- **Auto-Delete After Upload (自動刪除已確認檢舉證據)**: 只有程式產生且位於 `%LOCALAPPDATA%/MapleClassicReporter/recordings/` 的圖片或影片，才會在官方表單送出與雲端上傳都成功後依偏好設定刪除；從檔案選擇器匯入的原始檔不會刪除。
+- **Clear Recordings (清理暫存檔案)**: 清理 `%LOCALAPPDATA%/MapleClassicReporter/recordings/` 中的暫存錄影與截圖；執行前必須顯示確認視窗。
 - **Clickable Evidence Link & Open Cloud Folder (點選雲端連結查看與一鍵開啟雲端資料夾)**:
   - 於上傳設定區塊提供「前往雲端資料夾」按鈕，直接於預設瀏覽器開啟 Google Drive 檢舉資料夾。
-  - 於預覽彈窗提供「點擊前往查看」按鈕，完成上傳後可立即點擊開啟雲端事證連結。
+  - 於確認頁提供可開啟的雲端證據連結，完成上傳後可立即查看。
   - 歷史紀錄表格之網址欄位格式化為藍字底線超連結，點選或雙擊即可於瀏覽器開啟檢視。
 - **Bundled Browser Runtime (內嵌瀏覽器執行環境)**: 發行版將 Playwright driver、Chromium 與 RapidOCR 模型放在同一個 PyInstaller onedir bundle；使用者不需要另外安裝 Chrome、Python 或 uv，且啟動時不必把整個 bundle 解壓到暫存目錄。
-- **Release Secret Boundary (發行敏感資料邊界)**: `build_secrets/` 內的 OAuth client JSON 可在 release build 時嵌入 onedir bundle，但不可提交 Git；`data/`、`.env`、DPAPI refresh token、Discord Webhook URL 與錄影事證絕不能進入 Git 或發行 ZIP。
+- **Release Secret Boundary (發行敏感資料邊界)**: `build_secrets/` 內的 OAuth client JSON 可在 release build 時嵌入 onedir bundle，但不可提交 Git；`data/`、`.env`、DPAPI refresh token、Discord Webhook URL 與檢舉證據絕不能進入 Git 或發行 ZIP。
 - **Violation Template (違規範本)**: 可新增、編輯或刪除的「名稱＋違規說明」預設內容。
 - **Report Form (外掛回報表單)**: 遊戲橘子官方線上 SurveyCake 結構表單 (`https://forms.gamania.com/s/eLGg4`)。

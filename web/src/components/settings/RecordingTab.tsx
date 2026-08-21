@@ -132,7 +132,7 @@ export default function RecordingTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">錄音來源</span>
-          <span className="setting-desc">選擇只錄影遊戲程式、整個系統，或不加入聲音。</span>
+          <span className="setting-desc">選擇只錄製遊戲聲音、所有系統聲音或不錄音。</span>
         </div>
         <div style={{ width: '220px', minWidth: '180px' }}>
           <Dropdown<AudioCaptureMode>

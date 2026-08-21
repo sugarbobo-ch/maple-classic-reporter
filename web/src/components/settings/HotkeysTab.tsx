@@ -52,7 +52,7 @@ export default function HotkeysTab({
       >
         <div className="setting-row">
           <div className="setting-info">
-            <span className="setting-label">儲存循環影片快捷鍵</span>
+            <span className="setting-label">儲存循環錄影快捷鍵</span>
             <span className="setting-desc">
               {listeningForHotkey === 'save_replay'
                 ? '請在鍵盤上按下任意按鍵（如 F9、S、R 等，按 Esc 取消）'

@@ -45,7 +45,7 @@ uv run python scripts/real_e2e_smoke.py surveycake --allow-submit --headless
 - [ ] 指定真實 MapleStory Classic 視窗，按 UI 按鈕與兩組全域快捷鍵各錄影一次。
 - [ ] 開啟／關閉錄音，確認錄影可回放且音訊來源正確。
 - [ ] 用含角色 ID／地圖的真實畫面確認 OCR，並各測試 ID／地圖開關關閉。
-- [ ] 回放緩衝啟動、儲存、剪輯、還原；確認提交使用剪輯後檔案。
+- [ ] 循環錄影啟動、儲存、剪輯、還原；確認提交使用剪輯後檔案。
 - [ ] 在未授權 Drive、Discord 未設定、Drive／Discord 上傳失敗時確認錯誤可重試。
 - [ ] 歷史紀錄確認真實 URL 可開啟與複製，清除後重新載入仍為空。
 - [ ] Frameless 視窗拖曳、四邊／四角 resize、Windows Snap、工作列名稱與圖示。
