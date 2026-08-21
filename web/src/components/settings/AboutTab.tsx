@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, FolderOpen, RefreshCw } from 'lucide-react';
 import { Button, Badge, CircularProgress, Dropdown, Switch } from '../ui';
 import { AppConfig, UpdateStatus } from '../../types';
@@ -30,8 +31,15 @@ export default function AboutTab({
   onRestartAndApplyUpdate,
   updateBusy = false,
 }: AboutTabProps) {
+  const [isApplying, setIsApplying] = useState(false);
+
   const handleToggle = (key: keyof AppConfig) => {
     onUpdateConfig(key, !config[key]);
+  };
+
+  const handleRestartClick = () => {
+    setIsApplying(true);
+    onRestartAndApplyUpdate?.();
   };
 
   const updateState = updateStatus?.state;
@@ -140,28 +148,32 @@ export default function AboutTab({
             </span>
           </div>
           <div className="about-update-actions">
-            <Button variant="outline" size="sm" onClick={onCheckForUpdates} disabled={updateStatus?.state === 'checking'}>
+            <Button variant="outline" size="sm" onClick={onCheckForUpdates} disabled={updateStatus?.state === 'checking' || isApplying}>
               檢查更新
             </Button>
             {updateStatus?.state === 'available' && (
-              <Button variant="primary" size="sm" icon={Download} onClick={onStartUpdateDownload}>
+              <Button variant="primary" size="sm" icon={Download} onClick={onStartUpdateDownload} disabled={isApplying}>
                 立即下載
               </Button>
             )}
             {updateStatus?.state === 'downloading' && (
-              <Button variant="outline" size="sm" onClick={onCancelUpdateDownload}>
+              <Button variant="outline" size="sm" onClick={onCancelUpdateDownload} disabled={isApplying}>
                 取消下載
               </Button>
             )}
-            {(updateStatus?.state === 'ready' || updateStatus?.state === 'waiting_for_idle') && (
+            {(updateStatus?.state === 'ready' || updateStatus?.state === 'waiting_for_idle' || updateStatus?.state === 'applying') && (
               <Button
                 variant="success"
                 size="sm"
                 icon={RefreshCw}
-                onClick={onRestartAndApplyUpdate}
-                disabled={updateBusy || updateStatus.state === 'waiting_for_idle'}
+                onClick={handleRestartClick}
+                disabled={isApplying || updateBusy || updateStatus.state === 'waiting_for_idle' || updateStatus.state === 'applying'}
               >
-                {updateBusy || updateStatus.state === 'waiting_for_idle' ? '完成後重啟' : '重啟應用'}
+                {isApplying || updateStatus.state === 'applying'
+                  ? '重啟中…'
+                  : updateBusy || updateStatus.state === 'waiting_for_idle'
+                    ? '完成後重啟'
+                    : '重啟應用'}
               </Button>
             )}
           </div>

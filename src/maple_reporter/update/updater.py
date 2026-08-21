@@ -237,11 +237,13 @@ def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path) ->
 
 
 def _launch(executable: Path, token: str) -> subprocess.Popen[Any]:
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
     return subprocess.Popen(
         [str(executable), "--post-update", f"--update-token={token}"],
         cwd=str(executable.parent),
-        creationflags=flags,
+        creationflags=creationflags,
         close_fds=True,
     )
 

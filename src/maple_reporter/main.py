@@ -187,7 +187,9 @@ from maple_reporter.gui.webview_app import (
 
 
 def main():
-    if "--post-update" not in sys.argv:
+    if "--post-update" in sys.argv:
+        mark_post_update_success()
+    else:
         recover_interrupted_update(get_user_app_data_dir() / "updates")
     if "--smoke-test" in sys.argv:
         sys.exit(run_bundle_smoke_test())
