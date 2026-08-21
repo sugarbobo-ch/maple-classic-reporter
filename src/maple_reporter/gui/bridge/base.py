@@ -63,7 +63,7 @@ class BaseBridgeMixin:
                 or self._replay_state not in {"idle", "stopped"}
                 or self._submission_lock.locked()
             ),
-            close_app=lambda: self._window.destroy() if self._window else None,
+            close_app=self._close_for_update,
         )
 
         # Replay status
@@ -85,6 +85,14 @@ class BaseBridgeMixin:
         if not hasattr(self, "_config_lock") or self._config_lock is None:
             self._config_lock = threading.RLock()
         return self._config_lock
+
+    def _close_for_update(self) -> None:
+        try:
+            if self._window:
+                self._window.destroy()
+        except Exception:
+            pass
+        threading.Timer(0.3, lambda: os._exit(0)).start()
 
     def _init_hotkeys(self) -> None:
         enabled = bool(self.config.get("global_hotkeys_enabled", True))

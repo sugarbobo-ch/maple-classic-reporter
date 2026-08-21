@@ -206,6 +206,11 @@ def _apply_full(archive_path: Path, install_dir: Path, transaction_dir: Path) ->
         _extract_safe(archive, staging_parent)
     staged_bundle = staging_parent / install_dir.name
     if not staged_bundle.is_dir() or not (staged_bundle / "MapleClassicReporter.exe").is_file():
+        staged_bundle = staging_parent / "MapleClassicReporter"
+    if not staged_bundle.is_dir() or not (staged_bundle / "MapleClassicReporter.exe").is_file():
+        if (staging_parent / "MapleClassicReporter.exe").is_file():
+            staged_bundle = staging_parent
+    if not staged_bundle.is_dir() or not (staged_bundle / "MapleClassicReporter.exe").is_file():
         raise ValueError("Full update archive does not contain a valid MapleClassicReporter bundle")
     bundle_manifest = staging_parent / "bundle-manifest-v1.json"
     if bundle_manifest.is_file():
