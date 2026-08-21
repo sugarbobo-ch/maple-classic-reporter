@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "maple-classic-reporter"
-version = "2.1.0"
+version = "2.1.1"
 description = "MapleStory Classic Auto Reporter for Gamania SurveyCake Form"
 readme = "README.md"
 requires-python = ">=3.11"
