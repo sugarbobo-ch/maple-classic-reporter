@@ -872,6 +872,13 @@ export default function App() {
       toast.warning('目前環境無法檢查更新', '請使用 Windows 發行版執行此功能');
       return;
     }
+    if (updateStatus?.state === 'downloading') {
+      toast.warning('正在下載更新中', '請等待下載完成或取消下載後再檢查更新');
+      return;
+    }
+    if (updateStatus?.state === 'applying' || updateStatus?.state === 'waiting_for_idle') {
+      return;
+    }
     manualUpdateCheckRef.current = true;
     toast.info('正在檢查更新…');
     await window.pywebview.api.check_for_updates(force);

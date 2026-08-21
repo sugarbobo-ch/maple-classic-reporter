@@ -210,7 +210,13 @@ export default function AboutTab({
               variant="outline"
               size="sm"
               onClick={onCheckForUpdates}
-              disabled={updateStatus?.state === 'checking' || isApplying}
+              disabled={
+                updateStatus?.state === 'checking' ||
+                updateStatus?.state === 'downloading' ||
+                updateStatus?.state === 'applying' ||
+                updateStatus?.state === 'waiting_for_idle' ||
+                isApplying
+              }
               loading={updateStatus?.state === 'checking'}
             >
               檢查更新

@@ -174,6 +174,7 @@ class UpdateService:
         self._download_thread: threading.Thread | None = None
         self._apply_thread: threading.Thread | None = None
         self._candidate: ReleaseCandidate | None = None
+        self._releases: list[ReleaseCandidate] = []
         self._asset: ReleaseAsset | None = None
         self._download_assets: list[ReleaseAsset] = []
         self._package_path: Path | None = None
@@ -219,6 +220,22 @@ class UpdateService:
             cached = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(cached, dict):
                 self._last_check = float(cached.get("checked_at") or 0)
+                releases_raw = cached.get("releases", [])
+                if isinstance(releases_raw, list):
+                    self._releases = [
+                        ReleaseCandidate(
+                            version=str(r.get("version")),
+                            prerelease=bool(r.get("prerelease")),
+                            release_url=str(r.get("release_url") or ""),
+                            body=str(r.get("body") or ""),
+                            published_at=str(r.get("published_at") or ""),
+                            assets=[ReleaseAsset(**asset) for asset in r.get("assets", [])],
+                            manifest_url=str(r.get("manifest_url") or ""),
+                            signature_url=str(r.get("signature_url") or ""),
+                        )
+                        for r in releases_raw
+                        if isinstance(r, dict)
+                    ]
                 candidate_raw = cached.get("candidate")
                 if isinstance(candidate_raw, dict):
                     self._candidate = ReleaseCandidate(
@@ -231,7 +248,7 @@ class UpdateService:
                         manifest_url=str(candidate_raw.get("manifest_url") or ""),
                         signature_url=str(candidate_raw.get("signature_url") or ""),
                     )
-                    self._select_assets_for_candidate([self._candidate])
+                    self._select_assets_for_candidate(self._releases or [self._candidate])
         except (OSError, ValueError, TypeError, KeyError):
             return
 
@@ -278,6 +295,14 @@ class UpdateService:
         with self._lock:
             if self._check_thread and self._check_thread.is_alive():
                 return False
+            if self._download_thread and self._download_thread.is_alive():
+                return False
+            if self._status.get("state") in {
+                UpdateState.DOWNLOADING.value,
+                UpdateState.APPLYING.value,
+                UpdateState.WAITING_FOR_IDLE.value,
+            }:
+                return False
             if not force and _now() - self._last_check < CHECK_INTERVAL_SECONDS:
                 if self._candidate and self._candidate.version != __version__:
                     self._select_asset_for_candidate()
@@ -286,6 +311,9 @@ class UpdateService:
                         target_version=self._candidate.version,
                         release_notes=self._candidate.body,
                         release_url=self._candidate.release_url,
+                        package_kind="delta" if all(asset.kind == "delta" for asset in self._download_assets) else (self._asset.kind if self._asset else "full"),
+                        total_bytes=sum(asset.size for asset in self._download_assets),
+                        required_bytes=sum(asset.required_bytes for asset in self._download_assets),
                     )
                     self._maybe_auto_download()
                 return True
@@ -320,11 +348,12 @@ class UpdateService:
             eligible = [candidate for candidate in eligible if SemVer.parse(candidate.version) > current]
             self._candidate = max(eligible, key=lambda candidate: SemVer.parse(candidate.version), default=None)
             self._last_check = _now()
+            self._releases = releases
             self._save_cache(releases)
             if not self._candidate:
                 self._set_status(UpdateState.UP_TO_DATE, target_version=None, release_notes="", release_url="")
                 return
-            self._select_assets_for_candidate(eligible)
+            self._select_assets_for_candidate(releases)
             if not self._asset:
                 raise ValueError("The selected GitHub release has no Windows x64 package")
             self._verify_candidate_manifest()
@@ -343,7 +372,7 @@ class UpdateService:
             self._set_status(UpdateState.ERROR, error_code="check_failed", error_message=str(error))
 
     def _select_asset_for_candidate(self) -> None:
-        self._select_assets_for_candidate([self._candidate] if self._candidate else [])
+        self._select_assets_for_candidate(self._releases or ([self._candidate] if self._candidate else []))
 
     def _set_asset_space_requirement(self, asset: ReleaseAsset) -> None:
         if getattr(sys, "frozen", False):
@@ -494,58 +523,73 @@ class UpdateService:
         if not assets or not candidate:
             return
         try:
-            total = sum(max(0, asset.size) for asset in assets)
-            downloaded_total = 0
-            package_paths: list[Path] = []
-            for asset in assets:
-                filename = asset.name
-                partial = self._update_dir / f"{filename}.part"
-                destination = self._update_dir / filename
-                downloaded = partial.stat().st_size if partial.exists() else 0
-                headers = {"User-Agent": "MapleClassicReporter-Updater", "Accept": "application/octet-stream"}
-                if downloaded:
-                    headers["Range"] = f"bytes={downloaded}-"
-                response = self._session.get(asset.url, headers=headers, stream=True, timeout=(10, 60))
-                if downloaded and response.status_code == 416:
-                    partial.unlink(missing_ok=True)
-                    downloaded = 0
-                    response = self._session.get(asset.url, headers={"User-Agent": headers["User-Agent"]}, stream=True, timeout=(10, 60))
-                response.raise_for_status()
-                if downloaded and response.status_code != 206:
-                    partial.unlink(missing_ok=True)
-                    downloaded = 0
-                response_total = int(response.headers.get("Content-Length") or 0) + downloaded
-                total = max(total, downloaded_total + (response_total or asset.size))
-                self._set_status(UpdateState.DOWNLOADING, downloaded_bytes=downloaded_total + downloaded, total_bytes=total, progress_percent=int((downloaded_total + downloaded) * 100 / max(1, total)))
-                mode = "ab" if downloaded else "wb"
-                with partial.open(mode) as output:
-                    for chunk in response.iter_content(chunk_size=1024 * 1024):
-                        if self._cancel.is_set():
-                            self._set_status(UpdateState.AVAILABLE, downloaded_bytes=downloaded_total + downloaded, total_bytes=total)
-                            return
-                        if not chunk:
-                            continue
-                        output.write(chunk)
-                        downloaded += len(chunk)
-                        self._set_status(UpdateState.DOWNLOADING, downloaded_bytes=downloaded_total + downloaded, total_bytes=total, progress_percent=int((downloaded_total + downloaded) * 100 / max(1, total)))
-                output_hash = sha256_file(partial)
-                if asset.digest and output_hash.lower() != asset.digest.lower():
-                    raise ValueError(f"Downloaded update SHA-256 does not match {asset.name}")
-                os.replace(partial, destination)
-                package_paths.append(destination)
-                downloaded_total += downloaded
-
-            if len(package_paths) > 1:
-                self._package_path = self._compose_delta_chain(package_paths, candidate.version)
-                for path in package_paths:
-                    path.unlink(missing_ok=True)
-            else:
-                self._package_path = package_paths[0]
-            _write_pending_update(self._update_dir, self._package_path, candidate.version)
-            self._set_status(UpdateState.READY, downloaded_bytes=downloaded_total, total_bytes=total, progress_percent=100, package_kind="delta" if all(asset.kind == "delta" for asset in assets) else assets[0].kind, error_code=None, error_message=None)
+            self._download_assets_loop(assets, candidate)
         except Exception as error:
+            if any(asset.kind == "delta" for asset in assets):
+                full = next((asset for asset in candidate.assets if asset.kind == "full"), None)
+                if full and not self._cancel.is_set():
+                    LOGGER.warning("Delta update download failed (%s), falling back to full package", error)
+                    try:
+                        self._set_asset_space_requirement(full)
+                        self._download_assets = [full]
+                        self._asset = full
+                        self._download_assets_loop([full], candidate)
+                        return
+                    except Exception as full_error:
+                        error = full_error
             LOGGER.warning("Update download failed: %s", error)
             self._set_status(UpdateState.ERROR, error_code="download_failed", error_message=str(error))
+
+    def _download_assets_loop(self, assets: list[ReleaseAsset], candidate: ReleaseCandidate) -> None:
+        total = sum(max(0, asset.size) for asset in assets)
+        downloaded_total = 0
+        package_paths: list[Path] = []
+        for asset in assets:
+            filename = asset.name
+            partial = self._update_dir / f"{filename}.part"
+            destination = self._update_dir / filename
+            downloaded = partial.stat().st_size if partial.exists() else 0
+            headers = {"User-Agent": "MapleClassicReporter-Updater", "Accept": "application/octet-stream"}
+            if downloaded:
+                headers["Range"] = f"bytes={downloaded}-"
+            response = self._session.get(asset.url, headers=headers, stream=True, timeout=(10, 60))
+            if downloaded and response.status_code == 416:
+                partial.unlink(missing_ok=True)
+                downloaded = 0
+                response = self._session.get(asset.url, headers={"User-Agent": headers["User-Agent"]}, stream=True, timeout=(10, 60))
+            response.raise_for_status()
+            if downloaded and response.status_code != 206:
+                partial.unlink(missing_ok=True)
+                downloaded = 0
+            response_total = int(response.headers.get("Content-Length") or 0) + downloaded
+            total = max(total, downloaded_total + (response_total or asset.size))
+            self._set_status(UpdateState.DOWNLOADING, downloaded_bytes=downloaded_total + downloaded, total_bytes=total, progress_percent=int((downloaded_total + downloaded) * 100 / max(1, total)))
+            mode = "ab" if downloaded else "wb"
+            with partial.open(mode) as output:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if self._cancel.is_set():
+                        self._set_status(UpdateState.AVAILABLE, downloaded_bytes=downloaded_total + downloaded, total_bytes=total)
+                        return
+                    if not chunk:
+                        continue
+                    output.write(chunk)
+                    downloaded += len(chunk)
+                    self._set_status(UpdateState.DOWNLOADING, downloaded_bytes=downloaded_total + downloaded, total_bytes=total, progress_percent=int((downloaded_total + downloaded) * 100 / max(1, total)))
+            output_hash = sha256_file(partial)
+            if asset.digest and output_hash.lower() != asset.digest.lower():
+                raise ValueError(f"Downloaded update SHA-256 does not match {asset.name}")
+            os.replace(partial, destination)
+            package_paths.append(destination)
+            downloaded_total += downloaded
+
+        if len(package_paths) > 1:
+            self._package_path = self._compose_delta_chain(package_paths, candidate.version)
+            for path in package_paths:
+                path.unlink(missing_ok=True)
+        else:
+            self._package_path = package_paths[0]
+        _write_pending_update(self._update_dir, self._package_path, candidate.version)
+        self._set_status(UpdateState.READY, downloaded_bytes=downloaded_total, total_bytes=total, progress_percent=100, package_kind="delta" if all(asset.kind == "delta" for asset in assets) else assets[0].kind, error_code=None, error_message=None)
 
     def _compose_delta_chain(self, package_paths: list[Path], target_version: str) -> Path:
         """Merge sequential file-level patches into one final patch archive."""

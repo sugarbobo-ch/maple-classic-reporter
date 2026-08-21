@@ -43,4 +43,35 @@ describe('AboutTab update notes', () => {
     fireEvent.click(screen.getByRole('link', { name: '在 GitHub 查看完整 Release' }));
     expect(onOpenExternalUrl).toHaveBeenCalledWith('https://github.com/example/release');
   });
+
+  it('disables check for updates button while downloading', () => {
+    const onCheckForUpdates = vi.fn();
+    render(
+      <AboutTab
+        config={TEST_CONFIG}
+        onUpdateConfig={vi.fn()}
+        onOpenGitHub={vi.fn()}
+        onOpenExternalUrl={vi.fn()}
+        onOpenLogFile={vi.fn()}
+        onOpenLogFolder={vi.fn()}
+        onCheckForUpdates={onCheckForUpdates}
+        updateStatus={{
+          state: 'downloading',
+          current_version: '2.0.0',
+          target_version: '2.1.1',
+          downloaded_bytes: 5 * 1024 * 1024,
+          total_bytes: 10 * 1024 * 1024,
+          progress_percent: 50,
+          package_kind: 'delta',
+          release_notes: '',
+          release_url: '',
+          required_bytes: 0,
+          available_bytes: 0,
+        }}
+      />
+    );
+
+    const checkButton = screen.getByRole('button', { name: '檢查更新' });
+    expect(checkButton).toBeDisabled();
+  });
 });

@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from maple_reporter.update.manifest import SemVer, safe_relative_path
-from maple_reporter.update.service import UpdateService, UpdateState
+from maple_reporter.update.service import ReleaseAsset, ReleaseCandidate, UpdateService, UpdateState
 from maple_reporter.update.updater import _apply_delta, _find_update_icon, apply_update
 
 
@@ -43,6 +43,27 @@ class _Session:
         return _Response(
             chunks=[self.data[:3], self.data[3:]],
             headers={"Content-Length": str(len(self.data))},
+        )
+
+
+class _UnavailableResponse:
+    status_code = 404
+    headers = {}
+
+    def raise_for_status(self):
+        raise RuntimeError("delta package is unavailable")
+
+
+class _DeltaFallbackSession:
+    def __init__(self, full_payload):
+        self.full_payload = full_payload
+
+    def get(self, url, **kwargs):
+        if url.endswith("delta.patch.zip"):
+            return _UnavailableResponse()
+        return _Response(
+            chunks=[self.full_payload[:3], self.full_payload[3:]],
+            headers={"Content-Length": str(len(self.full_payload))},
         )
 
 
@@ -124,6 +145,163 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(service.status()["state"], UpdateState.READY.value)
             self.assertEqual(service.status()["progress_percent"], 100)
             self.assertTrue(any(event == "UPDATE_STATUS" for event, _ in events))
+            service.shutdown()
+
+    def test_delta_download_failure_falls_back_to_full_asset(self):
+        full_payload = b"full portable update payload"
+        full_digest = hashlib.sha256(full_payload).hexdigest()
+        delta = ReleaseAsset(
+            name="MapleClassicReporter-v2.0.0-to-v2.1.0-windows-x64.patch.zip",
+            url="https://github.com/download/delta.patch.zip",
+            size=10,
+            digest="",
+            kind="delta",
+            from_version="2.0.0",
+            to_version="2.1.0",
+        )
+        full = ReleaseAsset(
+            name="MapleClassicReporter-v2.1.1-windows-x64.zip",
+            url="https://github.com/download/full.zip",
+            size=len(full_payload),
+            digest=full_digest,
+            kind="full",
+            to_version="2.1.1",
+        )
+        candidate = ReleaseCandidate(
+            version="2.1.1",
+            prerelease=False,
+            release_url="https://github.com/release/v2.1.1",
+            body="Fixes",
+            assets=[delta, full],
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            service = UpdateService(
+                emit_event=lambda *_: None,
+                get_config=lambda: {"auto_update_enabled": False},
+                is_busy=lambda: False,
+                session=_DeltaFallbackSession(full_payload),
+                install_dir=root / "MapleClassicReporter",
+                update_dir=root / "updates",
+            )
+            service._candidate = candidate
+            service._download_assets = [delta]
+            service._asset = delta
+            self.assertTrue(service.start_download())
+            deadline = time.time() + 3
+            while time.time() < deadline and service.status()["state"] not in {
+                UpdateState.READY.value,
+                UpdateState.ERROR.value,
+            }:
+                time.sleep(0.01)
+            self.assertEqual(service.status()["state"], UpdateState.READY.value)
+            self.assertEqual(service.status()["package_kind"], "full")
+            self.assertEqual(
+                (root / "updates" / full.name).read_bytes(),
+                full_payload,
+            )
+            service.shutdown()
+
+    def test_cached_release_history_keeps_multi_version_delta_chain(self):
+        first_delta = ReleaseAsset(
+            name="MapleClassicReporter-v2.0.0-to-v2.1.0-windows-x64.patch.zip",
+            url="https://github.com/download/v2.1.0.patch.zip",
+            size=10,
+            kind="delta",
+            from_version="2.0.0",
+            to_version="2.1.0",
+        )
+        second_delta = ReleaseAsset(
+            name="MapleClassicReporter-v2.1.0-to-v2.1.1-windows-x64.patch.zip",
+            url="https://github.com/download/v2.1.1.patch.zip",
+            size=11,
+            kind="delta",
+            from_version="2.1.0",
+            to_version="2.1.1",
+        )
+        full = ReleaseAsset(
+            name="MapleClassicReporter-v2.1.1-windows-x64.zip",
+            url="https://github.com/download/v2.1.1.full.zip",
+            size=443,
+            kind="full",
+            to_version="2.1.1",
+        )
+        previous_release = ReleaseCandidate(
+            version="2.1.0",
+            prerelease=False,
+            release_url="https://github.com/release/v2.1.0",
+            body="Previous release",
+            assets=[first_delta],
+        )
+        latest_release = ReleaseCandidate(
+            version="2.1.1",
+            prerelease=False,
+            release_url="https://github.com/release/v2.1.1",
+            body="Latest release",
+            assets=[second_delta, full],
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            update_dir = root / "updates"
+            update_dir.mkdir()
+            cache = {
+                "checked_at": time.time(),
+                "releases": [
+                    UpdateService._candidate_dict(latest_release),
+                    UpdateService._candidate_dict(previous_release),
+                ],
+                "candidate": UpdateService._candidate_dict(latest_release),
+            }
+            (update_dir / "release-cache.json").write_text(
+                json.dumps(cache),
+                encoding="utf-8",
+            )
+            with patch("maple_reporter.update.service.__version__", "2.0.0"):
+                service = UpdateService(
+                    emit_event=lambda *_: None,
+                    get_config=lambda: {"auto_update_enabled": False},
+                    is_busy=lambda: False,
+                    install_dir=root / "MapleClassicReporter",
+                    update_dir=update_dir,
+                )
+                self.assertTrue(service.start_check(force=False))
+                self.assertEqual(
+                    [asset.name for asset in service._download_assets],
+                    [first_delta.name, second_delta.name],
+                )
+                service.shutdown()
+
+    def test_start_check_rejected_while_downloading(self):
+        full_payload = b"portable update payload"
+        candidate = ReleaseCandidate(
+            version="2.1.1",
+            prerelease=False,
+            release_url="https://github.com/release/v2.1.1",
+            body="Notes",
+            assets=[
+                ReleaseAsset(
+                    name="MapleClassicReporter-v2.1.1-windows-x64.zip",
+                    url="https://github.com/download/full.zip",
+                    size=len(full_payload),
+                    kind="full",
+                    to_version="2.1.1",
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            service = UpdateService(
+                emit_event=lambda *_: None,
+                get_config=lambda: {"auto_update_enabled": False},
+                is_busy=lambda: False,
+                session=_DeltaFallbackSession(full_payload),
+                install_dir=root / "MapleClassicReporter",
+                update_dir=root / "updates",
+            )
+            service._candidate = candidate
+            service._download_assets = candidate.assets
+            service._set_status(UpdateState.DOWNLOADING)
+            self.assertFalse(service.start_check(force=True))
             service.shutdown()
 
     def test_delta_application_changes_and_deletes_only_managed_files(self):
