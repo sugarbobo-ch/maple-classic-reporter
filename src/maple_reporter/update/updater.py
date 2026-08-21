@@ -338,8 +338,26 @@ def _launch(executable: Path, token: str) -> subprocess.Popen[Any]:
     )
 
 
+def _enable_dpi_awareness() -> None:
+    if os.name == "nt":
+        try:
+            import ctypes
+            # Per-Monitor V2 DPI awareness (DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4)
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except Exception:
+            try:
+                import ctypes
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                try:
+                    import ctypes
+                    ctypes.windll.user32.SetProcessDPIAware()
+                except Exception:
+                    pass
+
+
 class UpdateProgressUI:
-    """Thread-safe Windows progress dialog with smooth percentage animation."""
+    """Thread-safe, DPI-aware Windows progress dialog with smooth percentage animation."""
 
     def __init__(self, target_version: str = "", install_dir: Path | None = None) -> None:
         self._root = None
@@ -350,6 +368,7 @@ class UpdateProgressUI:
         self._target_text = f"正在套用新版本 v{target_version}…" if target_version else "正在套用更新…"
         self._lock = None
         try:
+            _enable_dpi_awareness()
             import threading
             import tkinter as tk
             from tkinter import ttk
@@ -386,7 +405,7 @@ class UpdateProgressUI:
             lbl = ttk.Label(
                 frame,
                 textvariable=self._status_var,
-                font=("Microsoft JhengHei UI", 10, "bold"),
+                font=("Microsoft JhengHei UI", 10),
             )
             lbl.pack(anchor="w", pady=(0, 10))
 
