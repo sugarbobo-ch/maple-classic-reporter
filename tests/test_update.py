@@ -61,13 +61,13 @@ class UpdateTests(unittest.TestCase):
         digest = hashlib.sha256(payload).hexdigest()
         releases = [
             {
-                "tag_name": "v2.0.0",
+                "tag_name": "v99.0.0",
                 "prerelease": False,
-                "html_url": "https://github.com/sugarbobo-ch/maple-classic-reporter/releases/tag/v2.0.0",
+                "html_url": "https://github.com/sugarbobo-ch/maple-classic-reporter/releases/tag/v99.0.0",
                 "body": "Fixes",
                 "assets": [
                     {
-                        "name": "MapleClassicReporter-v2.0.0-windows-x64.zip",
+                        "name": "MapleClassicReporter-v99.0.0-windows-x64.zip",
                         "browser_download_url": "https://github.com/download/update.zip",
                         "size": len(payload),
                         "digest": f"sha256:{digest}",
