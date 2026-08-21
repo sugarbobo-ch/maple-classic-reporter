@@ -129,6 +129,21 @@ jobs:
           }
           & uv run python @arguments
           if ($LASTEXITCODE -ne 0) { throw "Update asset generation failed with exit code $LASTEXITCODE." }
+          $checksumFiles = @(
+            Get-ChildItem -LiteralPath 'dist' -Filter '*.zip' -File
+            Get-ChildItem -LiteralPath 'dist/update-assets' -File
+          ) | Sort-Object Name
+          if (-not $checksumFiles) { throw "No release assets were generated for SHA256SUMS.txt." }
+          $checksumLines = foreach ($asset in $checksumFiles) {
+            $hash = (Get-FileHash -LiteralPath $asset.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($asset.Name)"
+          }
+          $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $env:GITHUB_WORKSPACE 'dist/update-assets/SHA256SUMS.txt'),
+            $checksumLines,
+            $utf8NoBom
+          )
           Remove-Item -LiteralPath 'dist/previous-release.zip' -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath 'dist/previous-release' -Recurse -Force -ErrorAction SilentlyContinue
 
