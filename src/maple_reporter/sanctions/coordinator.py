@@ -321,7 +321,7 @@ class SanctionSyncCoordinator:
                 })
             else:
                 self._emit("SANCTION_SYNC_FAILED", {
-                    "message": "部分制裁公告取得失敗，已保留已解析命中與既有歷史結果",
+                    "message": "部分官方處分公告取得失敗，已保留已解析命中與既有歷史結果",
                     "summary": summary.to_dict(),
                     "history": updated_history,
                 })

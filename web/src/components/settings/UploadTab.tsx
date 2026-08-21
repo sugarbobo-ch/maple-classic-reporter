@@ -37,8 +37,8 @@ export default function UploadTab({
     <>
       <div className="setting-row">
         <div className="setting-info">
-          <span className="setting-label">Google Drive 授權狀態</span>
-          <span className="setting-desc">用於長期儲存高畫質檢舉影片與照片</span>
+          <span className="setting-label">Google 帳號登入</span>
+          <span className="setting-desc">登入後可長期儲存高畫質檢舉影片與圖片</span>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Badge
@@ -47,7 +47,7 @@ export default function UploadTab({
             data-testid="gdrive-auth-status"
             aria-live="polite"
           >
-            {gdriveAuthenticated ? '已授權' : '尚未授權'}
+            {gdriveAuthenticated ? '已登入' : '尚未登入'}
           </Badge>
           <Button
             variant="outline"
@@ -56,7 +56,11 @@ export default function UploadTab({
             loading={gdriveAuthLoading}
             disabled={gdriveAuthLoading}
           >
-            {gdriveAuthLoading ? '授權中…' : gdriveAuthenticated ? '重新驗證' : '開始授權'}
+            {gdriveAuthLoading
+              ? '登入中…'
+              : gdriveAuthenticated
+                ? '重新登入 Google 帳號'
+                : '登入 Google 帳號'}
           </Button>
         </div>
       </div>
@@ -65,7 +69,7 @@ export default function UploadTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">Google Drive 資料夾名稱</span>
-          <span className="setting-desc">雲端硬碟存放事證之目錄名稱</span>
+          <span className="setting-desc">雲端硬碟存放檢舉證據的資料夾名稱</span>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ width: '220px', minWidth: '180px' }}>
@@ -88,8 +92,8 @@ export default function UploadTab({
 
       <div className="setting-row">
         <div className="setting-info">
-          <span className="setting-label">Discord Webhook URL</span>
-          <span className="setting-desc">頻道即時通報與短片快速分享</span>
+          <span className="setting-label">Discord 頻道連結</span>
+          <span className="setting-desc">用於即時分享影片與圖片</span>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ width: '220px', minWidth: '180px' }}>

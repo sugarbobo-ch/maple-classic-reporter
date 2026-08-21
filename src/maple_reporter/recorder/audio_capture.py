@@ -50,7 +50,7 @@ def _load_soundcard():
         if hasattr(soundcard_module, "SoundcardRuntimeWarning"):
             warnings.filterwarnings("ignore", category=soundcard_module.SoundcardRuntimeWarning)
     except Exception as error:  # pragma: no cover - depends on the host image
-        raise AudioCaptureError("系統聲音擷取元件無法載入。") from error
+        raise AudioCaptureError("系統聲音錄音元件無法載入。") from error
     return soundcard_module
 
 
@@ -168,7 +168,7 @@ class LoopbackAudioRecorder(threading.Thread):
                         )
                     except Exception as error:
                         raise AudioCaptureError(
-                            "選取的音訊輸出裝置在錄製途中失效。"
+                            "選取的音訊輸出裝置在錄音途中失效。"
                         ) from error
 
                     if data is None or len(data) == 0:
@@ -210,7 +210,7 @@ class LoopbackAudioRecorder(threading.Thread):
             self._report_error(str(error))
         except Exception as error:  # pragma: no cover - host API dependent
             LOGGER.warning("WASAPI loopback 錄製失敗 (%s)", type(error).__name__)
-            self._report_error("系統聲音錄製失敗，請重新選擇音訊輸出來源。")
+            self._report_error("系統聲音錄音失敗，請重新選擇音訊輸出來源。")
 
     def _report_error(self, message: str) -> None:
         self._error_message = message
@@ -362,7 +362,7 @@ class ProcessLoopbackAudioRecorder(LoopbackAudioRecorder):
             )
         except Exception as error:
             message = str(error).strip() or (
-                "無法只錄製遊戲聲音。影片將繼續錄製但不包含聲音。"
+                "無法只錄音遊戲聲音。影片將繼續錄影但不包含聲音。"
             )
             LOGGER.warning("遊戲程序音訊錄製失敗 (%s)", type(error).__name__)
             self._report_error(message)

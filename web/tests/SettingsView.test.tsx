@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import SettingsView from '../src/components/SettingsView';
@@ -28,6 +28,20 @@ function renderSettings(
 }
 
 describe('SettingsView backend state', () => {
+  it('supports roving keyboard navigation across setting tabs', async () => {
+    renderSettings('general', false);
+    const user = userEvent.setup();
+    const generalTab = screen.getByRole('tab', { name: '一般與表單預設' });
+
+    generalTab.focus();
+    await user.keyboard('{ArrowRight}');
+
+    const ocrTab = screen.getByRole('tab', { name: '文字辨識（OCR）設定' });
+    await waitFor(() => expect(ocrTab).toHaveFocus());
+    expect(ocrTab).toHaveAttribute('aria-selected', 'true');
+    expect(generalTab).toHaveAttribute('tabindex', '-1');
+  });
+
   it('shows the actual unauthorised Drive state instead of a fixed success badge', () => {
     const { rerender } = renderSettings('upload', false);
     const status = screen.getByTestId('gdrive-auth-status');

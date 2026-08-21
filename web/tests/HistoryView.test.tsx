@@ -62,7 +62,7 @@ describe('HistoryView evidence links and sanction status', () => {
     renderHistory(vi.fn(), vi.fn(), onCheckSanctions);
 
     const checkBtn = screen.getByTestId('check-sanction-status');
-    expect(checkBtn).toHaveTextContent('檢查制裁狀態');
+    expect(checkBtn).toHaveTextContent('檢查官方處分狀態');
     fireEvent.click(checkBtn);
     expect(onCheckSanctions).toHaveBeenCalledTimes(1);
   });
@@ -125,28 +125,29 @@ describe('HistoryView evidence links and sanction status', () => {
       </ToastProvider>
     );
 
-    expect(screen.getByText('已制裁')).toBeInTheDocument();
-    expect(screen.getByText('未被制裁')).toBeInTheDocument();
+    expect(screen.getByText('已封鎖')).toBeInTheDocument();
+    expect(screen.getByText('未封鎖')).toBeInTheDocument();
     expect(screen.getByText('上次完整檢查：尚未完成檢查')).toBeInTheDocument();
 
-    const openAnnouncementBtn = screen.getByLabelText('開啟官方制裁公告');
+    const openAnnouncementBtn = screen.getByLabelText('開啟官方處分公告');
     fireEvent.click(openAnnouncementBtn);
-    expect(onOpenUrl).toHaveBeenCalledWith('https://maplestoryclassic.beanfun.com/Bulletin/Detail/12345');
+    expect(onOpenUrl).toHaveBeenCalledWith(
+      'https://maplestoryclassic.beanfun.com/Bulletin/Detail/12345'
+    );
   });
 
   it('toggles compact mode on and off', () => {
     renderHistory();
 
-    const toggleBtn = screen.getByTestId('toggle-compact-mode');
-    expect(toggleBtn).toHaveTextContent('標準排列');
     expect(screen.getByRole('table')).not.toHaveClass('compact');
 
+    const toggleBtn = screen.getByTestId('toggle-compact-mode');
+    expect(toggleBtn).toHaveAccessibleName('切換為緊密排列');
     fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveTextContent('緊密排列');
     expect(screen.getByRole('table')).toHaveClass('compact');
 
+    expect(toggleBtn).toHaveAccessibleName('切換為標準排列');
     fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveTextContent('標準排列');
     expect(screen.getByRole('table')).not.toHaveClass('compact');
   });
 
@@ -168,7 +169,9 @@ describe('HistoryView evidence links and sanction status', () => {
     );
 
     // Default pageSize is 15 -> page 1 shows 15 rows
-    expect(screen.getByTestId('pagination-info')).toHaveTextContent('顯示第 1 ~ 15 筆，共 25 筆紀錄');
+    expect(screen.getByTestId('pagination-info')).toHaveTextContent(
+      '顯示第 1 ~ 15 筆，共 25 筆紀錄'
+    );
     expect(screen.getByText('suspect-1')).toBeInTheDocument();
     expect(screen.getByText('suspect-15')).toBeInTheDocument();
     expect(screen.queryByText('suspect-16')).not.toBeInTheDocument();
@@ -177,7 +180,9 @@ describe('HistoryView evidence links and sanction status', () => {
     const nextBtn = screen.getByRole('button', { name: '下一頁' });
     fireEvent.click(nextBtn);
 
-    expect(screen.getByTestId('pagination-info')).toHaveTextContent('顯示第 16 ~ 25 筆，共 25 筆紀錄');
+    expect(screen.getByTestId('pagination-info')).toHaveTextContent(
+      '顯示第 16 ~ 25 筆，共 25 筆紀錄'
+    );
     expect(screen.queryByText('suspect-1')).not.toBeInTheDocument();
     expect(screen.getByText('suspect-16')).toBeInTheDocument();
     expect(screen.getByText('suspect-25')).toBeInTheDocument();

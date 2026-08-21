@@ -144,7 +144,7 @@ def _clip_monitor_to_virtual_screen(
         int(virtual_screen["top"]) + int(virtual_screen["height"]),
     )
     if right <= left or bottom <= top:
-        raise ReplayCaptureError("目標遊戲視窗目前不在可擷取的螢幕範圍內。")
+        raise ReplayCaptureError("目前無法取得目標遊戲畫面。")
     return {"left": left, "top": top, "width": right - left, "height": bottom - top}
 
 
@@ -168,7 +168,7 @@ def capture_monitor_frame(
             ).convert("RGB")
             return cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR), True
         except Exception as fallback_error:
-            raise ReplayCaptureError("Windows 畫面擷取暫時失敗。") from fallback_error
+            raise ReplayCaptureError("Windows 暫時無法取得遊戲畫面。") from fallback_error
 
 
 # Backward-compatible name used by older callers and tests. The implementation
@@ -344,11 +344,11 @@ class ReplayBufferRecorder(QObject):
         width -= width % 2
         height -= height % 2
         if width < 2 or height < 2:
-            self._emit_error("目標遊戲視窗大小無法錄製。")
+            self._emit_error("目標遊戲視窗大小無法錄影。")
             return False
 
         if self._save_thread and self._save_thread.is_alive():
-            self._emit_error("上一段回放仍在儲存中，請稍候再啟動。")
+            self._emit_error("上一段循環錄影仍在儲存中，請稍候再啟動。")
             return False
 
         with self._lock:
@@ -533,8 +533,8 @@ class ReplayBufferRecorder(QObject):
                         consecutive_failures += 1
                         if consecutive_failures >= 10:
                             raise ReplayCaptureError(
-                                "無法持續擷取遊戲畫面。請確認遊戲視窗未最小化，"
-                                "且仍位於已連接的螢幕上，再重新啟動回放緩衝。"
+                                "無法持續取得遊戲畫面。請確認遊戲視窗未最小化，"
+                                "且仍位於已連接的螢幕上，再重新啟動循環錄影。"
                             ) from error
                         try:
                             if screen is not None:

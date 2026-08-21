@@ -1,6 +1,11 @@
 import React, { useMemo } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
-import { RECORDING_PRESETS, detectPresetKey, getPresetIndex, PresetKey } from '../constants/presets';
+import {
+  RECORDING_PRESETS,
+  detectPresetKey,
+  getPresetIndex,
+  PresetKey,
+} from '../constants/presets';
 
 export interface PresetSliderProps {
   preset?: string;
@@ -52,12 +57,12 @@ export const PresetSlider: React.FC<PresetSliderProps> = ({
       {/* Header Info */}
       <div className="preset-slider-header">
         <div className="preset-slider-title">
-          <span>預設檔位</span>
+          <span>錄影模式</span>
         </div>
         <div className="preset-badge-wrap">
           {isCustom ? (
             <span className="preset-badge preset-badge-custom">
-              <SlidersHorizontal size={12} /> 自訂模式
+              <SlidersHorizontal size={12} /> 自訂錄影模式
             </span>
           ) : (
             <span className="preset-badge preset-badge-active">
@@ -84,7 +89,7 @@ export const PresetSlider: React.FC<PresetSliderProps> = ({
           {/* Active Flat Fill */}
           <div
             className={`preset-track-fill ${isCustom ? 'is-custom' : ''}`}
-            style={{ width: `${percentage}%` }}
+            style={{ transform: `scaleX(${percentage / 100})` }}
           />
 
           {/* Discrete Dots */}
@@ -125,7 +130,7 @@ export const PresetSlider: React.FC<PresetSliderProps> = ({
             value={currentIndex}
             onChange={handleSliderChange}
             className="preset-range-input"
-            aria-label="效能與畫質設定檔滑桿"
+            aria-label="錄影模式調整滑桿"
           />
         </div>
       </div>

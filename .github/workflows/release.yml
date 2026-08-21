@@ -71,6 +71,9 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 
+      - name: Verify standalone bundle
+        run: uv run python scripts/verify_release_bundle.py --bundle-dir dist/MapleClassicReporter --launch-smoke
+
       - name: Package release ZIP
         shell: powershell
         run: |
@@ -86,11 +89,54 @@ jobs:
           Compress-Archive -LiteralPath $bundlePath -DestinationPath $zipPath -CompressionLevel Optimal -Force
           Write-Host "Created release package: $zipPath"
 
+      - name: Build update manifests and delta package
+        shell: powershell
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $versionLine = Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"([^"]+)"'
+          $projectVersion = $versionLine.Matches[0].Groups[1].Value
+          $tagName = if ("${{ github.ref_name }}" -like "v*") { "${{ github.ref_name }}" } else { "v$projectVersion" }
+          $isPrerelease = $tagName -match '-'
+          $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'MapleClassicReporter-release'; Authorization = "Bearer $env:GITHUB_TOKEN" }
+          $releases = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/sugarbobo-ch/maple-classic-reporter/releases?per_page=30'
+          $previous = $releases | Where-Object { $_.tag_name -ne $tagName -and ([bool]$_.prerelease -eq $isPrerelease) } | Select-Object -First 1
+          $previousBundle = $null
+          $previousVersion = $null
+          if ($previous) {
+            $previousZip = $previous.assets | Where-Object { $_.name -like '*-windows-x64.zip' -and $_.name -notlike '*.patch.zip' } | Select-Object -First 1
+            if ($previousZip) {
+              $previousArchive = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release.zip'
+              Invoke-WebRequest -Headers $headers -Uri $previousZip.browser_download_url -OutFile $previousArchive
+              $previousExtract = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release'
+              Expand-Archive -LiteralPath $previousArchive -DestinationPath $previousExtract -Force
+              $previousBundle = Join-Path $previousExtract 'MapleClassicReporter'
+              $previousVersion = $previous.tag_name.TrimStart('v')
+            }
+          }
+          $arguments = @(
+            'scripts/build_update_assets.py',
+            '--bundle-dir', 'dist/MapleClassicReporter',
+            '--output-dir', 'dist/update-assets',
+            '--version', $projectVersion,
+            '--full-zip', "dist/MapleClassicReporter-$tagName-windows-x64.zip"
+          )
+          if ($previousBundle -and (Test-Path -LiteralPath $previousBundle)) {
+            $arguments += @('--previous-bundle', $previousBundle, '--previous-version', $previousVersion)
+          }
+          & uv run python @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Update asset generation failed with exit code $LASTEXITCODE." }
+          Remove-Item -LiteralPath 'dist/previous-release.zip' -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath 'dist/previous-release' -Recurse -Force -ErrorAction SilentlyContinue
+
       - name: Upload release package
         uses: actions/upload-artifact@v4
         with:
           name: MapleClassicReporter-windows-x64
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/update-assets/*
           if-no-files-found: error
 
   publish:
@@ -129,7 +175,9 @@ jobs:
         if: steps.release-notes.outputs.has_custom_notes == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            dist/update-assets/*
           body_path: ${{ steps.release-notes.outputs.notes_path }}
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: false
@@ -138,6 +186,8 @@ jobs:
         if: steps.release-notes.outputs.has_custom_notes != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            dist/update-assets/*
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true

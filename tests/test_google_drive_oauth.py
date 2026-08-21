@@ -36,8 +36,8 @@ class TestGoogleDriveOAuth(unittest.TestCase):
         )
         self.assertEqual(response["headers"]["Cache-Control"], "no-store")
         self.assertIn('lang="zh-Hant"', body)
-        self.assertIn("Google 帳號連結完成", body)
-        self.assertIn("Google Drive 已連結", body)
+        self.assertIn("Google 帳號登入完成", body)
+        self.assertIn("Google 帳號已登入", body)
         self.assertIn("localhost", body)
         self.assertIn('<svg class="result-icon"', body)
         self.assertIn('stroke-linejoin="round"', body)
@@ -66,9 +66,9 @@ class TestGoogleDriveOAuth(unittest.TestCase):
         ).decode("utf-8")
 
         self.assertEqual(response["status"], "400 Bad Request")
-        self.assertIn("Google 帳號連結失敗", body)
-        self.assertIn("未連結 Google Drive", body)
-        self.assertIn("返回應用程式後重新授權", body)
+        self.assertIn("Google 帳號登入失敗", body)
+        self.assertIn("尚未登入 Google 帳號", body)
+        self.assertIn("返回應用程式後重新登入", body)
         self.assertNotIn("access_denied", body)
         self.assertIsInstance(page.error, ValueError)
 
@@ -205,7 +205,7 @@ class TestGoogleDriveOAuth(unittest.TestCase):
                 ok, message = manager.authenticate_interactive()
 
             self.assertTrue(ok)
-            self.assertIn("Google 帳號已連結", message)
+            self.assertIn("Google 帳號已登入", message)
             from_file.assert_called_once_with(str(client_path), drive_service.SCOPES)
             run_local_server.assert_called_once_with(
                 fake_flow, host="localhost", port=0

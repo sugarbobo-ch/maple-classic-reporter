@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { IconButton } from './ui';
 import { useDisclosure, useToast } from '../hooks';
@@ -23,6 +23,7 @@ import {
   AudioDeviceItem,
   ViolationTemplateItem,
   ClearRecordingsResponse,
+  UpdateStatus,
 } from '../types';
 import { isValidDiscordWebhookUrl } from '../utils';
 import { RECORDING_PRESETS, detectPresetKey, PresetKey } from '../constants/presets';
@@ -42,7 +43,26 @@ export interface SettingsViewProps {
   onRefreshWindows?: () => void;
   onRefreshAudio?: () => void;
   onClearRecordings?: () => void;
+  updateStatus?: UpdateStatus | null;
+  onCheckForUpdates?: () => void;
+  onStartUpdateDownload?: () => void;
+  onCancelUpdateDownload?: () => void;
+  onRestartAndApplyUpdate?: () => void;
+  updateBusy?: boolean;
 }
+
+const SETTINGS_TABS = [
+  { id: 'general', label: '一般與表單預設' },
+  { id: 'ocr', label: '文字辨識（OCR）設定' },
+  { id: 'upload', label: '上傳與帳號' },
+  { id: 'recording', label: '錄影與音訊' },
+  { id: 'replay', label: '循環錄影' },
+  { id: 'hotkeys', label: '快捷鍵' },
+  { id: 'quicklinks', label: '快捷連結' },
+  { id: 'about', label: '關於與更新' },
+] as const;
+
+type SettingsTabId = (typeof SETTINGS_TABS)[number]['id'];
 
 export default function SettingsView({
   config,
@@ -58,8 +78,15 @@ export default function SettingsView({
   onAuthenticateDrive,
   onRefreshWindows,
   onRefreshAudio,
+  updateStatus = null,
+  onCheckForUpdates,
+  onStartUpdateDownload,
+  onCancelUpdateDownload,
+  onRestartAndApplyUpdate,
+  updateBusy = false,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState(initialTab);
+  const tabListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialTab) {
@@ -67,11 +94,36 @@ export default function SettingsView({
     }
   }, [initialTab]);
 
-  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, tab: string) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      setActiveTab(tab);
+  useEffect(() => {
+    const activeTabElement = tabListRef.current?.querySelector<HTMLElement>(
+      `[data-settings-tab="${activeTab}"]`
+    );
+    activeTabElement?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeTab]);
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, tab: SettingsTabId) => {
+    const currentIndex = SETTINGS_TABS.findIndex(({ id }) => id === tab);
+    let nextIndex = currentIndex;
+
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = (currentIndex + 1) % SETTINGS_TABS.length;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = (currentIndex - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = SETTINGS_TABS.length - 1;
+    } else {
+      return;
     }
+
+    event.preventDefault();
+    const nextTab = SETTINGS_TABS[nextIndex].id;
+    const tabList = event.currentTarget.parentElement;
+    setActiveTab(nextTab);
+    requestAnimationFrame(() => {
+      tabList?.querySelector<HTMLButtonElement>(`[data-settings-tab="${nextTab}"]`)?.focus();
+    });
   };
 
   const { toast } = useToast();
@@ -115,7 +167,9 @@ export default function SettingsView({
   // Local text input states for debouncing
   const [defaultMap, setDefaultMap] = useState(config.default_map || '');
   const [defaultNote, setDefaultNote] = useState(config.default_note || '自動打怪/外掛行為');
-  const [gdriveFolder, setGdriveFolder] = useState(config.gdrive_folder_name || 'MapleClassic_Reports');
+  const [gdriveFolder, setGdriveFolder] = useState(
+    config.gdrive_folder_name || 'MapleClassic_Reports'
+  );
   const [discordWebhook, setDiscordWebhook] = useState(config.discord_webhook_url || '');
 
   // Testing discord webhook state
@@ -133,7 +187,8 @@ export default function SettingsView({
     if (config.gdrive_folder_name !== undefined) setGdriveFolder(config.gdrive_folder_name);
     if (config.discord_webhook_url !== undefined) setDiscordWebhook(config.discord_webhook_url);
     if (config.quick_links && config.quick_links.length > 0) setQuickLinks(config.quick_links);
-    if (config.violation_templates && config.violation_templates.length > 0) setTemplates(config.violation_templates);
+    if (config.violation_templates && config.violation_templates.length > 0)
+      setTemplates(config.violation_templates);
   }, [config]);
 
   // Immediate save on change
@@ -142,17 +197,23 @@ export default function SettingsView({
   };
 
   // Hotkey direct capture state
-  const [listeningForHotkey, setListeningForHotkey] = useState<'save_replay' | 'record_video' | null>(null);
+  const [listeningForHotkey, setListeningForHotkey] = useState<
+    'save_replay' | 'record_video' | null
+  >(null);
 
   const handleHotkeyChange = (
     key: 'save_replay_hotkey' | 'record_video_hotkey',
     newShortcut: string
   ) => {
     const otherKey = key === 'save_replay_hotkey' ? 'record_video_hotkey' : 'save_replay_hotkey';
-    const otherShortcut = config[otherKey] || (key === 'save_replay_hotkey' ? 'Ctrl+Shift+F10' : 'Ctrl+Shift+F9');
+    const otherShortcut =
+      config[otherKey] || (key === 'save_replay_hotkey' ? 'Ctrl+Shift+F10' : 'Ctrl+Shift+F9');
     if (newShortcut.trim().toLowerCase() === otherShortcut.trim().toLowerCase()) {
       const otherLabel = key === 'save_replay_hotkey' ? '開始一般錄影' : '儲存循環錄影';
-      toast.error('快捷鍵重複衝突', `「${newShortcut}」已被「${otherLabel}」使用，無法重複設定！請選擇其他按鍵。`);
+      toast.error(
+        '快捷鍵重複衝突',
+        `「${newShortcut}」已被「${otherLabel}」使用，無法重複設定！請選擇其他按鍵。`
+      );
       return false;
     }
     onUpdateConfig(key, newShortcut);
@@ -189,19 +250,19 @@ export default function SettingsView({
       } else {
         const special: Record<string, string> = {
           ' ': 'Space',
-          'Space': 'Space',
-          'Tab': 'Tab',
-          'Enter': 'Enter',
-          'Insert': 'Insert',
-          'Delete': 'Delete',
-          'Home': 'Home',
-          'End': 'End',
-          'PageUp': 'PageUp',
-          'PageDown': 'PageDown',
-          'ArrowUp': 'Up',
-          'ArrowDown': 'Down',
-          'ArrowLeft': 'Left',
-          'ArrowRight': 'Right',
+          Space: 'Space',
+          Tab: 'Tab',
+          Enter: 'Enter',
+          Insert: 'Insert',
+          Delete: 'Delete',
+          Home: 'Home',
+          End: 'End',
+          PageUp: 'PageUp',
+          PageDown: 'PageDown',
+          ArrowUp: 'Up',
+          ArrowDown: 'Down',
+          ArrowLeft: 'Left',
+          ArrowRight: 'Right',
         };
         if (special[e.key]) {
           keyName = special[e.key];
@@ -212,7 +273,8 @@ export default function SettingsView({
 
       if (keyName) {
         const fullShortcut = `Ctrl+Shift+${keyName}`;
-        const configKey = listeningForHotkey === 'save_replay' ? 'save_replay_hotkey' : 'record_video_hotkey';
+        const configKey =
+          listeningForHotkey === 'save_replay' ? 'save_replay_hotkey' : 'record_video_hotkey';
         handleHotkeyChange(configKey, fullShortcut);
         setListeningForHotkey(null);
       }
@@ -275,9 +337,7 @@ export default function SettingsView({
   const handleSaveTemplate = (name: string, content: string) => {
     let updated: ViolationTemplateItem[];
     if (editingTemplateIndex !== null) {
-      updated = templates.map((t, idx) =>
-        idx === editingTemplateIndex ? { name, content } : t
-      );
+      updated = templates.map((t, idx) => (idx === editingTemplateIndex ? { name, content } : t));
     } else {
       updated = [...templates, { name, content }];
     }
@@ -311,14 +371,14 @@ export default function SettingsView({
     onUpdateConfig('quick_links', updated);
     setEditingLink(null);
     closeLinkModal();
-    toast.success(editingLink ? '捷徑已更新' : '捷徑已新增');
+    toast.success(editingLink ? '快捷連結已更新' : '快捷連結已新增');
   };
 
   const handleDeleteQuickLink = (id: string) => {
     const updated = quickLinks.filter((l) => l.id !== id);
     setQuickLinks(updated);
     onUpdateConfig('quick_links', updated);
-    toast.info('已刪除捷徑');
+    toast.info('已刪除快捷連結');
   };
 
   const handleMoveQuickLink = (idx: number, direction: 'up' | 'down') => {
@@ -368,11 +428,14 @@ export default function SettingsView({
 
   const handleTestDiscord = async () => {
     if (!discordWebhook.trim()) {
-      toast.warning('請先輸入 Discord Webhook URL');
+      toast.warning('請先輸入 Discord 頻道連結');
       return;
     }
     if (!isValidDiscordWebhookUrl(discordWebhook)) {
-      toast.warning('Webhook 格式不符', '必須以 https://discord.com/api/webhooks/ 或 discordapp.com 開頭');
+      toast.warning(
+        'Discord 頻道連結格式不符',
+        '請輸入有效的 Discord HTTPS 連結'
+      );
       return;
     }
     setTestingDiscord(true);
@@ -380,9 +443,9 @@ export default function SettingsView({
       try {
         const ok = await window.pywebview.api.test_discord_webhook(discordWebhook);
         if (ok) {
-          toast.success('Discord Webhook 測試連線成功！');
+          toast.success('Discord 頻道連結測試成功！');
         } else {
-          toast.error('Discord Webhook 測試失敗', '請確認 Webhook 網址是否正確有效');
+          toast.error('Discord 頻道連結測試失敗', '請確認連結網址是否正確有效');
         }
       } catch (e: any) {
         toast.error('發送失敗', e?.message || String(e));
@@ -404,7 +467,7 @@ export default function SettingsView({
           }),
         });
         if (res.ok || res.status === 204) {
-          toast.success('Discord Webhook 測試連線成功！');
+          toast.success('Discord 頻道連結測試成功！');
         } else {
           toast.error('連線測試失敗', `狀態碼: ${res.status}`);
         }
@@ -462,7 +525,7 @@ export default function SettingsView({
         toast.info('日誌檔案已建立', '尚未有任何日誌內容。');
       }
     } else {
-      toast.info('模擬日誌檢視 (Mock)', '已在獨立視窗開啟模擬日誌');
+      toast.info('測試日誌檢視', '已在獨立視窗開啟測試日誌');
     }
   };
 
@@ -472,7 +535,7 @@ export default function SettingsView({
     } else if (window.pywebview?.api?.open_app_data_folder) {
       window.pywebview.api.open_app_data_folder();
     } else {
-      toast.info('開啟日誌資料夾 (Mock)');
+      toast.info('開啟日誌資料夾（測試）');
     }
   };
 
@@ -484,7 +547,7 @@ export default function SettingsView({
 
   const destinationOptions: DropdownOption<'gdrive' | 'discord'>[] = [
     { value: 'gdrive', label: 'Google Drive（建議）' },
-    { value: 'discord', label: 'Discord Webhook' },
+    { value: 'discord', label: 'Discord 頻道連結' },
   ];
 
   const fpsOptions: DropdownOption<number>[] = [
@@ -595,95 +658,26 @@ export default function SettingsView({
 
       <div className="settings-container">
         {/* Sidebar Navigation */}
-        <div className="settings-sidebar">
-          <div
-            className={`settings-nav-item ${activeTab === 'general' ? 'active' : ''}`}
-            onClick={() => setActiveTab('general')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'general'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'general')}
-          >
-            一般與表單預設
-          </div>
-          <div
-            className={`settings-nav-item ${activeTab === 'ocr' ? 'active' : ''}`}
-            onClick={() => setActiveTab('ocr')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'ocr'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'ocr')}
-          >
-            OCR 辨識設定
-          </div>
-          <div
-            className={`settings-nav-item ${activeTab === 'upload' ? 'active' : ''}`}
-            onClick={() => setActiveTab('upload')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'upload'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'upload')}
-          >
-            上傳與帳號
-          </div>
-          <div
-            className={`settings-nav-item ${activeTab === 'recording' ? 'active' : ''}`}
-            onClick={() => setActiveTab('recording')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'recording'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'recording')}
-          >
-            錄影與音訊
-          </div>
-          <div
-            className={`settings-nav-item ${activeTab === 'replay' ? 'active' : ''}`}
-            onClick={() => setActiveTab('replay')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'replay'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'replay')}
-          >
-            循環錄影
-          </div>
-          <div
-            className={`settings-nav-item ${activeTab === 'hotkeys' ? 'active' : ''}`}
-            onClick={() => setActiveTab('hotkeys')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'hotkeys'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'hotkeys')}
-          >
-            全域快捷鍵
-          </div>
-          <div
-            className={`settings-nav-item ${activeTab === 'quicklinks' ? 'active' : ''}`}
-            onClick={() => setActiveTab('quicklinks')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'quicklinks'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'quicklinks')}
-          >
-            快捷連結
-          </div>
-          <div
-            className={`settings-nav-item ${activeTab === 'about' ? 'active' : ''}`}
-            onClick={() => setActiveTab('about')}
-            role="tab"
-            tabIndex={0}
-            aria-selected={activeTab === 'about'}
-            aria-controls="settings-panel"
-            onKeyDown={(event) => handleTabKeyDown(event, 'about')}
-          >
-            關於與更新
-          </div>
+        <div ref={tabListRef} className="settings-sidebar" role="tablist" aria-label="設定分類">
+          {SETTINGS_TABS.map(({ id, label }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`settings-nav-item ${isActive ? 'active' : ''}`}
+                data-settings-tab={id}
+                onClick={() => setActiveTab(id)}
+                role="tab"
+                tabIndex={isActive ? 0 : -1}
+                aria-selected={isActive}
+                aria-controls="settings-panel"
+                onKeyDown={(event) => handleTabKeyDown(event, id)}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Panel Content */}
@@ -721,9 +715,7 @@ export default function SettingsView({
           )}
 
           {/* Tab 2: OCR 辨識設定 */}
-          {activeTab === 'ocr' && (
-            <OcrTab config={config} onUpdateConfig={onUpdateConfig} />
-          )}
+          {activeTab === 'ocr' && <OcrTab config={config} onUpdateConfig={onUpdateConfig} />}
 
           {/* Tab 3: 上傳與帳號 */}
           {activeTab === 'upload' && (
@@ -824,6 +816,12 @@ export default function SettingsView({
               onOpenGitHub={handleOpenGitHub}
               onOpenLogFile={handleOpenLogFile}
               onOpenLogFolder={handleOpenLogFolder}
+              updateStatus={updateStatus}
+              onCheckForUpdates={onCheckForUpdates}
+              onStartUpdateDownload={onStartUpdateDownload}
+              onCancelUpdateDownload={onCancelUpdateDownload}
+              onRestartAndApplyUpdate={onRestartAndApplyUpdate}
+              updateBusy={updateBusy}
             />
           )}
         </div>

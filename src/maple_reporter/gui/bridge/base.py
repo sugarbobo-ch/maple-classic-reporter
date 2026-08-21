@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import webview
 from PIL import Image
+from maple_reporter.update.service import UpdateService
 
 LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +54,17 @@ class BaseBridgeMixin:
         self._recording_thread: threading.Thread | None = None
         self._submission_lock = threading.Lock()
         self._config_lock = threading.RLock()
+
+        self.update_service = UpdateService(
+            emit_event=self._emit_event,
+            get_config=lambda: self.config,
+            is_busy=lambda: bool(
+                self._recording_active
+                or self._replay_state not in {"idle", "stopped"}
+                or self._submission_lock.locked()
+            ),
+            close_app=lambda: self._window.destroy() if self._window else None,
+        )
 
         # Replay status
         self._replay_state = "idle"
@@ -290,5 +302,7 @@ class BaseBridgeMixin:
             self.replay_recorder.stop()
         if hasattr(self, "sanction_coordinator") and self.sanction_coordinator:
             self.sanction_coordinator.cancel(timeout=1.0)
+        if hasattr(self, "update_service") and self.update_service:
+            self.update_service.shutdown()
         if hasattr(self, "media_server") and self.media_server:
             self.media_server.stop()

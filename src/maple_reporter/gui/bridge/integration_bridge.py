@@ -75,21 +75,21 @@ class IntegrationBridgeMixin:
     def test_discord_webhook(self, webhook_url: str) -> dict[str, Any]:
         """Test sending a test message to the Discord Webhook URL."""
         if not webhook_url:
-            return {"success": False, "message": "請先輸入 Webhook URL"}
+            return {"success": False, "message": "請先輸入 Discord 頻道連結"}
         mod = _bridge_mod()
         if not mod.is_valid_discord_webhook_url(webhook_url):
-            return {"success": False, "message": "請輸入有效的 Discord HTTPS Webhook URL"}
+            return {"success": False, "message": "請輸入有效的 Discord HTTPS 頻道連結"}
         try:
             import requests
 
             res = requests.post(
                 webhook_url,
-                json={"content": " Maple Classic Reporter: Webhook 連線測試成功！"},
+                json={"content": " Maple Classic Reporter: Discord 頻道連結測試成功！"},
                 timeout=8,
             )
             if res.status_code in (200, 204):
-                return {"success": True, "message": "Discord Webhook 測試連線成功！"}
-            return {"success": False, "message": f"Webhook 回傳錯誤碼: {res.status_code}"}
+                return {"success": True, "message": "Discord 頻道連結測試成功！"}
+            return {"success": False, "message": f"Discord 頻道連結回傳錯誤碼: {res.status_code}"}
         except Exception as err:
             return {"success": False, "message": f"連線失敗: {str(err)}"}
 

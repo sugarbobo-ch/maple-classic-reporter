@@ -35,19 +35,14 @@ export default function QuickLinksTab({
       <div className="setting-row no-border">
         <div className="setting-info">
           <span className="setting-label">快捷連結管理</span>
-          <span className="setting-desc">管理首頁橫向快捷按鈕，可自由編輯、排序與自訂圖示</span>
+          <span className="setting-desc">管理首頁橫向快捷連結，可編輯、排序與自訂圖示</span>
         </div>
-        <Button
-          variant="primary"
-          size="md"
-          icon={Plus}
-          onClick={onOpenAddModal}
-        >
+        <Button variant="primary" size="md" icon={Plus} onClick={onOpenAddModal}>
           新增連結
         </Button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div className="quick-link-list">
         {quickLinks.map((item, idx) => (
           <div
             key={item.id || idx}
@@ -61,16 +56,23 @@ export default function QuickLinksTab({
             onDragEnd={onDragEnd}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span title="按住拖曳以重新排序" style={{ display: 'flex', alignItems: 'center', cursor: 'grab', flexShrink: 0 }}>
+              <span
+                title="按住拖曳以重新排序"
+                style={{ display: 'flex', alignItems: 'center', cursor: 'grab', flexShrink: 0 }}
+              >
                 <GripVertical size={18} color="var(--color-border-strong)" />
               </span>
-              <DynamicIcon
-                name={item.icon || 'Globe'}
-                size={18}
-                color="var(--color-primary)"
-              />
+              <DynamicIcon name={item.icon || 'Globe'} size={18} color="var(--color-primary)" />
               <div>
-                <div style={{ fontWeight: 600, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: '0.88rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
                   <span>{item.title}</span>
                   {item.isDefault && (
                     <Badge variant="default" style={{ fontSize: '0.7rem', padding: '1px 6px' }}>

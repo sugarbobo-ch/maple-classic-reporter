@@ -17,6 +17,7 @@ def verify_bundle(bundle: Path) -> list[str]:
     resource_root = bundle / "_internal" if (bundle / "_internal").is_dir() else bundle
     required_files = {
         "executable": bundle / "MapleClassicReporter.exe",
+        "updater executable": bundle / "MapleClassicReporterUpdater.exe",
         "React entrypoint": resource_root / "web" / "dist" / "index.html",
         "application icon": resource_root / "assets" / "icon.png",
         "PyInstaller icon": resource_root / "assets" / "icon.ico",

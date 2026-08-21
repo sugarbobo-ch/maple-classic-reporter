@@ -49,12 +49,12 @@ class OcrWorkerThread(QThread):
 
         # Local OCR is the fast default. AI review is explicit in the preview UI.
         if self.recognize_map:
-            self.status_changed.emit("RapidOCR 辨識地圖名稱中...")
+            self.status_changed.emit("正在辨識地圖名稱...")
             self.detected_map_name = recognize_map_name_from_image_list(self.keyframes)
             if self.detected_map_name:
                 self.map_name_found.emit(self.detected_map_name)
         else:
-            self.status_changed.emit("已略過地圖 OCR")
+            self.status_changed.emit("已略過地圖辨識")
 
         if self.recognize_id:
             # RapidOCR / WinSDK — local recognition

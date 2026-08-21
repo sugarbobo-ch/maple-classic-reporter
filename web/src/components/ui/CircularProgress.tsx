@@ -15,6 +15,8 @@ export interface CircularProgressProps {
   children?: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
+  ariaLabel?: string;
+  ariaValueNow?: number;
 }
 
 export default function CircularProgress({
@@ -32,6 +34,8 @@ export default function CircularProgress({
   children,
   className = '',
   style,
+  ariaLabel,
+  ariaValueNow,
 }: CircularProgressProps) {
   const center = size / 2;
   const radius = Math.max(1, (size - strokeWidth) / 2);
@@ -43,6 +47,11 @@ export default function CircularProgress({
   return (
     <div
       className={`circular-progress-wrap ${className}`}
+      role={ariaLabel ? 'progressbar' : undefined}
+      aria-label={ariaLabel}
+      aria-valuemin={ariaLabel ? 0 : undefined}
+      aria-valuemax={ariaLabel ? 100 : undefined}
+      aria-valuenow={ariaLabel ? ariaValueNow ?? clamped * 100 : undefined}
       style={{
         width: size,
         height: size,

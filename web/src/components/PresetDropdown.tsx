@@ -18,7 +18,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   fps,
   replay,
   onChangePreset,
-  label = '錄製檔位',
+  label = '錄影模式',
 }) => {
   const detectedKey = useMemo(() => {
     return detectPresetKey(duration, fps, replay);
@@ -59,7 +59,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
         options={options}
         value={activeKey}
         onChange={handleChange}
-        placeholder="選擇錄製檔位..."
+        placeholder="選擇錄影模式..."
       />
       <div className="preset-params-tags" style={{ marginTop: '6px' }}>
         <span className="preset-param-tag">{duration ?? activePreset?.duration ?? 8}秒</span>

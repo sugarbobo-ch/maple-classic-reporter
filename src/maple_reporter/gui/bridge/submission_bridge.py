@@ -58,15 +58,15 @@ class SubmissionBridgeMixin:
         # 1. Upload evidence if URL not yet provided
         if not evidence_url:
             if not file_path:
-                message = "找不到事證檔案，請重新選取或錄製影片後再試。"
+                message = "找不到檢舉證據檔案，請重新選取或錄影後再試。"
                 self._emit_submission_status("uploading", message, "error")
                 return {"status": "error", "message": message}
             if not os.path.isfile(file_path):
-                message = "事證檔案不存在或無法讀取，請重新選取後再試。"
+                message = "檢舉證據檔案不存在或無法讀取，請重新選取後再試。"
                 self._emit_submission_status("uploading", message, "error")
                 return {"status": "error", "message": message}
 
-            self._emit_submission_status("uploading", "正在上傳事證檔案...")
+            self._emit_submission_status("uploading", "正在上傳檢舉證據檔案...")
             if dest == "gdrive":
                 folder_name = self.config.get("gdrive_folder_name", "MapleClassic_Reports")
                 ok, res_url = self.drive_mgr.upload_file_and_make_public(file_path, folder_name)
@@ -78,14 +78,14 @@ class SubmissionBridgeMixin:
             else:
                 webhook_url = self.config.get("discord_webhook_url", "")
                 if not webhook_url:
-                    message = "尚未設定 Discord Webhook URL"
+                    message = "尚未設定 Discord 頻道連結"
                     self._emit_submission_status("uploading", message, "error")
                     return {"status": "error", "message": message}
                 if not mod.is_valid_discord_webhook_url(webhook_url):
-                    message = "請先設定有效的 Discord HTTPS Webhook URL"
+                    message = "請先設定有效的 Discord 頻道連結網址"
                     self._emit_submission_status("uploading", message, "error")
                     return {"status": "error", "message": message}
-                desc = f"檢舉事證 - 玩家: {form_data.get('suspect_id')}, 地圖: {form_data.get('map_name')}"
+                desc = f"檢舉證據 - 玩家: {form_data.get('suspect_id')}, 地圖: {form_data.get('map_name')}"
                 ok, res_msg = mod.upload_evidence_to_discord(webhook_url, file_path, desc)
                 if not ok:
                     message = f"Discord 上傳失敗: {res_msg}"
@@ -156,7 +156,7 @@ class SubmissionBridgeMixin:
             )
         except PlaywrightBrowserError as err:
             LOGGER.warning("Playwright submission error: %s", err)
-            message = f"Playwright 錯誤: {err.details.summary}"
+            message = f"自動填寫表單錯誤: {err.details.summary}"
             self._emit_submission_status("filling", message, "error")
             return {"status": "error", "message": message}
         except Exception as err:

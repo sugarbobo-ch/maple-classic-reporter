@@ -35,17 +35,17 @@ export default function SuspectSelector({
 
   const getSubtext = () => {
     if (whitelistMode) {
-      return '選擇白名單：點選要排除的名稱；加入後，往後辨識將自動略過。';
+      return '選擇略過名單（白名單）：點選要排除的名稱；加入後，之後辨識會自動略過。';
     }
     if (!idOcrEnabled) {
       return hasCandidates
-        ? 'OCR 辨識結果：已關閉自動填入，點選下方名稱可帶入角色 ID。'
+        ? '文字辨識（OCR）結果：已關閉自動填入，點選下方名稱可帶入角色 ID。'
         : '已關閉自動辨識角色 ID，請手動輸入';
     }
     if (hasCandidates) {
       return suspectId
-        ? 'OCR 辨識結果：已自動填入首選角色 ID，點選下方名稱可快速替換。'
-        : 'OCR 辨識結果：點選下方名稱即可帶入角色 ID。';
+        ? '文字辨識（OCR）結果：已自動填入首選角色 ID，點選下方名稱可快速替換。'
+        : '文字辨識（OCR）結果：點選下方名稱即可帶入角色 ID。';
     }
     return '';
   };
@@ -156,40 +156,23 @@ export default function SuspectSelector({
       )}
 
       {/* Whitelist Action Toolbar at Bottom of Section */}
-      <div
-        style={{
-          paddingTop: '6px',
-          borderTop: '1px dashed var(--color-border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
+      <div className="whitelist-action-toolbar">
         {!whitelistMode ? (
-          <Button
-            variant="outline"
-            size="sm"
-            icon={ShieldCheck}
-            onClick={onEnterWhitelistMode}
-            style={{ fontSize: '0.8rem' }}
-          >
-            從辨識結果管理白名單
-          </Button>
-        ) : (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-            }}
-          >
-            <span
-              style={{ fontSize: '0.78rem', color: 'var(--color-status-success)', fontWeight: 600 }}
+          <div className="whitelist-entry-actions">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={ShieldCheck}
+              onClick={onEnterWhitelistMode}
+              style={{ fontSize: '0.8rem' }}
             >
-              正在選取白名單名單
-            </span>
-            <div style={{ display: 'flex', gap: '6px' }}>
+              管理略過名單
+            </Button>
+          </div>
+        ) : (
+          <div className="whitelist-selection-toolbar">
+            <span className="whitelist-selection-label">正在選取略過名單</span>
+            <div className="whitelist-selection-actions">
               <Button variant="outline" size="sm" onClick={onCancelWhitelistMode}>
                 取消
               </Button>

@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { History, Minus, Settings, Square, Sun, Moon, X } from 'lucide-react';
-import { IconButton, Badge } from './ui';
+import { Download, History, Minus, RefreshCw, Settings, Square, Sun, Moon, X } from 'lucide-react';
+import { IconButton, Badge, Button, CircularProgress } from './ui';
 import { usePyWebViewEvents, useTheme } from '../hooks';
-import { ViewType } from '../types';
+import { UpdateStatus, ViewType } from '../types';
 import appLogo from '../assets/icon.png';
 import { APP_VERSION } from '../constants/version';
 
@@ -32,6 +32,12 @@ export interface HeaderProps {
   isDevMode?: boolean;
   theme?: string;
   onUpdateTheme?: (theme: 'light' | 'dark') => void;
+  updateStatus?: UpdateStatus | null;
+  updateBusy?: boolean;
+  onStartUpdateDownload?: () => void;
+  onRestartAndApplyUpdate?: () => void;
+  onCancelUpdateDownload?: () => void;
+  onOpenUpdateDetails?: () => void;
 }
 
 export default function Header({
@@ -40,6 +46,11 @@ export default function Header({
   isDevMode,
   theme: configTheme,
   onUpdateTheme,
+  updateStatus,
+  updateBusy = false,
+  onStartUpdateDownload,
+  onRestartAndApplyUpdate,
+  onOpenUpdateDetails,
 }: HeaderProps) {
   const { isDark, toggleTheme } = useTheme(configTheme, onUpdateTheme);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
@@ -121,6 +132,107 @@ export default function Header({
     void handleToggleWindowMaximized();
   };
 
+  const updateState = updateStatus?.state;
+  const hasUpdateControl = Boolean(
+    updateState &&
+      !['idle', 'checking', 'up_to_date', 'applying'].includes(updateState)
+  );
+  const updateLabel = updateStatus?.target_version
+    ? `更新至 v${updateStatus.target_version}`
+    : '更新';
+  const updatePercent = Math.max(0, Math.min(100, Math.round(updateStatus?.progress_percent || 0)));
+
+  const renderUpdateControl = () => {
+    if (!hasUpdateControl) return null;
+    if (updateState === 'downloading') {
+      return (
+        <button
+          type="button"
+          className="header-update-progress"
+          onClick={onOpenUpdateDetails}
+          aria-label={`正在${updateLabel}，進度 ${updatePercent}%`}
+          title={`正在${updateLabel}，點擊查看詳細資料`}
+          aria-describedby="header-update-status"
+        >
+          <CircularProgress
+            value={updatePercent / 100}
+            size={32}
+            strokeWidth={3}
+            progressColor="var(--color-primary)"
+            trackColor="var(--color-border)"
+            ariaLabel={`正在${updateLabel}`}
+            ariaValueNow={updatePercent}
+          >
+            <span aria-hidden="true">{updatePercent}%</span>
+          </CircularProgress>
+          <span id="header-update-status" className="sr-only" role="status" aria-live="polite">
+            {`正在${updateLabel}，進度 ${updatePercent}%`}
+          </span>
+        </button>
+      );
+    }
+    if (updateState === 'ready' || updateState === 'waiting_for_idle') {
+      const waiting = updateState === 'waiting_for_idle' || updateBusy;
+      return (
+        <Button
+          variant="success"
+          size="sm"
+          icon={RefreshCw}
+          onClick={onRestartAndApplyUpdate}
+          disabled={waiting}
+          title={waiting ? '目前工作完成後會自動重啟更新' : '關閉並套用更新'}
+          aria-label={waiting ? '目前工作完成後重啟更新' : '重啟應用並套用更新'}
+          className="header-update-button"
+        >
+          {waiting ? '完成後重啟' : '重啟應用'}
+        </Button>
+      );
+    }
+    if (updateState === 'insufficient_space') {
+      return (
+        <Button
+          variant="danger"
+          size="sm"
+          icon={Download}
+          onClick={onOpenUpdateDetails}
+          title={updateStatus?.error_message || '可用空間不足'}
+          aria-label="更新空間不足，查看詳細資料"
+          className="header-update-button"
+        >
+          空間不足
+        </Button>
+      );
+    }
+    if (updateState === 'error') {
+      return (
+        <Button
+          variant="danger"
+          size="sm"
+          icon={Download}
+          onClick={onOpenUpdateDetails}
+          title={updateStatus?.error_message || '更新失敗，點擊重試'}
+          aria-label="更新失敗，查看詳細資料並重試"
+          className="header-update-button"
+        >
+          更新失敗
+        </Button>
+      );
+    }
+    return (
+      <Button
+        variant="primary"
+        size="sm"
+        icon={Download}
+        onClick={onStartUpdateDownload}
+        title={updateLabel}
+        aria-label={`有可用更新：${updateLabel}，開始下載`}
+        className="header-update-button"
+      >
+        有可用更新
+      </Button>
+    );
+  };
+
   return (
     <header
       className="app-header pywebview-drag-region"
@@ -145,13 +257,14 @@ export default function Header({
             userSelect: 'none',
           }}
         >
-          <span
-            className="header-title"
+          <button
+            type="button"
+            className="header-title header-home-button"
             onClick={() => setCurrentView('home')}
-            style={{ fontSize: '1rem', fontWeight: 700, cursor: 'pointer' }}
+            aria-label="返回首頁"
           >
             新楓之谷：經典版《自動外掛檢舉工具》
-          </span>
+          </button>
           <span
             style={{
               fontSize: '0.72rem',
@@ -188,6 +301,7 @@ export default function Header({
         onMouseDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
+        {renderUpdateControl()}
         <IconButton
           icon={isDark ? Sun : Moon}
           size="md"

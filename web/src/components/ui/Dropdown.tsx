@@ -11,6 +11,7 @@ export interface DropdownOptionType<T = string | number> {
 
 export interface DropdownProps<T = string | number> {
   label?: React.ReactNode;
+  ariaLabel?: string;
   options?: Array<DropdownOptionType<T> | T>;
   value?: T;
   onChange?: (value: T) => void;
@@ -25,6 +26,7 @@ export interface DropdownProps<T = string | number> {
 
 export default function Dropdown<T extends string | number = string>({
   label = null,
+  ariaLabel,
   options = [],
   value,
   onChange,
@@ -133,6 +135,7 @@ export default function Dropdown<T extends string | number = string>({
         style={triggerStyle}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-label={ariaLabel}
       >
         <span className="ui-dropdown-value" title={selectedOption?.label}>
           {selectedOption ? selectedOption.label : placeholder}
@@ -148,11 +151,16 @@ export default function Dropdown<T extends string | number = string>({
             style={{
               top: `${menuPosition.top}px`,
               left: `${menuPosition.left}px`,
-              width: `min(${menuPosition.width}px, calc(100vw - 20px))`,
+              // Keep the trigger width as the menu's minimum, but let the
+              // options determine a comfortable width so selected labels do
+              // not lose characters to the trailing check icon.
+              minWidth: `${menuPosition.width}px`,
+              width: 'max-content',
+              maxWidth: 'calc(100vw - 20px)',
               ...menuStyle,
             }}
             role="listbox"
-            aria-label={typeof label === 'string' ? label : placeholder}
+            aria-label={ariaLabel || (typeof label === 'string' ? label : placeholder)}
             onKeyDown={handleMenuKeyDown}
           >
             {normalizedOptions.map((opt, idx) => {

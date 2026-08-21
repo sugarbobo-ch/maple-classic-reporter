@@ -28,9 +28,7 @@ export default function StatusBar({
   recordingTime = 0,
   totalRecordingDuration = 8,
   recordingFraction: propRecordingFraction,
-  recordingPercent: _recordingPercent,
   countdown = 0,
-  totalCountdown: _totalCountdown = 3,
   countdownFraction: propCountdownFraction,
   replayTime = 0,
   maxReplayBuffer = 30,
@@ -100,11 +98,13 @@ export default function StatusBar({
     <div className="status-bar">
       {/* Top Active Progress Bar Strip (聲音來源上方) */}
       {(isCountdownActive || isRecordingActive) && (
-        <div className={`status-top-progress-track ${isCountdownActive ? 'countdown' : 'recording'}`}>
+        <div
+          className={`status-top-progress-track ${isCountdownActive ? 'countdown' : 'recording'}`}
+        >
           <div
             className={`status-top-progress-bar ${isCountdownActive ? 'countdown' : 'recording'}`}
             style={{
-              width: `${(isCountdownActive ? activeCountdownFraction : activeRecordingFraction) * 100}%`,
+              transform: `scaleX(${isCountdownActive ? activeCountdownFraction : activeRecordingFraction})`,
             }}
           />
         </div>
@@ -129,7 +129,7 @@ export default function StatusBar({
           <span className="status-detail-value">{windowSize}</span>
         </div>
         <div className="status-detail-item">
-          <span className="status-detail-label">錄影品質</span>
+          <span className="status-detail-label">錄影模式</span>
           <span className="status-detail-value" data-testid="status-quality" title={quality}>
             {renderQualityValue(quality)}
           </span>
@@ -160,7 +160,7 @@ export default function StatusBar({
                 style={{ flexShrink: 0 }}
               />
               <span>
-                循環錄影中 ({replayTime}s / {maxReplayBuffer}s 已緩衝)
+                循環錄影中 ({replayTime}s / {maxReplayBuffer}s 已保留)
               </span>
             </div>
           ) : (
@@ -199,19 +199,19 @@ export default function StatusBar({
                 icon={Save}
                 disabled={disabled}
                 onClick={onSaveReplay}
-                title="立即擷取並儲存過去片段進入檢舉流程"
+                title="立即儲存過去的影片片段並進入檢舉流程"
               >
-                儲存片段
+                儲存影片片段
               </Button>
             </>
-          ) : (isRecordingActive || isCountdownActive) ? (
+          ) : isRecordingActive || isCountdownActive ? (
             <Button
               variant="danger"
               size="md"
               icon={X}
               disabled={disabled}
               onClick={onCancelRecording}
-              title="中斷並捨棄目前錄製"
+              title="中斷並捨棄目前錄影"
             >
               取消錄影
             </Button>

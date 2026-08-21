@@ -52,6 +52,11 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed with exit code $LASTEXITCODE."
     }
+
+    & uv run pyinstaller --noconfirm --clean MapleClassicReporterUpdater.spec
+    if ($LASTEXITCODE -ne 0) {
+        throw "Portable updater PyInstaller build failed with exit code $LASTEXITCODE."
+    }
 } finally {
     Pop-Location
 }
@@ -60,6 +65,12 @@ $targetExe = Join-Path $bundleRoot "MapleClassicReporter.exe"
 if (-not (Test-Path -LiteralPath $targetExe -PathType Leaf)) {
     throw "PyInstaller completed but the onedir executable was not found: $targetExe"
 }
+
+$updaterExe = Join-Path $distRoot "MapleClassicReporterUpdater.exe"
+if (-not (Test-Path -LiteralPath $updaterExe -PathType Leaf)) {
+    throw "PyInstaller completed but the updater executable was not found: $updaterExe"
+}
+Copy-Item -LiteralPath $updaterExe -Destination (Join-Path $bundleRoot "MapleClassicReporterUpdater.exe") -Force
 
 $configSrc = Join-Path $projectRoot "assets\MapleClassicReporter.exe.config"
 $configDst = Join-Path $bundleRoot "MapleClassicReporter.exe.config"

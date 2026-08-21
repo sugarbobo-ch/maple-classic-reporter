@@ -11,6 +11,7 @@ from maple_reporter.gui.bridge.media_bridge import MediaBridgeMixin
 from maple_reporter.gui.bridge.recording_bridge import RecordingBridgeMixin
 from maple_reporter.gui.bridge.replay_bridge import ReplayBridgeMixin
 from maple_reporter.gui.bridge.submission_bridge import SubmissionBridgeMixin, _submission_guard
+from maple_reporter.gui.bridge.update_bridge import UpdateBridgeMixin
 from maple_reporter.gui.bridge.window_bridge import WindowBridgeMixin
 
 
@@ -22,6 +23,7 @@ class PyWebViewBridge(
     SubmissionBridgeMixin,
     ConfigBridgeMixin,
     IntegrationBridgeMixin,
+    UpdateBridgeMixin,
     BaseBridgeMixin,
 ):
     """API bridge exposed to JavaScript via window.pywebview.api."""
@@ -40,6 +42,7 @@ __all__ = [
     "SubmissionBridgeMixin",
     "ConfigBridgeMixin",
     "IntegrationBridgeMixin",
+    "UpdateBridgeMixin",
     "_choose_preferred_window",
     "_submission_guard",
 ]

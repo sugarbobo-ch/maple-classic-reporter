@@ -37,7 +37,8 @@ export const PresetPopup: React.FC<PresetPopupProps> = ({
 
   const { position } = useAnchorPosition(triggerRef, {
     enabled: isOpen,
-    estimatedHeight: 180,
+    offset: 6,
+    estimatedHeight: 132,
     autoFlip: true,
   });
 
@@ -53,6 +54,8 @@ export const PresetPopup: React.FC<PresetPopupProps> = ({
   };
 
   const labelText = isCustom ? '自訂' : activePreset.label;
+  const popupWidth = Math.min(360, Math.max(300, window.innerWidth - 20));
+  const popupLeft = Math.max(10, Math.min(position.left, window.innerWidth - popupWidth - 10));
 
   return (
     <div className={`preset-popup-wrapper ${className}`.trim()}>
@@ -64,10 +67,10 @@ export const PresetPopup: React.FC<PresetPopupProps> = ({
         onKeyDown={handleKeyDown}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        title="點擊展開錄製檔位調整滑桿"
+        title="點擊調整錄影模式"
       >
         <SlidersHorizontal size={14} color="var(--color-primary)" />
-        <span className="preset-trigger-text">檔位：{labelText}</span>
+        <span className="preset-trigger-text">錄影模式：{labelText}</span>
         <ChevronDown size={13} className={`preset-trigger-chevron ${isOpen ? 'open' : ''}`} />
       </button>
 
@@ -79,8 +82,8 @@ export const PresetPopup: React.FC<PresetPopupProps> = ({
             style={{
               position: 'fixed',
               top: `${position.top}px`,
-              left: `${Math.max(10, Math.min(position.left, window.innerWidth - 370))}px`,
-              width: '360px',
+              left: `${popupLeft}px`,
+              width: `${popupWidth}px`,
               zIndex: 9999,
             }}
           >

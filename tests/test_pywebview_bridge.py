@@ -375,7 +375,7 @@ class TestPyWebViewBridge(unittest.TestCase):
             )
 
         self.assertEqual(result["status"], "error")
-        self.assertIn("事證檔案", result["message"])
+        self.assertIn("檢舉證據檔案", result["message"])
         mock_submit.assert_not_called()
 
     def test_submit_report_rejects_an_overlapping_submission(self):
@@ -475,7 +475,7 @@ class TestPyWebViewBridge(unittest.TestCase):
             )
 
         self.assertEqual(result["status"], "error")
-        self.assertIn("事證檔案", result["message"])
+        self.assertIn("檢舉證據檔案", result["message"])
         mock_submit.assert_not_called()
 
     def test_submit_report_rejects_an_overlapping_submission(self):

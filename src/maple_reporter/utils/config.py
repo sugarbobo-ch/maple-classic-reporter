@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
+
 from maple_reporter.gdrive.token_store import (
     ProtectedSecretStore,
     ProtectedTokenStoreError,
@@ -123,6 +124,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "form_submit_headless": True,
     "dev_mode": False,
     "auto_check_sanction_status": True,
+    "auto_update_enabled": True,
+    "update_channel": "preview",
     "theme": "light",
     "history_compact_layout": False,
     "history_page_size": 15,

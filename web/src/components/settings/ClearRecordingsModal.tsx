@@ -21,7 +21,7 @@ export default function ClearRecordingsModal({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="清理本機暫存錄影"
+      title="清理本機暫存影片"
       titleIcon={Trash2}
       maxWidth="420px"
       footer={
@@ -59,11 +59,11 @@ export default function ClearRecordingsModal({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px 0' }}>
           <div style={{ fontSize: '0.88rem', color: 'var(--color-text)', lineHeight: 1.6 }}>
-            確定要清理所有已錄製但尚未刪除的本機暫存影音檔案嗎？
+            確定要清理所有已產生但尚未刪除的本機暫存影片與圖片嗎？
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>
             <Info size={14} />
-            <span>此操作不會影響已上傳至 Google Drive 或送出的檢舉歷史紀錄。</span>
+            <span>此操作不會影響已上傳至 Google Drive 或已送出的檢舉歷史紀錄。</span>
           </div>
         </div>
       )}

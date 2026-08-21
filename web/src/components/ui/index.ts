@@ -38,9 +38,9 @@ export { default as Toast, ToastProvider, ToastContainer } from './Toast';
 export { ToastContext } from './ToastContext';
 export type { ToastOptions, ToastVariant, ToastItemData } from './ToastContext';
 
-export { default as DynamicIcon, POPULAR_LUCIDE_ICONS } from './DynamicIcon';
+export { default as DynamicIcon } from './DynamicIcon';
+export { POPULAR_LUCIDE_ICONS } from './iconCatalog';
 export type { DynamicIconProps } from './DynamicIcon';
 
 export { default as CircularProgress } from './CircularProgress';
 export type { CircularProgressProps } from './CircularProgress';
-

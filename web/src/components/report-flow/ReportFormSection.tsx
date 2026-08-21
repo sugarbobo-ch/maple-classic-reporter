@@ -84,7 +84,7 @@ export default function ReportFormSection({
               >
                 <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
                 <span>
-                  尚未啟用地圖 OCR；地圖名稱不會自動辨識，請手動輸入或從歷史紀錄選擇。
+                  尚未啟用地圖文字辨識（OCR）；地圖名稱不會自動辨識，請手動輸入或從歷史紀錄選擇。
                 </span>
               </div>
             )}
@@ -112,7 +112,7 @@ export default function ReportFormSection({
                       data-testid="ocr-map-suggestion"
                       aria-pressed={mapName === ocrMapName}
                     >
-                      OCR：{ocrMapName}
+                      辨識結果：{ocrMapName}
                     </button>
                   )}
                   {historicalMaps.map((map, idx) => (
@@ -204,7 +204,7 @@ export default function ReportFormSection({
             <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>背景靜默送出檢舉</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
               {formSubmitHeadless
-                ? '已啟用背景模式：Playwright 將於後台靜默自動填表'
+                ? '已啟用背景模式：會在後台自動填寫表單'
                 : '已關閉背景模式：將開啟可見瀏覽器視窗，展示填表與送出過程'}
             </div>
           </div>

@@ -138,13 +138,13 @@ class MainWindow(QMainWindow):
         control_layout = QVBoxLayout(tab_control)
 
         # Group 1: Evidence storage
-        g1 = QGroupBox("事證上傳設定")
+        g1 = QGroupBox("檢舉證據上傳設定")
         g1_layout = QVBoxLayout(g1)
 
         row_auth = QHBoxLayout()
-        self.lbl_gdrive_status = QLabel("狀態: 未驗證")
+        self.lbl_gdrive_status = QLabel("狀態：尚未登入")
         self.lbl_gdrive_status.setStyleSheet("color: red; font-weight: bold;")
-        self.btn_gdrive_login = QPushButton("連結 Google 帳號")
+        self.btn_gdrive_login = QPushButton("登入 Google 帳號")
         self.btn_gdrive_login.clicked.connect(self.on_gdrive_login)
         row_auth.addWidget(self.lbl_gdrive_status)
         row_auth.addStretch()
@@ -154,7 +154,7 @@ class MainWindow(QMainWindow):
         row_folder = QHBoxLayout()
         row_folder.addWidget(QLabel("雲端儲存資料夾名稱:"))
         self.txt_gdrive_folder = QLineEdit("MapleClassic_Reports")
-        self.txt_gdrive_folder.setPlaceholderText("例如: MapleClassic_Reports 或 新楓之谷檢舉事證")
+        self.txt_gdrive_folder.setPlaceholderText("例如: MapleClassic_Reports 或 新楓之谷檢舉證據")
         self.btn_open_gdrive_folder = QPushButton("前往雲端資料夾")
         self.btn_open_gdrive_folder.setStyleSheet("""
             QPushButton {
@@ -192,12 +192,12 @@ class MainWindow(QMainWindow):
         row_destination.addWidget(QLabel("上傳目的地："))
         self.combo_upload_destination = WheelSafeComboBox()
         self.combo_upload_destination.addItem("Google Drive（建議用於官方審查）", "gdrive")
-        self.combo_upload_destination.addItem("Discord（短片快速分享）", "discord")
+        self.combo_upload_destination.addItem("Discord（影片快速分享）", "discord")
         row_destination.addWidget(self.combo_upload_destination, 1)
         g1_layout.addLayout(row_destination)
 
         row_discord = QHBoxLayout()
-        row_discord.addWidget(QLabel("Discord Webhook URL："))
+        row_discord.addWidget(QLabel("Discord 頻道連結："))
         self.txt_discord_webhook = QLineEdit()
         self.txt_discord_webhook.setEchoMode(QLineEdit.EchoMode.Password)
         self.txt_discord_webhook.setPlaceholderText("設定後每次送出前都必須完成 Discord 備份")
@@ -220,7 +220,7 @@ class MainWindow(QMainWindow):
         g2_layout.addLayout(row_win)
 
         row_rec = QHBoxLayout()
-        row_rec.addWidget(QLabel("錄製秒數："))
+        row_rec.addWidget(QLabel("錄影秒數："))
         self.spin_duration = QSpinBox()
         self.spin_duration.setRange(3, 60)
         self.spin_duration.setValue(8)
@@ -244,9 +244,9 @@ class MainWindow(QMainWindow):
         g2_layout.addLayout(row_rec)
 
         row_opts = QHBoxLayout()
-        self.chk_record_audio = QCheckBox("同步錄製系統聲音 (Audio)")
-        self.chk_auto_delete = QCheckBox("上傳成功後自動刪除本機事證檔案")
-        self.btn_clear_recordings = QPushButton("一鍵清理所有錄製檔案")
+        self.chk_record_audio = QCheckBox("同步錄音 (Audio)")
+        self.chk_auto_delete = QCheckBox("上傳成功後自動刪除本機檢舉證據檔案")
+        self.btn_clear_recordings = QPushButton("一鍵清理所有影片檔案")
         self.btn_clear_recordings.setStyleSheet("""
             QPushButton {
                 background-color: #d32f2f;
@@ -264,14 +264,14 @@ class MainWindow(QMainWindow):
         row_opts.addWidget(self.btn_clear_recordings)
         g2_layout.addLayout(row_opts)
 
-        ocr_group = QGroupBox("OCR 影像辨識自動帶入")
+        ocr_group = QGroupBox("文字辨識（OCR）自動帶入")
         ocr_layout = QVBoxLayout(ocr_group)
-        self.chk_ocr_autofill = QCheckBox("啟用 OCR 影像辨識自動帶入")
+        self.chk_ocr_autofill = QCheckBox("啟用文字辨識（OCR）自動帶入")
         self.chk_ocr_autofill.setTristate(True)
         self.chk_ocr_autofill.setChecked(True)
-        self.chk_ocr_autofill.setAccessibleName("啟用 OCR 影像辨識自動帶入")
+        self.chk_ocr_autofill.setAccessibleName("啟用文字辨識（OCR）自動帶入")
         self.chk_ocr_autofill.setToolTip(
-            "控制是否將 OCR 辨識到的角色 ID 與地圖名稱自動帶入預覽表單；"
+            "控制是否將辨識到的角色 ID 與地圖名稱自動帶入預覽表單；"
             "部分勾選代表只啟用其中一項。"
         )
         ocr_layout.addWidget(self.chk_ocr_autofill)
@@ -280,11 +280,11 @@ class MainWindow(QMainWindow):
         ocr_fields.addSpacing(24)
         self.chk_ocr_id = QCheckBox("角色 ID")
         self.chk_ocr_id.setChecked(True)
-        self.chk_ocr_id.setAccessibleName("啟用角色 ID OCR 自動帶入")
+        self.chk_ocr_id.setAccessibleName("啟用角色 ID 自動帶入")
         self.chk_ocr_id.setToolTip("啟用後，自動辨識並帶入外掛玩家角色 ID")
         self.chk_ocr_map = QCheckBox("地圖名稱")
         self.chk_ocr_map.setChecked(True)
-        self.chk_ocr_map.setAccessibleName("啟用地圖名稱 OCR 自動帶入")
+        self.chk_ocr_map.setAccessibleName("啟用地圖名稱自動帶入")
         self.chk_ocr_map.setToolTip("啟用後，自動辨識並帶入所在地圖名稱")
         self.chk_ocr_id.toggled.connect(self._on_ocr_autofill_child_toggled)
         self.chk_ocr_map.toggled.connect(self._on_ocr_autofill_child_toggled)
@@ -301,7 +301,7 @@ class MainWindow(QMainWindow):
         row_audio = QHBoxLayout()
         row_audio.addWidget(QLabel("系統聲音來源："))
         self.combo_audio_output = WheelSafeComboBox()
-        self.combo_audio_output.setAccessibleName("系統聲音錄製來源")
+        self.combo_audio_output.setAccessibleName("系統聲音來源")
         self.combo_audio_output.setToolTip("選擇目前實際播放遊戲聲音的 Windows 輸出裝置")
         self.combo_audio_output.currentIndexChanged.connect(
             self.on_audio_output_changed
@@ -313,11 +313,11 @@ class MainWindow(QMainWindow):
         g2_layout.addLayout(row_audio)
         self.chk_record_audio.toggled.connect(self.on_record_audio_toggled)
 
-        hint = QLabel("一般錄影會在按下後開始；下方的回放緩衝會持續保留最近一段畫面。")
+        hint = QLabel("一般錄影會在按下後開始；下方的循環錄影會持續保留最近一段畫面。")
         hint.setObjectName("hint")
         g2_layout.addWidget(hint)
 
-        replay_group = QGroupBox("回放緩衝設定")
+        replay_group = QGroupBox("循環錄影設定")
         replay_layout = QVBoxLayout(replay_group)
         replay_layout.setSpacing(10)
 
@@ -327,7 +327,7 @@ class MainWindow(QMainWindow):
         self.spin_replay_seconds.setRange(10, 60)
         self.spin_replay_seconds.setValue(30)
         self.spin_replay_seconds.setSuffix(" 秒")
-        self.spin_replay_seconds.setAccessibleName("回放緩衝秒數")
+        self.spin_replay_seconds.setAccessibleName("循環錄影保留秒數")
         replay_settings.addWidget(self.spin_replay_seconds)
         replay_settings.addSpacing(12)
         replay_settings.addWidget(QLabel("快速選擇："))
@@ -338,8 +338,8 @@ class MainWindow(QMainWindow):
         self.combo_replay_seconds.setCurrentIndex(
             self.combo_replay_seconds.findData(30)
         )
-        self.combo_replay_seconds.setAccessibleName("快速選擇回放緩衝秒數")
-        self.combo_replay_seconds.setToolTip("快速套用常用的回放緩衝長度")
+        self.combo_replay_seconds.setAccessibleName("快速選擇循環錄影保留秒數")
+        self.combo_replay_seconds.setToolTip("快速套用常用的循環錄影保留時間")
         replay_settings.addWidget(self.combo_replay_seconds)
         replay_settings.addStretch()
         replay_layout.addLayout(replay_settings)
@@ -409,7 +409,7 @@ class MainWindow(QMainWindow):
         self.lbl_hotkey_status.setAccessibleName("全域快捷鍵狀態")
         hotkey_layout.addWidget(self.lbl_hotkey_status)
         self.lbl_hotkey_hint = QLabel(
-            "第一次按 F9 會啟動回放緩衝；累積幾秒後再次按 F9 儲存片段。"
+            "第一次按 F9 會啟動循環錄影；累積幾秒後再次按 F9 儲存影片片段。"
             "按住快捷鍵不會重複觸發。"
         )
         self.lbl_hotkey_hint.setWordWrap(True)
@@ -466,7 +466,7 @@ class MainWindow(QMainWindow):
         g3_layout.addLayout(row_submission)
 
         row_wl = QHBoxLayout()
-        row_wl.addWidget(QLabel("ID 白名單（以逗號分隔）："))
+        row_wl.addWidget(QLabel("ID 略過名單（白名單，以逗號分隔）："))
         self.txt_whitelist = QLineEdit()
         self.txt_whitelist.setPlaceholderText("可填入自己或隊友 ID（以逗號分隔），將自動從候選清單中過濾...")
         row_wl.addWidget(self.txt_whitelist, 1)
@@ -543,11 +543,11 @@ class MainWindow(QMainWindow):
 
         replay_status_row = QHBoxLayout()
         self.lbl_replay_status = QLabel("● 未啟動")
-        self.lbl_replay_status.setAccessibleName("回放緩衝狀態")
+        self.lbl_replay_status.setAccessibleName("循環錄影狀態")
         self.lbl_replay_status.setStyleSheet("color: #616161; font-weight: bold;")
         self.lbl_replay_time = QLabel("00:00 / 00:30")
         self.lbl_replay_time.setAccessibleName("目前可儲存的回放長度")
-        replay_status_row.addWidget(QLabel("回放緩衝："))
+        replay_status_row.addWidget(QLabel("循環錄影："))
         replay_status_row.addWidget(self.lbl_replay_status)
         replay_status_row.addStretch()
         replay_status_row.addWidget(self.lbl_replay_time)
@@ -555,15 +555,15 @@ class MainWindow(QMainWindow):
 
         self.lbl_replay_audio_source = QLabel("音訊來源：尚未選擇")
         self.lbl_replay_audio_source.setObjectName("hint")
-        self.lbl_replay_audio_source.setAccessibleName("回放緩衝音訊來源")
+        self.lbl_replay_audio_source.setAccessibleName("循環錄影音訊來源")
         g4_layout.addWidget(self.lbl_replay_audio_source)
 
         replay_actions = QHBoxLayout()
-        self.btn_toggle_replay = QPushButton("啟動回放緩衝")
+        self.btn_toggle_replay = QPushButton("啟動循環錄影")
         self.btn_toggle_replay.setMinimumHeight(44)
         self.btn_toggle_replay.setToolTip("持續保留所選遊戲視窗最近的畫面與聲音")
         self.btn_toggle_replay.clicked.connect(self.toggle_replay_buffer)
-        self.btn_save_replay = QPushButton("儲存最近片段")
+        self.btn_save_replay = QPushButton("儲存影片片段")
         self.btn_save_replay.setMinimumHeight(44)
         self.btn_save_replay.setEnabled(False)
         self.btn_save_replay.setToolTip(
@@ -576,7 +576,7 @@ class MainWindow(QMainWindow):
 
         capture_actions = QHBoxLayout()
 
-        self.btn_trigger_snip = QPushButton("擷取畫面並辨識")
+        self.btn_trigger_snip = QPushButton("截圖並辨識")
         self.btn_trigger_snip.setStyleSheet("""
             QPushButton {
                 background-color: #1976d2;
@@ -590,10 +590,10 @@ class MainWindow(QMainWindow):
         """)
         self.btn_trigger_snip.clicked.connect(self.trigger_snipping)
 
-        self.btn_trigger_video = QPushButton("錄製影片並辨識")
+        self.btn_trigger_video = QPushButton("錄影並辨識")
         self.btn_trigger_video.setStyleSheet(VIDEO_TRIGGER_DEFAULT_STYLE)
         self.btn_trigger_video.clicked.connect(self.trigger_video_report)
-        self.btn_select_file = QPushButton("選擇本機事證")
+        self.btn_select_file = QPushButton("選擇本機檢舉證據")
         self.btn_select_file.setStyleSheet("""
             QPushButton {
                 background-color: #2e7d32;
@@ -693,7 +693,7 @@ class MainWindow(QMainWindow):
         self.chk_ocr_autofill.setCheckState(state)
         self.chk_ocr_autofill.blockSignals(False)
         self.chk_ocr_autofill.setAccessibleDescription(
-            "角色 ID 與地圖名稱 OCR 自動帶入："
+            "角色 ID 與地圖名稱文字辨識（OCR）自動帶入："
             f"{'全部啟用' if state == Qt.CheckState.Checked else '部分啟用' if state == Qt.CheckState.PartiallyChecked else '全部停用'}"
         )
 
@@ -739,7 +739,7 @@ class MainWindow(QMainWindow):
     def copy_selected_history_url(self):
         row = self.table_history.currentRow()
         if row < 0 or not self.history_controller.copy_url_from_cell(self.table_history, row):
-            QMessageBox.information(self, "複製連結", "請先選取含有安全 HTTPS 事證連結的紀錄。")
+            QMessageBox.information(self, "複製連結", "請先選取含有安全 HTTPS 檢舉證據連結的紀錄。")
 
     def clear_history(self):
         reply = QMessageBox.question(
@@ -849,13 +849,13 @@ class MainWindow(QMainWindow):
 
     def update_gdrive_ui(self):
         if self.drive_mgr.is_authenticated():
-            self.lbl_gdrive_status.setText("狀態：已授權 Google 帳號")
+            self.lbl_gdrive_status.setText("狀態：Google 帳號已登入")
             self.lbl_gdrive_status.setStyleSheet("color: green; font-weight: bold;")
             self.btn_gdrive_login.setText("重新驗證 Google 帳號")
         else:
-            self.lbl_gdrive_status.setText("狀態：未綁定")
+            self.lbl_gdrive_status.setText("狀態：尚未登入")
             self.lbl_gdrive_status.setStyleSheet("color: red; font-weight: bold;")
-            self.btn_gdrive_login.setText("連結 Google 帳號")
+            self.btn_gdrive_login.setText("登入 Google 帳號")
 
     def on_gdrive_login(self):
         ok, msg = self.drive_mgr.authenticate_interactive()
@@ -1026,7 +1026,7 @@ class MainWindow(QMainWindow):
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel("新楓之谷檢舉助手"))
-        guide = QLabel("1. 選擇上傳目的地並完成帳號或 Webhook 設定。\n2. 選擇遊戲視窗與錄影品質。\n3. 錄製或匯入事證，確認 OCR 結果後送出。")
+        guide = QLabel("1. 選擇上傳目的地並完成帳號或 Discord 頻道連結設定。\n2. 選擇遊戲視窗與錄影模式。\n3. 錄影或匯入檢舉證據，確認辨識結果後送出。")
         guide.setWordWrap(True)
         layout.addWidget(guide)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
@@ -1088,11 +1088,11 @@ class MainWindow(QMainWindow):
 
         win_title = self.combo_windows.currentText().strip()
         if not win_title:
-            message = "無法啟動回放緩衝：請先選擇目標遊戲視窗。"
+            message = "無法啟動循環錄影：請先選擇目標遊戲視窗。"
             if from_hotkey:
                 self.statusBar().showMessage(message, 5000)
             else:
-                QMessageBox.warning(self, "無法啟動回放緩衝", message)
+                QMessageBox.warning(self, "無法啟動循環錄影", message)
             return
         selected_audio_device_id = self.combo_audio_output.currentData() or ""
         self.cfg["record_audio"] = self.chk_record_audio.isChecked()
@@ -1102,7 +1102,7 @@ class MainWindow(QMainWindow):
         self.cfg["audio_output_device_id"] = selected_audio_device_id
         self.settings_controller.save_model()
         if not self.chk_record_audio.isChecked():
-            self.lbl_replay_audio_source.setText("音訊來源：未錄製系統聲音")
+            self.lbl_replay_audio_source.setText("音訊來源：未錄音系統聲音")
         started = self.replay_controller.start(
             win_title,
             fps=int(self.combo_fps.currentData()),
@@ -1114,11 +1114,11 @@ class MainWindow(QMainWindow):
         if from_hotkey:
             if started:
                 self.statusBar().showMessage(
-                    "F9 已啟動回放緩衝；累積幾秒後再次按 F9 儲存片段。",
+                    "F9 已啟動循環錄影；累積幾秒後再次按 F9 儲存影片片段。",
                     5000,
                 )
             else:
-                self.statusBar().showMessage("回放緩衝啟動失敗。", 5000)
+                self.statusBar().showMessage("循環錄影啟動失敗。", 5000)
 
     def refresh_audio_devices(self, preferred_device_id=None):
         if isinstance(preferred_device_id, bool):
@@ -1153,7 +1153,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "lbl_replay_audio_source"):
             return
         if not self.chk_record_audio.isChecked():
-            text = "音訊來源：未錄製系統聲音"
+            text = "音訊來源：未錄音系統聲音"
         else:
             device_name = self.combo_audio_output.currentText().strip()
             text = f"音訊來源：{device_name or '找不到可用裝置'}"
@@ -1167,7 +1167,7 @@ class MainWindow(QMainWindow):
         self.update_audio_source_label()
 
     def on_replay_audio_source_changed(self, device_name: str):
-        text = f"正在錄製音訊：{device_name}"
+        text = f"正在錄音：{device_name}"
         self.lbl_replay_audio_source.setText(text)
         self.lbl_replay_audio_source.setAccessibleDescription(text)
 
@@ -1193,14 +1193,14 @@ class MainWindow(QMainWindow):
         if not saved:
             if from_hotkey:
                 self.statusBar().showMessage(
-                    "回放緩衝尚未累積足夠畫面，請稍候再按 F9。",
+                    "循環錄影尚未累積足夠畫面，請稍候再按 F9。",
                     5000,
                 )
                 return
             QMessageBox.information(
                 self,
                 "片段尚未就緒",
-                "請先啟動回放緩衝並等待至少幾秒，再儲存最近片段。",
+                "請先啟動循環錄影並等待至少幾秒，再儲存影片片段。",
             )
             return
         self._replay_save_workflow_active = True
@@ -1234,37 +1234,37 @@ class MainWindow(QMainWindow):
             self.update_audio_source_label()
             self.lbl_replay_status.setText("● 未啟動")
             self.lbl_replay_status.setStyleSheet("color: #616161; font-weight: bold;")
-            self.btn_toggle_replay.setText("啟動回放緩衝")
+            self.btn_toggle_replay.setText("啟動循環錄影")
             self.btn_save_replay.setText("儲存最近片段")
             self.btn_save_replay.setEnabled(False)
         elif state == "warming":
             self.lbl_replay_status.setText("● 正在建立緩衝")
             self.lbl_replay_status.setStyleSheet("color: #ad6800; font-weight: bold;")
-            self.btn_toggle_replay.setText("停止回放緩衝")
+            self.btn_toggle_replay.setText("停止循環錄影")
             self.btn_save_replay.setText("儲存目前片段")
             self.btn_save_replay.setEnabled(duration >= 3.0)
         elif state == "ready":
             self.lbl_replay_status.setText("● 可儲存最近片段")
             self.lbl_replay_status.setStyleSheet("color: #1b5e20; font-weight: bold;")
-            self.btn_toggle_replay.setText("停止回放緩衝")
+            self.btn_toggle_replay.setText("停止循環錄影")
             self.btn_save_replay.setText(f"儲存最近 {total} 秒")
             self.btn_save_replay.setEnabled(True)
         elif state == "saving":
             self.lbl_replay_status.setText("● 正在儲存片段，緩衝持續中")
             self.lbl_replay_status.setStyleSheet("color: #0d47a1; font-weight: bold;")
-            self.btn_toggle_replay.setText("停止回放緩衝")
+            self.btn_toggle_replay.setText("停止循環錄影")
             self.btn_save_replay.setText("正在儲存片段…")
             self.btn_save_replay.setEnabled(False)
         elif state == "stopping":
-            self.lbl_replay_status.setText("● 正在停止回放緩衝")
+            self.lbl_replay_status.setText("● 正在停止循環錄影")
             self.lbl_replay_status.setStyleSheet("color: #616161; font-weight: bold;")
             self.btn_toggle_replay.setText("正在停止…")
             self.btn_save_replay.setText("無法儲存")
             self.btn_save_replay.setEnabled(False)
         elif state == "error":
-            self.lbl_replay_status.setText("● 回放緩衝發生錯誤")
+            self.lbl_replay_status.setText("● 循環錄影發生錯誤")
             self.lbl_replay_status.setStyleSheet("color: #b71c1c; font-weight: bold;")
-            self.btn_toggle_replay.setText("重新啟動回放緩衝")
+            self.btn_toggle_replay.setText("重新啟動循環錄影")
             self.btn_save_replay.setText("無法儲存")
             self.btn_save_replay.setEnabled(False)
 
@@ -1280,10 +1280,10 @@ class MainWindow(QMainWindow):
         self._replay_save_workflow_active = False
         if not self.replay_controller.is_running:
             self.replay_controller.stop()
-        QMessageBox.warning(self, "回放緩衝", message)
+        QMessageBox.warning(self, "循環錄影", message)
 
     def on_replay_warning(self, message: str):
-        QMessageBox.information(self, "回放緩衝音訊", message)
+        QMessageBox.information(self, "循環錄影音訊", message)
 
     def open_generated_video_preview(self, file_path: str, keyframes):
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
@@ -1350,9 +1350,9 @@ class MainWindow(QMainWindow):
             self.btn_trigger_video.setAccessibleName("取消錄影")
         else:
             self.btn_trigger_video.setStyleSheet(VIDEO_TRIGGER_DEFAULT_STYLE)
-            self.btn_trigger_video.setText("錄製影片並辨識")
-            self.btn_trigger_video.setToolTip("開始錄製影片並辨識；錄影中再次按下可取消")
-            self.btn_trigger_video.setAccessibleName("錄製影片並辨識")
+            self.btn_trigger_video.setText("錄影並辨識")
+            self.btn_trigger_video.setToolTip("開始錄影並辨識；錄影中再次按下可取消")
+            self.btn_trigger_video.setAccessibleName("錄影並辨識")
 
     def _set_recording_progress(self, message: str, progress: int | None = None):
         """Update the status text and progress bar without opening a window."""
@@ -1541,7 +1541,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QFileDialog
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "選擇本地影片或圖片檔案進行 OCR 與檢舉",
+            "選擇本地影片或圖片檔案進行辨識與檢舉",
             str(get_recordings_dir()),
             "媒體檔案 (*.mp4 *.mkv *.avi *.mov *.png *.jpg *.jpeg);;所有檔案 (*.*)"
         )
@@ -1550,7 +1550,7 @@ class MainWindow(QMainWindow):
 
         keyframes = self.capture_controller.load_keyframes(file_path)
         if not keyframes:
-            QMessageBox.warning(self, "讀取失敗", "無法從本機事證讀取可辨識的影格。")
+            QMessageBox.warning(self, "讀取失敗", "無法從本機檢舉證據讀取可辨識的畫面。")
             return
 
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread

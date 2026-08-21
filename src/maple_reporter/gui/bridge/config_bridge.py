@@ -104,6 +104,7 @@ class ConfigBridgeMixin:
             "app_data_dir": str(mod.get_user_app_data_dir()),
             "sanction_sync_status": sync_status,
             "last_complete_sync_at": cache.last_complete_sync_at or None,
+            "update_status": self.update_service.status(),
         }
 
     def save_config_key(self, key: str, value: Any) -> bool:

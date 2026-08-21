@@ -1,7 +1,6 @@
 import { Dropdown } from '../ui';
 import { AppConfig, DropdownOption } from '../../types';
 import PresetSlider from '../PresetSlider';
-import SettingRow from './SettingRow';
 import { PresetKey } from '../../constants/presets';
 
 export interface ReplayTabProps {
@@ -19,20 +18,24 @@ export default function ReplayTab({
 }: ReplayTabProps) {
   return (
     <>
-      <SettingRow>
-        <PresetSlider
-          preset={config.recording_preset}
-          duration={config.record_duration_sec}
-          fps={config.record_fps}
-          replay={config.replay_buffer_sec}
-          onChangePreset={onPresetChange}
-        />
-      </SettingRow>
+      <div className="setting-row">
+        <div style={{ width: '100%' }}>
+          <PresetSlider
+            preset={config.recording_preset}
+            duration={config.record_duration_sec}
+            fps={config.record_fps}
+            replay={config.replay_buffer_sec}
+            onChangePreset={onPresetChange}
+          />
+        </div>
+      </div>
 
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">循環錄影保留秒數</span>
-          <span className="setting-desc">持續在記憶體與背景循環保留最近一段遊戲畫面 (最多 30 秒)</span>
+          <span className="setting-desc">
+          持續在背景保留最近一段遊戲畫面（最多 30 秒）
+          </span>
         </div>
         <div style={{ width: '160px', minWidth: '140px' }}>
           <Dropdown<number>
@@ -56,10 +59,10 @@ export default function ReplayTab({
         }}
       >
         <div style={{ fontWeight: 700, color: 'var(--color-text-heading)', marginBottom: '4px' }}>
-          循環錄影運作機制說明：
+          循環錄影運作方式：
         </div>
-        啟動後會像行車記錄器般持續維護滑動時間線，自動循環保留最近一段畫面與聲音；超過設定秒數的內容會自動釋放。按下「儲存循環錄影」或全域快捷鍵僅會導出當下時間窗影片並加密採樣最後
-        5 秒影格進行 OCR 辨識，背景循環錄影不會中斷。
+        啟動後會像行車記錄器一樣持續保留最近一段畫面與聲音；超過設定秒數的內容會自動刪除。按下「儲存循環錄影」或快捷鍵只會輸出目前時間範圍的影片，並分析最後
+        5 秒畫面，背景循環錄影不會中斷。
       </div>
     </>
   );

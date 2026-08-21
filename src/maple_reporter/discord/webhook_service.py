@@ -39,9 +39,9 @@ def upload_evidence_to_discord(webhook_url: str, file_path: str, description: st
     if not webhook_url:
         return True, ""
     if not is_valid_discord_webhook_url(webhook_url):
-        return False, "Discord Webhook URL 必須是有效的 Discord HTTPS webhook。"
+        return False, "Discord 頻道連結必須是有效的 Discord HTTPS 連結。"
     if not os.path.isfile(file_path):
-        return False, "找不到要備份到 Discord 的事證檔案。"
+        return False, "找不到要上傳到 Discord 的檢舉證據檔案。"
     if os.path.getsize(file_path) > _DEFAULT_DISCORD_FILE_LIMIT:
         return False, "檔案過大，請使用 Google Drive 上傳。"
     try:

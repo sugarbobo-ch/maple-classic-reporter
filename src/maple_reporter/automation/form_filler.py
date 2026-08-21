@@ -290,12 +290,12 @@ def submit_gamania_report(
             # SurveyCake can reorder text fields; the evidence field is a URL input.
             url_input = page.locator('input[type="url"]')
             if url_input.count() != 1 or not _is_visible(url_input):
-                return False, "找不到唯一的事證網址欄位，已取消送出。"
+                return False, "找不到唯一的檢舉證據網址欄位，已取消送出。"
             try:
                 url_input.first.fill(evidence_url)
             except Exception as error:
-                LOGGER.warning("填寫事證網址失敗 (%s)", type(error).__name__)
-                return False, "無法填寫事證網址欄位，已取消送出。"
+                LOGGER.warning("填寫檢舉證據網址失敗 (%s)", type(error).__name__)
+                return False, "無法填寫檢舉證據網址欄位，已取消送出。"
 
             # Wait briefly before submit.
             time.sleep(1)

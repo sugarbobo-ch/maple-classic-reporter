@@ -1,11 +1,12 @@
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
   children?: React.ReactNode;
+  disabled?: boolean;
   variant?: 'default' | 'raised' | 'inner' | 'primary' | 'interactive';
   headerTitle?: React.ReactNode;
-  title?: any;
+  title?: React.ReactNode;
   titleIcon?: LucideIcon;
   headerAction?: React.ReactNode;
   footer?: React.ReactNode;
@@ -36,6 +37,7 @@ export default function Card({
   // Only render a card header section if headerTitle is explicitly set,
   // or if titleIcon/headerAction is provided.
   const effectiveHeaderTitle = headerTitle || (TitleIcon || headerAction ? title : null);
+  const nativeTitle = !effectiveHeaderTitle && typeof title === 'string' ? title : undefined;
 
   const cardContent = (
     <>
@@ -61,6 +63,7 @@ export default function Card({
     return (
       <button
         type="button"
+        title={nativeTitle}
         className={`${variantClass} ${className}`.trim()}
         onClick={onClick as unknown as React.MouseEventHandler<HTMLButtonElement>}
         style={style}
@@ -73,6 +76,7 @@ export default function Card({
 
   return (
     <div
+      title={nativeTitle}
       className={`${variantClass} ${className}`.trim()}
       onClick={onClick}
       style={style}

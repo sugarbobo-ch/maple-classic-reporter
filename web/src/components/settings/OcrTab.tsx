@@ -16,7 +16,7 @@ export default function OcrTab({ config, onUpdateConfig }: OcrTabProps) {
   return (
     <>
       <SettingRow
-        label="角色 ID 自動 OCR 辨識"
+        label="角色 ID 自動文字辨識（OCR）"
         description="自動辨識遊戲畫面中的玩家名稱並提供候選名單"
       >
         <Switch
@@ -26,7 +26,7 @@ export default function OcrTab({ config, onUpdateConfig }: OcrTabProps) {
       </SettingRow>
 
       <SettingRow
-        label="地圖名稱自動 OCR 辨識"
+        label="地圖名稱自動文字辨識（OCR）"
         description="自動辨識左上角小地圖區域文字並比對地圖目錄"
       >
         <Switch
@@ -38,7 +38,7 @@ export default function OcrTab({ config, onUpdateConfig }: OcrTabProps) {
       <div className="settings-info-callout">
         <div className="settings-info-callout-title">
           <AlertCircle size={15} aria-hidden="true" />
-          OCR 辨識說明
+          文字辨識（OCR）說明
         </div>
         <p>
           RapidOCR 會在本機處理遊戲畫面，不會將畫面上傳至第三方辨識服務。

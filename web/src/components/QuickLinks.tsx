@@ -60,7 +60,7 @@ export default function QuickLinks({
           icon={ChevronRight}
           iconPosition="right"
           onClick={onManageLinks}
-          title="管理自訂快捷連結"
+          title="管理快捷連結"
         >
           管理連結
         </Button>
@@ -89,7 +89,7 @@ export default function QuickLinks({
           type="button"
           className="quick-link-card quick-link-add-card"
           onClick={onAddCustomLink}
-          title="新增自訂快捷連結"
+          title="新增快捷連結"
         >
           <Plus size={22} className="quick-link-add-icon" />
           <div className="quick-link-title">

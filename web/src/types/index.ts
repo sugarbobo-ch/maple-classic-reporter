@@ -49,6 +49,37 @@ export interface AppConfig {
   violation_templates?: ViolationTemplateItem[];
   app_data_dir?: string;
   quick_links?: QuickLinkItem[];
+  auto_update_enabled?: boolean;
+  update_channel?: 'stable' | 'preview';
+}
+
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'up_to_date'
+  | 'available'
+  | 'downloading'
+  | 'ready'
+  | 'waiting_for_idle'
+  | 'applying'
+  | 'updated'
+  | 'error'
+  | 'insufficient_space';
+
+export interface UpdateStatus {
+  state: UpdateState;
+  current_version: string;
+  target_version?: string | null;
+  downloaded_bytes: number;
+  total_bytes: number;
+  progress_percent: number;
+  package_kind?: 'delta' | 'full' | null;
+  release_notes?: string;
+  release_url?: string;
+  required_bytes: number;
+  available_bytes: number;
+  error_code?: string | null;
+  error_message?: string | null;
 }
 
 export interface WindowItem {
@@ -141,6 +172,7 @@ export interface InitialDataResponse {
   replay_duration?: number;
   sanction_sync_status?: SanctionSyncStatus;
   last_complete_sync_at?: string;
+  update_status?: UpdateStatus;
 }
 
 export interface SubmissionResponse {
@@ -188,7 +220,8 @@ export type PyWebViewEventType =
   | 'SANCTION_SYNC_STARTED'
   | 'SANCTION_SYNC_PROGRESS'
   | 'SANCTION_SYNC_COMPLETED'
-  | 'SANCTION_SYNC_FAILED';
+  | 'SANCTION_SYNC_FAILED'
+  | 'UPDATE_STATUS';
 
 export interface PyWebViewEvent {
   type: PyWebViewEventType;
@@ -283,6 +316,11 @@ declare global {
         get_sanction_sync_status: () => Promise<SanctionSyncStatus>;
         get_history: () => Promise<HistoryRecord[]>;
         rebuild_sanction_cache_for_development: () => Promise<boolean>;
+        get_update_status: () => Promise<UpdateStatus>;
+        check_for_updates: (force?: boolean) => Promise<boolean>;
+        start_update_download: () => Promise<boolean>;
+        cancel_update_download: () => Promise<boolean>;
+        restart_and_apply_update: () => Promise<boolean>;
       };
     };
   }

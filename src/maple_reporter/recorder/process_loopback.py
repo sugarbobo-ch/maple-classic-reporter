@@ -219,7 +219,7 @@ def is_process_loopback_supported() -> bool:
 
 def _activate_process_audio_client(process_id: int):
     if os.name != "nt" or not is_process_loopback_supported():
-        raise ProcessLoopbackUnavailable("目前的 Windows 版本不支援僅錄製遊戲聲音。")
+        raise ProcessLoopbackUnavailable("目前的 Windows 版本不支援僅錄音遊戲聲音。")
     if int(process_id) <= 0:
         raise ProcessLoopbackUnavailable("找不到所選視窗的音訊程序，請重新整理視窗。")
 
@@ -281,7 +281,7 @@ def capture_process_audio(
     """Capture PCM from a process tree until ``stop_event`` is set."""
 
     if os.name != "nt":
-        raise ProcessLoopbackUnavailable("僅錄製遊戲聲音只支援 Windows。")
+        raise ProcessLoopbackUnavailable("僅錄音遊戲聲音只支援 Windows。")
 
     from comtypes import CoInitializeEx, CoUninitialize
 
@@ -385,7 +385,7 @@ def capture_process_audio(
         raise
     except Exception as error:
         raise ProcessLoopbackUnavailable(
-            "無法只錄製遊戲聲音。影片將繼續錄製但不包含聲音。"
+            "無法只錄音遊戲聲音。影片將繼續錄影但不包含聲音。"
         ) from error
     finally:
         if started and audio_client is not None:

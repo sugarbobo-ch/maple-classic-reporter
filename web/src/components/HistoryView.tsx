@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Loader2,
 } from 'lucide-react';
 import { Button, IconButton, Badge, Tooltip, Dialog, Dropdown } from './ui';
 import { useClipboard, useToast } from '../hooks';
@@ -95,7 +96,9 @@ export default function HistoryView({
     try {
       const saved = localStorage.getItem('maple_history_compact');
       if (saved !== null) return saved === 'true';
-    } catch {}
+    } catch {
+      // Local storage can be unavailable; retain the provided layout default.
+    }
     return false;
   });
 
@@ -108,7 +111,9 @@ export default function HistoryView({
         const num = Number(saved);
         if ([10, 15, 30, 50, 100].includes(num)) return num;
       }
-    } catch {}
+    } catch {
+      // Local storage can be unavailable; retain the provided page size.
+    }
     return 15;
   });
 
@@ -117,7 +122,9 @@ export default function HistoryView({
     setIsCompact(next);
     try {
       localStorage.setItem('maple_history_compact', String(next));
-    } catch {}
+    } catch {
+      // Persisting this preference is optional.
+    }
     onUpdateCompactLayout?.(next);
   };
 
@@ -126,7 +133,9 @@ export default function HistoryView({
     setCurrentPage(1);
     try {
       localStorage.setItem('maple_history_page_size', String(newSize));
-    } catch {}
+    } catch {
+      // Persisting this preference is optional.
+    }
     onUpdatePageSize?.(newSize);
   };
 
@@ -172,14 +181,14 @@ export default function HistoryView({
   const renderBanStatus = (row: HistoryRecord) => {
     const s = (row.ban_status || '').trim().toLowerCase();
     const isBanned = s === 'banned' || s === '已制裁' || s === '已封鎖' || Boolean(row.ban_date);
-    const resultText = row.ban_result || '永久鎖定';
+    const resultText = row.ban_result || '已封鎖';
     const maskedName = row.ban_masked_name || '';
     const announcementUrl = (row.ban_announcement_url || '').trim();
 
     if (isBanned) {
       const tooltipMsg = maskedName
         ? `官方公告命中：${maskedName}（${resultText}）`
-        : `制裁結果：${resultText}`;
+        : `官方處分結果：${resultText}`;
 
       return (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -190,9 +199,9 @@ export default function HistoryView({
               icon={ShieldAlert}
               tabIndex={0}
               role="status"
-              aria-label={`已制裁：${resultText}`}
+              aria-label={`已封鎖：${resultText}`}
             >
-              已制裁
+              已封鎖
             </Badge>
           </Tooltip>
           {announcementUrl && (
@@ -200,8 +209,8 @@ export default function HistoryView({
               icon={ExternalLink}
               size="sm"
               variant="ghost"
-              tooltip="開啟官方制裁公告"
-              aria-label="開啟官方制裁公告"
+              tooltip="開啟官方處分公告"
+              aria-label="開啟官方處分公告"
               onClick={() => onOpenUrl(announcementUrl)}
             />
           )}
@@ -212,7 +221,7 @@ export default function HistoryView({
     if (s === 'unbanned' || s === '未被制裁' || s === '未封鎖') {
       return (
         <Badge variant="success" size="sm" icon={ShieldCheck}>
-          未被制裁
+          未封鎖
         </Badge>
       );
     }
@@ -220,14 +229,14 @@ export default function HistoryView({
     if (s === 'investigating' || s === '審查中') {
       return (
         <Badge variant="warning" size="sm" icon={Clock}>
-          審查中
+          查詢中
         </Badge>
       );
     }
 
     return (
       <Badge variant="default" size="sm">
-        {row.ban_status && row.ban_status !== 'pending' ? row.ban_status : '待檢查'}
+        {row.ban_status && row.ban_status !== 'pending' ? row.ban_status : '查詢中'}
       </Badge>
     );
   };
@@ -269,18 +278,20 @@ export default function HistoryView({
     return dateStr.split(' ')[0] || '-';
   };
 
-  const syncMessage = sanctionSyncStatus?.message || (
-    sanctionSyncStatus?.phase === 'fetching' && sanctionSyncStatus?.current && sanctionSyncStatus?.total
+  const syncMessage =
+    sanctionSyncStatus?.message ||
+    (sanctionSyncStatus?.phase === 'fetching' &&
+    sanctionSyncStatus?.current &&
+    sanctionSyncStatus?.total
       ? `正在檢查第 ${sanctionSyncStatus.current}/${sanctionSyncStatus.total} 篇公告`
-      : '正在同步官方公告…'
-  );
+      : '正在同步官方公告…');
 
   return (
     <div
       className="card-section"
       style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
     >
-      <div className="modal-header" style={{ flexWrap: 'wrap', gap: '8px' }}>
+      <div className="history-view-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <IconButton
             icon={ArrowLeft}
@@ -294,59 +305,46 @@ export default function HistoryView({
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <span
-            style={{
-              fontSize: '0.78rem',
-              color: 'var(--color-text-secondary)',
+        <div className="history-view-header-actions">
+          <Button
+            variant="secondary"
+            size="md"
+            icon={RefreshCw}
+            onClick={() => {
+              if (onCheckSanctions && !isCheckingSanctions) {
+                void onCheckSanctions();
+              }
             }}
+            loading={isCheckingSanctions}
+            disabled={isCheckingSanctions || !onCheckSanctions}
+            aria-busy={isCheckingSanctions}
+            data-testid="check-sanction-status"
           >
-            上次完整檢查：{formatLastSyncTime(lastCompleteSyncAt || sanctionSyncStatus?.last_complete_sync_at)}
-          </span>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Button
-              variant={isCompact ? 'primary' : 'outline'}
-              size="md"
-              icon={isCompact ? Rows : LayoutList}
-              onClick={handleToggleCompact}
-              title={isCompact ? '切換為標準排列' : '切換為緊密排列'}
-              data-testid="toggle-compact-mode"
-            >
-              {isCompact ? '緊密排列' : '標準排列'}
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="md"
-              icon={RefreshCw}
-              onClick={() => {
-                if (onCheckSanctions && !isCheckingSanctions) {
-                  void onCheckSanctions();
-                }
-              }}
-              loading={isCheckingSanctions}
-              disabled={isCheckingSanctions || !onCheckSanctions}
-              aria-busy={isCheckingSanctions}
-              data-testid="check-sanction-status"
-            >
-              {isCheckingSanctions ? '檢查中…' : '檢查制裁狀態'}
-            </Button>
-          </div>
-
+            {isCheckingSanctions ? '檢查中…' : '檢查官方處分狀態'}
+          </Button>
           {history.length > 0 && (
-            <Button
-              variant="ghost"
-              size="md"
-              icon={Trash2}
-              onClick={handleOpenClearConfirm}
-              loading={isClearingHistory}
-              disabled={!onClearHistory || isCheckingSanctions}
-              aria-busy={isClearingHistory}
-              data-testid="clear-history"
-            >
-              清空紀錄
-            </Button>
+            <>
+              <IconButton
+                icon={isCompact ? LayoutList : Rows}
+                size="md"
+                variant="ghost"
+                active={isCompact}
+                tooltip={isCompact ? '切換為標準排列' : '切換為緊密排列'}
+                onClick={handleToggleCompact}
+                data-testid="toggle-compact-mode"
+              />
+              <IconButton
+                icon={isClearingHistory ? Loader2 : Trash2}
+                size="md"
+                variant="ghost"
+                tooltip="清空歷史紀錄"
+                className={`history-clear-button ${isClearingHistory ? 'spin-reverse' : ''}`}
+                onClick={handleOpenClearConfirm}
+                disabled={!onClearHistory || isCheckingSanctions || isClearingHistory}
+                aria-busy={isClearingHistory}
+                data-testid="clear-history"
+              />
+            </>
           )}
         </div>
       </div>
@@ -355,7 +353,9 @@ export default function HistoryView({
       <div
         style={{
           padding: '8px 16px',
-          backgroundColor: isCheckingSanctions ? 'var(--color-primary-light)' : 'var(--color-surface)',
+          backgroundColor: isCheckingSanctions
+            ? 'var(--color-primary-light)'
+            : 'var(--color-surface)',
           borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
@@ -367,27 +367,47 @@ export default function HistoryView({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 600, color: 'var(--color-text-heading)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            官方懲處公告診斷：
+          <span
+            style={{
+              fontWeight: 600,
+              color: 'var(--color-text-heading)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            官方處分公告檢查：
           </span>
           {isCheckingSanctions ? (
-            <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
-              {syncMessage}
-            </span>
+            <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>{syncMessage}</span>
           ) : (
             <span>
-              已對齊 Beanfun 官方制裁公告庫，共 <strong>{history.length}</strong> 筆紀錄（
+              已同步遊戲官方處分公告，共 <strong>{history.length}</strong> 筆紀錄（
               <strong style={{ color: 'var(--color-danger)' }}>
-                {history.filter((h) => (h.ban_status || '').toLowerCase() === 'banned' || Boolean(h.ban_date)).length} 筆已制裁
+                {
+                  history.filter(
+                    (h) => (h.ban_status || '').toLowerCase() === 'banned' || Boolean(h.ban_date)
+                  ).length
+                }{' '}
+                筆已封鎖
               </strong>
               ，
               <strong style={{ color: 'var(--color-status-success)' }}>
-                {history.filter((h) => (h.ban_status || '').toLowerCase() === 'unbanned' && !h.ban_date).length} 筆未命中
+                {
+                  history.filter(
+                    (h) => (h.ban_status || '').toLowerCase() === 'unbanned' && !h.ban_date
+                  ).length
+                }{' '}
+                筆未封鎖
               </strong>
               ）
             </span>
           )}
         </div>
+        <span className="history-sync-meta">
+          上次完整檢查：
+          {formatLastSyncTime(lastCompleteSyncAt || sanctionSyncStatus?.last_complete_sync_at)}
+        </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <a
             href="https://maplestoryclassic.beanfun.com/main?section=mBulletin&kind=758"
@@ -406,7 +426,7 @@ export default function HistoryView({
               fontWeight: 500,
             }}
           >
-            開啟官方懲處公告網頁
+            開啟官方處分公告
             <ExternalLink size={12} />
           </a>
         </div>
@@ -422,60 +442,47 @@ export default function HistoryView({
                 <th>伺服器</th>
                 <th>所在地圖</th>
                 <th>上傳狀態</th>
-                <th>制裁狀態</th>
-                <th>制裁時間</th>
-                <th style={{ textAlign: 'center' }}>事證連結</th>
+                <th>官方處分狀態</th>
+                <th>處分時間</th>
+                <th style={{ textAlign: 'center' }}>證據連結</th>
               </tr>
             </thead>
             <tbody>
               {paginatedHistory.map((row, idx) => {
-                const key = row.record_id || `history-${row.timestamp || row.time || 'item'}-${row.suspect_id || row.id || idx}-${idx}`;
+                const key =
+                  row.record_id ||
+                  `history-${row.timestamp || row.time || 'item'}-${row.suspect_id || row.id || idx}-${idx}`;
                 const evidenceUrl = (row.evidence_url || row.url || '').trim();
                 const isCopied = copiedUrl === evidenceUrl;
 
                 return (
                   <tr key={key}>
-                    <td className="cell-date">
-                      {row.timestamp || row.time || '-'}
-                    </td>
-                    <td className="cell-suspect">
-                      {row.suspect_id || row.id || '-'}
-                    </td>
+                    <td className="cell-date">{row.timestamp || row.time || '-'}</td>
+                    <td className="cell-suspect">{row.suspect_id || row.id || '-'}</td>
                     <td className="cell-nowrap">{row.server || '-'}</td>
                     <td>{row.map_name || row.map || '-'}</td>
                     <td className="cell-nowrap">
                       {renderUploadStatus(row.upload_status || row.status)}
                     </td>
-                    <td className="cell-nowrap">
-                      {renderBanStatus(row)}
-                    </td>
-                    <td className="cell-date">
-                      {formatBanDate(row.ban_date)}
-                    </td>
+                    <td className="cell-nowrap">{renderBanStatus(row)}</td>
+                    <td className="cell-date">{formatBanDate(row.ban_date)}</td>
                     <td className="cell-nowrap" style={{ textAlign: 'center' }}>
                       {evidenceUrl ? (
                         <div className="history-actions">
-                          <Button
+                          <IconButton
                             variant="outline"
                             size="sm"
                             icon={ExternalLink}
                             onClick={() => onOpenUrl(evidenceUrl)}
-                            title="開啟雲端事證連結"
-                            aria-label="開啟雲端事證連結"
-                          >
-                            開啟連結
-                          </Button>
-                          <Button
+                            tooltip="開啟雲端證據連結"
+                          />
+                          <IconButton
                             variant={isCopied ? 'success' : 'secondary'}
                             size="sm"
                             icon={isCopied ? Check : Copy}
                             onClick={() => void handleCopyUrl(evidenceUrl)}
-                            title="複製雲端事證連結"
-                            aria-label="複製雲端事證連結"
-                            style={{ minWidth: '84px', justifyContent: 'center' }}
-                          >
-                            {isCopied ? '已複製' : '複製連結'}
-                          </Button>
+                            tooltip={isCopied ? '已複製雲端證據連結' : '複製雲端證據連結'}
+                          />
                         </div>
                       ) : (
                         <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
@@ -489,15 +496,11 @@ export default function HistoryView({
             </tbody>
           </table>
         ) : (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '40px',
-              color: 'var(--color-text-secondary)',
-              fontSize: '0.9rem',
-            }}
-          >
-            目前尚無歷史檢舉紀錄
+          <div className="history-empty-state" role="status">
+            <span className="history-empty-icon" aria-hidden="true">
+              <ShieldCheck size={30} strokeWidth={1.6} />
+            </span>
+            <span>目前尚無歷史檢舉紀錄</span>
           </div>
         )}
       </div>
@@ -627,9 +630,17 @@ export default function HistoryView({
             </div>
           }
         >
-          <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+          <div
+            style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: '1.5' }}
+          >
             確定要清空本機的所有檢舉歷史紀錄嗎？
-            <div style={{ marginTop: '8px', color: 'var(--color-status-danger, #ef5350)', fontSize: '0.85rem' }}>
+            <div
+              style={{
+                marginTop: '8px',
+                color: 'var(--color-status-danger, #ef5350)',
+                fontSize: '0.85rem',
+              }}
+            >
               ⚠️ 此操作將永久刪除本地紀錄，無法復原。
             </div>
           </div>

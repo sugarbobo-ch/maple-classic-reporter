@@ -172,7 +172,7 @@ class RecordingBridgeMixin:
                     if self._cancel_requested:
                         self._emit_event("RECORDING_CANCELED")
                     else:
-                        self._emit_event("RECORDING_ERROR", {"message": "無法擷取目標遊戲視窗，請確認遊戲未關閉"})
+                        self._emit_event("RECORDING_ERROR", {"message": "無法取得目標遊戲畫面，請確認遊戲未關閉"})
                     return
 
                 # Emit final 100% progress so the circle fills completely

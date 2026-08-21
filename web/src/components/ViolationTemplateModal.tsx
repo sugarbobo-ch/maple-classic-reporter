@@ -53,10 +53,7 @@ export default function ViolationTemplateModal({
         </>
       }
     >
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '4px 0' }}
-      >
+      <form onSubmit={handleSubmit} className="dialog-form-stack">
         <Input
           label="範本名稱"
           placeholder="例如：自動打怪／定點外掛"

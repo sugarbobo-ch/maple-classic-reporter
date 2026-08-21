@@ -67,10 +67,7 @@ export default function QuickLinkModal({ linkToEdit, onSave, onClose }: QuickLin
         </>
       }
     >
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
-      >
+      <form onSubmit={handleSubmit} className="dialog-form-stack">
         <Input
           label="連結名稱"
           placeholder="例如：巴哈姆特討論區"
@@ -80,7 +77,7 @@ export default function QuickLinkModal({ linkToEdit, onSave, onClose }: QuickLin
         />
 
         <Input
-          label="目標網址 URL"
+          label="網址"
           placeholder="https://..."
           value={url}
           error={urlError}
@@ -92,26 +89,17 @@ export default function QuickLinkModal({ linkToEdit, onSave, onClose }: QuickLin
         />
 
         <Dropdown
-          label="圖示 Icon"
+          label="圖示"
           options={iconOptions}
           value={icon}
           onChange={(val) => setIcon(val)}
         />
 
-        {/* Real-time Preview Card */}
-        <div style={{ marginTop: '6px' }}>
-          <label className="ui-input-label" style={{ marginBottom: '6px' }}>
-            即時預覽效果
-          </label>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <div className="quick-link-card" style={{ width: '110px' }}>
-              <DynamicIcon
-                name={icon}
-                size={22}
-                color="var(--color-primary)"
-              />
-              <div className="quick-link-title">{title || '連結標題'}</div>
-            </div>
+        <div className="quick-link-preview-block">
+          <label className="ui-input-label">即時預覽效果</label>
+          <div className="quick-link-preview" aria-live="polite">
+            <DynamicIcon name={icon} size={20} color="var(--color-primary)" />
+            <span>{title || '連結標題'}</span>
           </div>
         </div>
       </form>

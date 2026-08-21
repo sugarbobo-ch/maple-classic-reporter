@@ -67,10 +67,13 @@ export default function MediaPreviewSection({
 }: MediaPreviewSectionProps) {
   return (
     <div className="step-block">
-      <div className="step-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div
+        className="step-title-row"
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="step-number">1</span>
-          <span>確認事證媒體預覽</span>
+          <span>確認檢舉證據</span>
         </div>
         {originalBackupPath && (
           <Badge variant="success" size="sm">
@@ -96,15 +99,15 @@ export default function MediaPreviewSection({
                 playsInline
               />
             ) : previewUrl ? (
-              <img
-                src={previewUrl}
-                alt="事證畫面預覽"
-                className="media-image-element"
-              />
+              <img src={previewUrl} alt="檢舉證據畫面預覽" className="media-image-element" />
             ) : isVideo ? (
               <div className="media-placeholder">
                 <Film size={36} color="var(--color-primary)" />
-                <span>{currentMediaPath ? '正在載入影片播放器...' : '正在儲存循環錄影，完成後將自動載入影片...'}</span>
+                <span>
+                  {currentMediaPath
+                    ? '正在載入影片播放器...'
+                    : '正在儲存循環錄影，完成後將自動載入影片...'}
+                </span>
               </div>
             ) : (
               <div className="media-placeholder">
@@ -120,9 +123,7 @@ export default function MediaPreviewSection({
               {currentMediaPath ? currentMediaPath.split(/[\\/]/).pop() : '未選取檔案'}
             </span>
             {videoDuration > 0 && (
-              <span className="media-duration-text">
-                時長: {formatTime(videoDuration)}
-              </span>
+              <span className="media-duration-text">時長: {formatTime(videoDuration)}</span>
             )}
           </div>
 
@@ -132,28 +133,30 @@ export default function MediaPreviewSection({
               <div className="trim-header-row">
                 <div className="trim-time-indicator">
                   <Clock size={13} />
-                  <span>播放時間: {formatTime(currentPlaybackTime)} / {formatTime(videoDuration)}</span>
+                  <span>
+                    播放時間: {formatTime(currentPlaybackTime)} / {formatTime(videoDuration)}
+                  </span>
                 </div>
                 <div className="trim-marker-buttons">
                   <Button
                     variant="secondary"
                     size="sm"
                     onClick={onSetCutStart}
-                    aria-label="設定影片剪輯起點"
-                    title="將當前播放時間設為刪除起點"
+                    aria-label="將目前播放位置設為影片剪輯起點"
+                    title={`將目前播放位置 ${formatTime(currentPlaybackTime)} 設為刪除起點`}
                     style={{ fontSize: '0.75rem', padding: '3px 8px' }}
                   >
-                    設為起點 [{cutStart > 0 || cutEnd > cutStart ? ` ${formatTime(cutStart)}` : ''}
+                    將目前位置設為起點
                   </Button>
                   <Button
                     variant="secondary"
                     size="sm"
                     onClick={onSetCutEnd}
-                    aria-label="設定影片剪輯終點"
-                    title="將當前播放時間設為刪除終點"
+                    aria-label="將目前播放位置設為影片剪輯終點"
+                    title={`將目前播放位置 ${formatTime(currentPlaybackTime)} 設為刪除終點`}
                     style={{ fontSize: '0.75rem', padding: '3px 8px' }}
                   >
-                    設為終點 ]{cutEnd > 0 ? ` ${formatTime(cutEnd)}` : ''}
+                    將目前位置設為終點
                   </Button>
                   {(cutStart > 0 || cutEnd > 0) && (
                     <Button
@@ -187,7 +190,10 @@ export default function MediaPreviewSection({
                       }}
                       title={`即將刪除: ${formatTime(cutStart)} ~ ${formatTime(cutEnd)}`}
                     >
-                      <span className="trim-cut-label">✂️ 刪除區段</span>
+                      <span className="trim-cut-label">
+                        <Scissors size={12} aria-hidden="true" />
+                        <span>刪除區段</span>
+                      </span>
                     </div>
                   )}
                   {/* Playhead position */}
@@ -212,7 +218,7 @@ export default function MediaPreviewSection({
                         {formatTime(cutStart)} ~ {formatTime(cutEnd)}
                       </strong>
                       <span style={{ opacity: 0.8 }}>
-                        （長度 {(Math.max(0, cutEnd - cutStart)).toFixed(1)} 秒）
+                        （長度 {Math.max(0, cutEnd - cutStart).toFixed(1)} 秒）
                       </span>
                     </>
                   ) : (
@@ -222,16 +228,12 @@ export default function MediaPreviewSection({
                   )}
                 </div>
                 <Button
-                  variant="primary"
+                  variant="danger"
                   size="sm"
                   icon={Scissors}
                   onClick={onExecuteCut}
                   disabled={isTrimming || cutEnd <= cutStart}
                   aria-label="套用影片剪輯"
-                  style={{
-                    backgroundColor: cutEnd > cutStart ? '#d32f2f' : undefined,
-                    opacity: cutEnd <= cutStart ? 0.6 : 1,
-                  }}
                 >
                   {isTrimming ? '剪輯處理中...' : '刪除此區段'}
                 </Button>
@@ -277,6 +279,7 @@ export default function MediaPreviewSection({
 
           {isVideo && (
             <Button
+              className="video-trim-toggle"
               variant={isTrimOpen ? 'primary' : 'outline'}
               size="md"
               icon={Scissors}

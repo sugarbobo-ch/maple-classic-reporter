@@ -20,6 +20,7 @@
   --color-text-heading: #633719; /* maple bark */
   --color-text-secondary: #665e57; /* warm graphite */
   --color-text-muted: #8a8179; /* quiet stone */
+  --color-text-placeholder: #665e57;
   --color-text-primary: var(--color-text);
   --color-text-tertiary: var(--color-text-muted);
   --color-brown: #92400e; /* amber-800 */
@@ -34,6 +35,9 @@
   --color-status-success-hover: #047857; /* emerald-700 */
   --color-status-success-bg: #ecfdf5; /* emerald-50 */
   --color-status-success-text: #111827;
+  --color-status-success-button: #047857;
+  --color-status-success-button-hover: #065f46;
+  --color-status-success-button-text: #ffffff;
 
   --color-status-important: #0284c7; /* sky-600 */
   --color-status-important-bg: #f0f9ff; /* sky-50 */
@@ -62,7 +66,9 @@
   --color-tooltip-border: rgba(255, 255, 255, 0.1);
 
   /* Focus Ring */
-  --color-focus-ring: rgba(169, 85, 23, 0.28); /* maple focus */
+  --color-focus-ring: #a95517; /* solid maple focus */
+  --color-media-frame: #e8e0d5;
+  --color-media-track: #d8cec1;
 
   /* Unified Sizing Scale */
   --size-sm: 28px;
@@ -78,10 +84,10 @@
   --space-xxl: 32px;
 
   /* Border radius */
-  --radius-sm: 5px;
+  --radius-sm: 6px;
   --radius-xs: 4px;
   --radius-md: 8px;
-  --radius-lg: 10px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
 
   /* Font */
@@ -106,6 +112,7 @@
   --color-text-heading: #e2cbb0; /* soft warm beige title (low saturation, not bright yellow) */
   --color-text-secondary: #b1a59a; /* muted warm gray */
   --color-text-muted: #8f8379;
+  --color-text-placeholder: #b1a59a;
   --color-text-primary: var(--color-text);
   --color-text-tertiary: var(--color-text-muted);
   --color-brown: #c49a6c;
@@ -118,6 +125,9 @@
   --color-status-success-hover: #10b981;
   --color-status-success-bg: rgba(52, 211, 153, 0.15);
   --color-status-success-text: #0d2a20;
+  --color-status-success-button: #34d399;
+  --color-status-success-button-hover: #10b981;
+  --color-status-success-button-text: #0d2a20;
 
   --color-status-important: #38bdf8; /* soft sky */
   --color-status-important-bg: rgba(56, 189, 248, 0.15);
@@ -137,5 +147,7 @@
   --color-tooltip-border: #544940;
 
   /* Focus Ring */
-  --color-focus-ring: rgba(214, 154, 94, 0.38); /* warm maple focus */
+  --color-focus-ring: #d69a5e; /* solid warm maple focus */
+  --color-media-frame: #2c2622;
+  --color-media-track: #3a312a;
 }

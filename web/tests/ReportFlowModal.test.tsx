@@ -50,20 +50,15 @@ describe('ReportFlowModal evidence selection', () => {
 
     Object.defineProperty(video, 'currentTime', { configurable: true, writable: true, value: 2 });
     fireEvent.timeUpdate(video);
-    fireEvent.click(screen.getByRole('button', { name: '設定影片剪輯起點' }));
+    fireEvent.click(screen.getByRole('button', { name: '將目前播放位置設為影片剪輯起點' }));
 
     Object.defineProperty(video, 'currentTime', { configurable: true, writable: true, value: 5 });
     fireEvent.timeUpdate(video);
-    fireEvent.click(screen.getByRole('button', { name: '設定影片剪輯終點' }));
+    fireEvent.click(screen.getByRole('button', { name: '將目前播放位置設為影片剪輯終點' }));
     fireEvent.click(screen.getByRole('button', { name: '套用影片剪輯' }));
 
     await waitFor(() => {
-      expect(trimVideoSegment).toHaveBeenCalledWith(
-        'C:\\test\\original.mp4',
-        2,
-        5,
-        undefined
-      );
+      expect(trimVideoSegment).toHaveBeenCalledWith('C:\\test\\original.mp4', 2, 5, undefined);
     });
 
     fireEvent.change(screen.getByTestId('report-suspect-id'), {
@@ -161,7 +156,7 @@ describe('ReportFlowModal evidence selection', () => {
     expect(screen.getByTestId('report-map-name')).toHaveValue('維多利亞港');
     expect(screen.queryByTestId('ocr-map-suggestion')).not.toBeInTheDocument();
     expect(screen.getByTestId('ocr-map-disabled-hint')).toHaveTextContent(
-      '尚未啟用地圖 OCR'
+      '尚未啟用地圖文字辨識（OCR）'
     );
     expect(screen.getByTestId('history-map-suggestion-0')).toHaveTextContent('歷史地圖');
   });
@@ -194,7 +189,7 @@ describe('ReportFlowModal evidence selection', () => {
     );
 
     const ocrChip = screen.getByTestId('ocr-map-suggestion');
-    expect(ocrChip).toHaveTextContent('OCR：幽靈船');
+    expect(ocrChip).toHaveTextContent('辨識結果：幽靈船');
     expect(ocrChip).toHaveClass('active');
 
     // History options should be sorted newest first (地鐵一號線 from 08-17, then 散步路 II from 08-01), with 幽靈船 excluded since it's already the OCR chip
@@ -315,5 +310,3 @@ describe('ReportFlowModal evidence selection', () => {
     expect(matches).toHaveLength(1);
   });
 });
-
-

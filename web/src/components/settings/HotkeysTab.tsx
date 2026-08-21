@@ -31,7 +31,7 @@ export default function HotkeysTab({
     <>
       <div className="setting-row">
         <div className="setting-info">
-          <span className="setting-label">啟用全域快捷鍵</span>
+          <span className="setting-label">啟用快捷鍵</span>
           <span className="setting-desc">遊戲視窗在前景時依然有效（Ctrl 與 Shift 固定）</span>
         </div>
         <Switch
@@ -52,7 +52,7 @@ export default function HotkeysTab({
       >
         <div className="setting-row">
           <div className="setting-info">
-            <span className="setting-label">儲存循環錄影片段快捷鍵</span>
+            <span className="setting-label">儲存循環影片快捷鍵</span>
             <span className="setting-desc">
               {listeningForHotkey === 'save_replay'
                 ? '請在鍵盤上按下任意按鍵（如 F9、S、R 等，按 Esc 取消）'
@@ -174,7 +174,7 @@ export default function HotkeysTab({
         <div style={{ fontWeight: 700, color: 'var(--color-text-heading)', marginBottom: '4px' }}>
           快捷鍵使用說明：
         </div>
-        Windows 全域熱鍵透過底層 Win32 API 註冊，不會攔截遊戲內的其他普通操作。建議使用 <code>Ctrl + Shift + S</code> 儲存片段與 <code>Ctrl + Shift + R</code> 開始錄影以避免單鍵衝突。
+        Windows 系統快捷鍵會在遊戲視窗前景時保持有效，不會攔截遊戲內的其他操作。建議使用 <code>Ctrl + Shift + S</code> 儲存影片片段與 <code>Ctrl + Shift + R</code> 開始錄影，以避免單鍵衝突。
       </div>
     </>
   );

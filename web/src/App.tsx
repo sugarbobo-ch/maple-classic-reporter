@@ -15,18 +15,19 @@ import {
   StatusState,
   SubmissionStatusData,
   SanctionSyncStatus,
+  UpdateStatus,
 } from './types';
 import { normalizeSafeHttpsUrl } from './utils';
 import './styles/app.css';
 
 import { choosePreferredWindow, normalizeOcrResult } from './utils/appHelpers';
 
-const QuickSettings = lazy(() => import('./components/QuickSettings'));
-const QuickLinks = lazy(() => import('./components/QuickLinks'));
-const QuickLinkModal = lazy(() => import('./components/QuickLinkModal'));
 const SettingsView = lazy(() => import('./components/SettingsView'));
 const HistoryView = lazy(() => import('./components/HistoryView'));
 const ReportFlowModal = lazy(() => import('./components/ReportFlowModal'));
+const QuickLinkModal = lazy(() => import('./components/QuickLinkModal'));
+const QuickSettings = lazy(() => import('./components/QuickSettings'));
+const QuickLinks = lazy(() => import('./components/QuickLinks'));
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>('home');
@@ -57,6 +58,8 @@ export default function App() {
   const [isCheckingSanctions, setIsCheckingSanctions] = useState<boolean>(false);
   const [lastCompleteSyncAt, setLastCompleteSyncAt] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const manualUpdateCheckRef = useRef(false);
 
   // Status & modal states
   const [statusState, setStatusState] = useState<StatusState>('idle');
@@ -254,11 +257,11 @@ export default function App() {
 
       if (sanctionSyncStatus?.trigger === 'manual') {
         toast.success(
-          '制裁狀態檢查完成',
-          `已檢查 ${checkedCount} 筆紀錄，新增 ${newlyBanned} 筆制裁，解除 ${changedToUnbanned} 筆`
+          '官方處分狀態檢查完成',
+          `已檢查 ${checkedCount} 筆紀錄，新增 ${newlyBanned} 筆封鎖，解除 ${changedToUnbanned} 筆`
         );
       } else if (newlyBanned > 0) {
-        toast.info('制裁名單已更新', `新增 ${newlyBanned} 筆制裁命中`);
+        toast.info('官方處分名單已更新', `新增 ${newlyBanned} 筆封鎖結果`);
       }
     },
     SANCTION_SYNC_FAILED: (data: any) => {
@@ -267,7 +270,23 @@ export default function App() {
       if (Array.isArray(data?.history)) {
         setHistory(data.history);
       }
-      toast.warning('制裁狀態同步未完成', data?.message || '部分公告未能成功下載，已保留既有結果');
+      toast.warning('官方處分狀態同步未完成', data?.message || '部分公告未能成功下載，已保留既有結果');
+    },
+    UPDATE_STATUS: (data: UpdateStatus) => {
+      if (!data || typeof data.state !== 'string') return;
+      setUpdateStatus(data);
+      if (!manualUpdateCheckRef.current) return;
+      if (data.state === 'checking') return;
+      if (data.state === 'up_to_date') {
+        toast.success('目前已是最新版');
+        manualUpdateCheckRef.current = false;
+      } else if (data.state === 'available') {
+        toast.info('發現可用更新', data.target_version ? `可更新至 v${data.target_version}` : undefined);
+        manualUpdateCheckRef.current = false;
+      } else if (data.state === 'error' || data.state === 'insufficient_space') {
+        toast.warning('更新檢查未完成', data.error_message || '請稍後再試');
+        manualUpdateCheckRef.current = false;
+      }
     },
   });
 
@@ -293,6 +312,7 @@ export default function App() {
           if (initData.audio_devices && initData.audio_devices.length > 0)
             setAudioDevices(initData.audio_devices);
           if (initData.history) setHistory(initData.history);
+          if (initData.update_status) setUpdateStatus(initData.update_status);
           setGdriveAuthenticated(Boolean(initData.gdrive_authenticated));
           if (initData.sanction_sync_status) {
             setSanctionSyncStatus(initData.sanction_sync_status);
@@ -370,7 +390,7 @@ export default function App() {
     setSubmissionStatus(null);
     setModalStage('progress');
     setModalProgress(30);
-    setModalStatusText('正在擷取遊戲畫面並進行辨識...');
+    setModalStatusText('正在截圖並進行辨識...');
     setModalOpen(true);
 
     if (window.pywebview && window.pywebview.api) {
@@ -572,7 +592,7 @@ export default function App() {
       } else {
         setStatusState('replaying');
         setReplayTime(30);
-        toast.info('已啟動循環錄影 (Mock)');
+        toast.info('已啟動循環錄影（測試）');
       }
     }
   };
@@ -608,7 +628,7 @@ export default function App() {
     } else {
       setModalStage('progress');
       setModalProgress(35);
-      setModalStatusText('正在解析事證檔案...');
+      setModalStatusText('正在分析檢舉證據檔案...');
       setModalOpen(true);
       setTimeout(() => {
         setOcrResults((prev) =>
@@ -638,7 +658,7 @@ export default function App() {
           setSubmissionStatus(null);
           setModalStage('progress');
           setModalProgress(25);
-          setModalStatusText('已選取事證檔案，正在解析影格...');
+          setModalStatusText('已選取檢舉證據檔案，正在分析畫面...');
           setModalOpen(true);
           const res = await window.pywebview.api.process_imported_file(filePath);
           if (res && res.status === 'success') {
@@ -657,7 +677,7 @@ export default function App() {
     } else {
       setModalStage('progress');
       setModalProgress(40);
-      setModalStatusText('正在解析事證檔案...');
+      setModalStatusText('正在分析檢舉證據檔案...');
       setModalOpen(true);
       setTimeout(() => {
         setOcrResults((prev) =>
@@ -736,13 +756,13 @@ export default function App() {
             setIsCheckingSanctions(false);
             setSanctionSyncStatus(null);
             if (res.reason === 'fresh') {
-              toast.info('制裁紀錄已是最新', '不久前已完成完整同步檢查。');
+              toast.info('官方處分紀錄已是最新', '不久前已完成完整同步檢查。');
             }
           }
         }
       } catch (err: unknown) {
         setIsCheckingSanctions(false);
-        toast.error('啟動制裁檢查失敗', err instanceof Error ? err.message : String(err));
+        toast.error('啟動官方處分狀態檢查失敗', err instanceof Error ? err.message : String(err));
       }
     } else {
       // Mock flow for browser preview
@@ -752,7 +772,7 @@ export default function App() {
         phase: 'fetching',
         current: 1,
         total: 2,
-        message: '正在檢查官方制裁公告 (Mock)…',
+        message: '正在檢查官方處分公告（測試）…',
       });
       setTimeout(() => {
         setIsCheckingSanctions(false);
@@ -760,9 +780,34 @@ export default function App() {
         const mockNow = new Date().toISOString();
         setLastCompleteSyncAt(mockNow);
         updateConfig('last_complete_sync_at', mockNow);
-        toast.success('制裁狀態檢查完成 (Mock)', '已比對最新官方制裁公告名單');
+        toast.success('官方處分狀態檢查完成（測試）', '已比對最新官方處分公告');
       }, 1200);
     }
+  };
+
+  const handleCheckForUpdates = async (force = true) => {
+    if (!window.pywebview?.api?.check_for_updates) {
+      toast.warning('目前環境無法檢查更新', '請使用 Windows 發行版執行此功能');
+      return;
+    }
+    manualUpdateCheckRef.current = true;
+    toast.info('正在檢查更新…');
+    await window.pywebview.api.check_for_updates(force);
+  };
+
+  const handleStartUpdateDownload = async () => {
+    if (!window.pywebview?.api?.start_update_download) return;
+    await window.pywebview.api.start_update_download();
+  };
+
+  const handleCancelUpdateDownload = async () => {
+    if (!window.pywebview?.api?.cancel_update_download) return;
+    await window.pywebview.api.cancel_update_download();
+  };
+
+  const handleRestartAndApplyUpdate = async () => {
+    if (!window.pywebview?.api?.restart_and_apply_update) return;
+    await window.pywebview.api.restart_and_apply_update();
   };
 
   const handleSubmitReport = async (formData: Record<string, unknown>) => {
@@ -786,9 +831,9 @@ export default function App() {
           setSubmissionStatus({
             step: 'completed',
             status: 'success',
-            message: res.message || '檢舉事證已成功提交！',
+            message: res.message || '檢舉證據已成功提交！',
           });
-          toast.success('檢舉事證已成功提交！', res.message || '已自動加入歷史紀錄');
+          toast.success('檢舉證據已成功提交！', res.message || '已自動加入歷史紀錄');
           const initData = await window.pywebview.api.get_initial_data();
           if (initData && initData.history) setHistory(initData.history);
           setModalOpen(false);
@@ -868,7 +913,7 @@ export default function App() {
   const handleAuthenticateDrive = async () => {
     if (isAuthenticatingDrive) return;
     if (!(window.pywebview && window.pywebview.api)) {
-      toast.info('正在連線驗證 Google Drive (Mock)...');
+      toast.info('正在連線登入 Google 帳號（測試）...');
       return;
     }
 
@@ -885,13 +930,13 @@ export default function App() {
       }
       setGdriveAuthenticated(authenticated);
       if (authenticated) {
-        toast.success('Google Drive 授權成功！');
+        toast.success('Google 帳號登入成功！');
       } else {
-        toast.error('Google Drive 授權失敗', res?.message || '尚未取得有效授權');
+        toast.error('Google 帳號登入失敗', res?.message || '尚未取得有效登入狀態');
       }
     } catch (e: any) {
       setGdriveAuthenticated(false);
-      toast.error('Google Drive 授權異常', e?.message || String(e));
+      toast.error('Google 帳號登入異常', e?.message || String(e));
     } finally {
       setIsAuthenticatingDrive(false);
     }
@@ -957,8 +1002,8 @@ export default function App() {
     (config.upload_destination === 'gdrive' && gdriveAuthenticated === false);
   const configurationWarning =
     config.upload_destination === 'gdrive'
-      ? '尚未授權 Google Drive，檢舉事證目前無法上傳。'
-      : '尚未設定 Discord Webhook，檢舉事證目前無法上傳。';
+      ? '尚未登入 Google 帳號，檢舉證據目前無法上傳。'
+      : '尚未設定 Discord 頻道連結，檢舉證據目前無法上傳。';
 
   return (
     <div className="app-container">
@@ -970,6 +1015,15 @@ export default function App() {
         isDevMode={isDevMode}
         theme={typeof config.theme === 'string' ? config.theme : undefined}
         onUpdateTheme={(nextTheme) => updateConfig('theme', nextTheme)}
+        updateStatus={updateStatus}
+        updateBusy={statusState !== 'idle' || isSubmittingReport || modalOpen}
+        onStartUpdateDownload={handleStartUpdateDownload}
+        onRestartAndApplyUpdate={handleRestartAndApplyUpdate}
+        onCancelUpdateDownload={handleCancelUpdateDownload}
+        onOpenUpdateDetails={() => {
+          setCurrentView('settings');
+          setSettingsTab('about');
+        }}
       />
 
       <main className="main-content">
@@ -981,104 +1035,142 @@ export default function App() {
         )}
 
         {currentView === 'home' && (
-          <>
-            <Suspense fallback={<div className="route-loading" role="status">載入快速設定…</div>}>
-              <QuickSettings
-              config={config}
-              windows={windows}
-              audioDevices={audioDevices}
-              isInitializing={isInitializing}
-              onUpdateConfig={updateConfig}
-              onUpdateConfigBatch={updateConfigBatch}
-              onRefreshWindows={handleRefreshWindows}
-              onRefreshAudio={handleRefreshAudio}
-              onOpenSettings={() => {
-                setSettingsTab('recording');
-                setCurrentView('settings');
-              }}
+          <div className="home-view">
+            <section className="home-actions-area" aria-label="蒐證與檢舉操作">
+              <ActionCards
+                onCaptureScreenshot={handleCaptureScreenshot}
+                onRecordVideo={handleRecordVideo}
+                onToggleReplay={handleToggleReplay}
+                onSelectFile={handleSelectFile}
+                isReplaying={statusState === 'replaying'}
+                isRecording={statusState === 'recording' || countdown > 0}
+                recordingLabel={countdown > 0 ? `倒數 ${countdown}s` : `錄影中 ${recordingTime}s`}
+                countdown={countdown}
+                totalCountdown={activeTotalCountdown}
+                countdownFraction={countdownFraction}
+                recordingTime={recordingTime}
+                totalRecordingDuration={config.record_duration_sec || 8}
+                recordingFraction={recordingFraction}
+                disabled={isResetting}
               />
-            </Suspense>
+            </section>
 
-            <Suspense fallback={<div className="route-loading" role="status">載入快捷連結…</div>}>
-              <QuickLinks
-              quickLinks={config.quick_links}
-              onOpenLink={handleOpenUrl}
-              onManageLinks={() => {
-                setSettingsTab('quicklinks');
-                setCurrentView('settings');
-              }}
-              onAddCustomLink={() => {
-                setEditingQuickLink(null);
-                setQuickLinkModalOpen(true);
-              }}
-              />
-            </Suspense>
+            <section className="home-settings-area" aria-label="快速設定">
+              <Suspense
+                fallback={
+                  <div className="route-loading" role="status">
+                    載入快速設定…
+                  </div>
+                }
+              >
+                <QuickSettings
+                  config={config}
+                  windows={windows}
+                  audioDevices={audioDevices}
+                  isInitializing={isInitializing}
+                  onUpdateConfig={updateConfig}
+                  onUpdateConfigBatch={updateConfigBatch}
+                  onRefreshWindows={handleRefreshWindows}
+                  onRefreshAudio={handleRefreshAudio}
+                  onOpenSettings={() => {
+                    setSettingsTab('recording');
+                    setCurrentView('settings');
+                  }}
+                />
+              </Suspense>
+            </section>
 
-            <ActionCards
-              onCaptureScreenshot={handleCaptureScreenshot}
-              onRecordVideo={handleRecordVideo}
-              onToggleReplay={handleToggleReplay}
-              onSelectFile={handleSelectFile}
-              isReplaying={statusState === 'replaying'}
-              isRecording={statusState === 'recording' || countdown > 0}
-              recordingLabel={countdown > 0 ? `倒數 ${countdown}s` : `錄製中 ${recordingTime}s`}
-              countdown={countdown}
-              totalCountdown={activeTotalCountdown}
-              countdownFraction={countdownFraction}
-              recordingTime={recordingTime}
-              totalRecordingDuration={config.record_duration_sec || 8}
-              recordingFraction={recordingFraction}
-              disabled={isResetting}
-            />
-          </>
+            <section className="home-links-area" aria-label="快捷連結">
+              <Suspense
+                fallback={
+                  <div className="route-loading" role="status">
+                    載入快捷連結…
+                  </div>
+                }
+              >
+                <QuickLinks
+                  quickLinks={config.quick_links}
+                  onOpenLink={handleOpenUrl}
+                  onManageLinks={() => {
+                    setSettingsTab('quicklinks');
+                    setCurrentView('settings');
+                  }}
+                  onAddCustomLink={() => {
+                    setEditingQuickLink(null);
+                    setQuickLinkModalOpen(true);
+                  }}
+                />
+              </Suspense>
+            </section>
+          </div>
         )}
 
         {currentView === 'settings' && (
-          <Suspense fallback={<div className="route-loading" role="status">載入設定…</div>}>
+          <Suspense
+            fallback={
+              <div className="route-loading" role="status">
+                載入設定…
+              </div>
+            }
+          >
             <SettingsView
-            config={config}
-            windows={windows}
-            audioDevices={audioDevices}
-            initialTab={settingsTab}
-            gdriveAuthenticated={gdriveAuthenticated}
-            gdriveAuthLoading={isAuthenticatingDrive}
-            onUpdateConfig={updateConfig}
-            onUpdateConfigBatch={updateConfigBatch}
-            onBack={() => setCurrentView('home')}
-            onOpenDriveFolder={handleOpenDriveFolder}
-            onAuthenticateDrive={handleAuthenticateDrive}
-            onRefreshWindows={handleRefreshWindows}
-            onRefreshAudio={handleRefreshAudio}
-            onClearRecordings={handleClearRecordings}
+              config={config}
+              windows={windows}
+              audioDevices={audioDevices}
+              initialTab={settingsTab}
+              gdriveAuthenticated={gdriveAuthenticated}
+              gdriveAuthLoading={isAuthenticatingDrive}
+              onUpdateConfig={updateConfig}
+              onUpdateConfigBatch={updateConfigBatch}
+              onBack={() => setCurrentView('home')}
+              onOpenDriveFolder={handleOpenDriveFolder}
+              onAuthenticateDrive={handleAuthenticateDrive}
+              onRefreshWindows={handleRefreshWindows}
+              onRefreshAudio={handleRefreshAudio}
+              onClearRecordings={handleClearRecordings}
+              updateStatus={updateStatus}
+              onCheckForUpdates={() => handleCheckForUpdates(true)}
+              onStartUpdateDownload={handleStartUpdateDownload}
+              onCancelUpdateDownload={handleCancelUpdateDownload}
+              onRestartAndApplyUpdate={handleRestartAndApplyUpdate}
+              updateBusy={statusState !== 'idle' || isSubmittingReport || modalOpen}
             />
           </Suspense>
         )}
 
         {currentView === 'history' && (
           /* Keep backend history authoritative for both the history view and form suggestions. */
-          <Suspense fallback={<div className="route-loading" role="status">載入歷史紀錄…</div>}>
+          <Suspense
+            fallback={
+              <div className="route-loading" role="status">
+                載入歷史紀錄…
+              </div>
+            }
+          >
             <HistoryView
-            history={history}
-            compactLayout={
-              typeof config.history_compact_layout === 'boolean'
-                ? config.history_compact_layout
-                : false
-            }
-            onUpdateCompactLayout={(compact) => updateConfig('history_compact_layout', compact)}
-            pageSize={typeof config.history_page_size === 'number' ? config.history_page_size : 15}
-            onUpdatePageSize={(size) => updateConfig('history_page_size', size)}
-            onBack={() => setCurrentView('home')}
-            onClearHistory={handleClearHistory}
-            onOpenUrl={handleOpenUrl}
-            onCheckSanctions={handleCheckSanctions}
-            isCheckingSanctions={isCheckingSanctions}
-            sanctionSyncStatus={sanctionSyncStatus}
-            lastCompleteSyncAt={
-              lastCompleteSyncAt ||
-              (typeof config.last_complete_sync_at === 'string'
-                ? config.last_complete_sync_at
-                : null)
-            }
+              history={history}
+              compactLayout={
+                typeof config.history_compact_layout === 'boolean'
+                  ? config.history_compact_layout
+                  : false
+              }
+              onUpdateCompactLayout={(compact) => updateConfig('history_compact_layout', compact)}
+              pageSize={
+                typeof config.history_page_size === 'number' ? config.history_page_size : 15
+              }
+              onUpdatePageSize={(size) => updateConfig('history_page_size', size)}
+              onBack={() => setCurrentView('home')}
+              onClearHistory={handleClearHistory}
+              onOpenUrl={handleOpenUrl}
+              onCheckSanctions={handleCheckSanctions}
+              isCheckingSanctions={isCheckingSanctions}
+              sanctionSyncStatus={sanctionSyncStatus}
+              lastCompleteSyncAt={
+                lastCompleteSyncAt ||
+                (typeof config.last_complete_sync_at === 'string'
+                  ? config.last_complete_sync_at
+                  : null)
+              }
             />
           </Suspense>
         )}
@@ -1107,36 +1199,36 @@ export default function App() {
       {modalOpen && (
         <Suspense fallback={null}>
           <ReportFlowModal
-          stage={modalStage}
-          progressPercent={modalProgress}
-          progressStatus={modalStatusText}
-          isSubmitting={isSubmittingReport}
-          submissionStatus={submissionStatus}
-          ocrResults={ocrResults}
-          config={config}
-          history={history}
-          onClose={() => {
-            setModalOpen(false);
-            setModalProgress(0);
-            setModalStatusText('');
-            setSubmissionStatus(null);
-          }}
-          onSkipOcr={handleSkipOcr}
-          onSubmitReport={handleSubmitReport}
-          onOpenFilePath={(p) => {
-            if (window.pywebview && window.pywebview.api) {
-              window.pywebview.api.open_media_file(p);
-            }
-          }}
-          onOpenFileLocation={(p) => {
-            if (window.pywebview && window.pywebview.api) {
-              window.pywebview.api.open_file_location(p);
-            }
-          }}
-          onUpdateWhitelist={(newWhitelist) => {
-            updateConfig('whitelist', newWhitelist);
-            toast.success('白名單已更新');
-          }}
+            stage={modalStage}
+            progressPercent={modalProgress}
+            progressStatus={modalStatusText}
+            isSubmitting={isSubmittingReport}
+            submissionStatus={submissionStatus}
+            ocrResults={ocrResults}
+            config={config}
+            history={history}
+            onClose={() => {
+              setModalOpen(false);
+              setModalProgress(0);
+              setModalStatusText('');
+              setSubmissionStatus(null);
+            }}
+            onSkipOcr={handleSkipOcr}
+            onSubmitReport={handleSubmitReport}
+            onOpenFilePath={(p) => {
+              if (window.pywebview && window.pywebview.api) {
+                window.pywebview.api.open_media_file(p);
+              }
+            }}
+            onOpenFileLocation={(p) => {
+              if (window.pywebview && window.pywebview.api) {
+                window.pywebview.api.open_file_location(p);
+              }
+            }}
+            onUpdateWhitelist={(newWhitelist) => {
+              updateConfig('whitelist', newWhitelist);
+              toast.success('略過名單已更新');
+            }}
           />
         </Suspense>
       )}
@@ -1144,12 +1236,12 @@ export default function App() {
       {quickLinkModalOpen && (
         <Suspense fallback={null}>
           <QuickLinkModal
-          linkToEdit={editingQuickLink}
-          onSave={handleSaveQuickLink}
-          onClose={() => {
-            setQuickLinkModalOpen(false);
-            setEditingQuickLink(null);
-          }}
+            linkToEdit={editingQuickLink}
+            onSave={handleSaveQuickLink}
+            onClose={() => {
+              setQuickLinkModalOpen(false);
+              setEditingQuickLink(null);
+            }}
           />
         </Suspense>
       )}

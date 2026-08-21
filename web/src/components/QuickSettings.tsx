@@ -236,7 +236,7 @@ export default function QuickSettings({
               lineHeight: '1.4',
             }}
           >
-            鎖定遊戲視窗以擷取畫面與短片
+            鎖定遊戲視窗以截圖與錄影
           </div>
         </div>
 
@@ -343,7 +343,7 @@ export default function QuickSettings({
 
           <div className="inline-field">
             <Video size={15} color="var(--color-primary)" />
-            <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>錄製</span>
+            <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>錄影</span>
             <input
               type="number"
               className="ui-input-field"

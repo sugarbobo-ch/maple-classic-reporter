@@ -35,7 +35,7 @@ class HistoryController:
                 font = url_item.font()
                 font.setUnderline(True)
                 url_item.setFont(font)
-                url_item.setToolTip("點擊前往開啟雲端事證網址")
+            url_item.setToolTip("點擊前往開啟雲端檢舉證據網址")
             table.setItem(row, 4, url_item)
             table.setItem(row, 5, QTableWidgetItem(item.get("status", "")))
 
@@ -51,7 +51,7 @@ class HistoryController:
         try:
             webbrowser.open(url)
         except OSError as error:
-            LOGGER.warning("開啟歷史事證網址失敗 (%s)", type(error).__name__)
+            LOGGER.warning("開啟歷史檢舉證據網址失敗 (%s)", type(error).__name__)
             return False
         return True
 

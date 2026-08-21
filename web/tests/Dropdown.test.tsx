@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import Dropdown from '../src/components/ui/Dropdown';
 
 describe('Dropdown layout', () => {
-  it('keeps long options within the trigger and viewport width', () => {
+  it('lets option content size the menu while keeping the trigger width as a floor', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 320,
       height: 36,
@@ -30,7 +30,11 @@ describe('Dropdown layout', () => {
     fireEvent.click(screen.getByRole('button', { name: '新楓之谷：經典版' }));
 
     const menu = screen.getByRole('listbox');
-    expect(menu).toHaveStyle({ width: 'min(320px, calc(100vw - 20px))' });
+    expect(menu).toHaveStyle({
+      minWidth: '320px',
+      width: 'max-content',
+      maxWidth: 'calc(100vw - 20px)',
+    });
     expect(screen.getByRole('option', { name: longLabel })).toHaveAttribute('title', longLabel);
 
     vi.restoreAllMocks();

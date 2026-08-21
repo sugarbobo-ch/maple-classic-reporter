@@ -57,9 +57,9 @@ describe('StatusBar component', () => {
     );
 
     expect(screen.getByText('REC')).toBeInTheDocument();
-    expect(screen.getByText(/循環錄影中 \(18s \/ 30s 已緩衝\)/)).toBeInTheDocument();
+    expect(screen.getByText(/循環錄影中 \(18s \/ 30s 已保留\)/)).toBeInTheDocument();
     const stopBtn = screen.getByRole('button', { name: /停止循環錄影/i });
-    const saveBtn = screen.getByRole('button', { name: /儲存片段/i });
+    const saveBtn = screen.getByRole('button', { name: /儲存影片片段/i });
     expect(stopBtn).toBeInTheDocument();
     expect(saveBtn).toBeInTheDocument();
     fireEvent.click(saveBtn);
@@ -68,13 +68,7 @@ describe('StatusBar component', () => {
 
   it('renders countdown state in StatusBar with countdown text and cancel action', () => {
     const onCancel = vi.fn();
-    render(
-      <StatusBar
-        countdown={3}
-        totalCountdown={3}
-        onCancelRecording={onCancel}
-      />
-    );
+    render(<StatusBar countdown={3} totalCountdown={3} onCancelRecording={onCancel} />);
 
     expect(screen.getByText('REC')).toBeInTheDocument();
     expect(screen.getByText('錄影準備中：倒數 3 秒')).toBeInTheDocument();
@@ -97,8 +91,8 @@ describe('ActionCards component', () => {
       />
     );
 
-    expect(screen.getByText('錄製短片')).toBeInTheDocument();
-    expect(screen.getByText('錄製短片並自動辨識')).toBeInTheDocument();
+    expect(screen.getByText('錄影')).toBeInTheDocument();
+    expect(screen.getByText('錄影並自動辨識')).toBeInTheDocument();
   });
 
   it('renders countdown state with decreasing circular progress value and remaining seconds', () => {
@@ -137,6 +131,24 @@ describe('ActionCards component', () => {
     );
 
     expect(screen.getByText('取消錄影')).toBeInTheDocument();
-    expect(screen.getByText('錄製中 4s / 8s (點擊中斷)')).toBeInTheDocument();
+    expect(screen.getByText('錄影中 4s / 8s (點擊中斷)')).toBeInTheDocument();
+  });
+
+  it('keeps unavailable actions as disabled semantic buttons', () => {
+    render(
+      <ActionCards
+        onCaptureScreenshot={vi.fn()}
+        onRecordVideo={vi.fn()}
+        onToggleReplay={vi.fn()}
+        onSelectFile={vi.fn()}
+        isReplaying={false}
+        isRecording={true}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /截圖，目前無法使用/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /循環錄影，目前無法使用/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /選擇檔案，目前無法使用/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /取消錄影/ })).toBeEnabled();
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, RefObject } from 'react';
+import { useState, useCallback, useLayoutEffect, RefObject } from 'react';
 
 export type Placement = 'top' | 'bottom' | 'left' | 'right';
 
@@ -106,7 +106,7 @@ export function useAnchorPosition(
     });
   }, [anchorRef, placement, offset, estimatedHeight, autoFlip, enabled, centerHorizontal]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled) return;
 
     updatePosition();

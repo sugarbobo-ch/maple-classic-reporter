@@ -410,7 +410,7 @@ export default function ReportFlowModal({
       onClose={isSubmitting ? undefined : onClose}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>{stage === 'progress' ? '事證辨識進度' : '檢舉事證回報表單'}</span>
+          <span>{stage === 'progress' ? '檢舉證據辨識進度' : '檢舉證據回報表單'}</span>
           {config.dev_mode && stage === 'form' && (
             <Badge variant="event" size="sm">
               DEV 模擬送出
@@ -467,7 +467,7 @@ export default function ReportFlowModal({
                 ? '送出中…'
                 : config.dev_mode
                   ? '模擬送出檢舉 (不實際送出)'
-                  : '送出檢舉事證'}
+                  : '送出檢舉證據'}
             </Button>
           </>
         )
@@ -478,10 +478,7 @@ export default function ReportFlowModal({
         <ProgressStage progressPercent={progressPercent} progressStatus={progressStatus} />
       ) : (
         /* Stage 2: Report Confirmation Form State (Steps 1 to 5) */
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
-        >
+        <form onSubmit={handleSubmit} className="report-flow-form">
           {submissionStatus && (
             <div
               className={`submission-status-message ${submissionStatus.status || 'progress'}`}

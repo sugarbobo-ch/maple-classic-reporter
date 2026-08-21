@@ -134,23 +134,23 @@ def make_oauth_result_html(*, success: bool) -> str:
 
     values = (
         {
-            "__PAGE_TITLE__": "Google 帳號連結完成",
+            "__PAGE_TITLE__": "Google 帳號登入完成",
             "__RESULT_CLASS__": "success",
             "__RESULT_ICON__": SUCCESS_ICON,
-            "__HEADING__": "Google 帳號連結完成",
+            "__HEADING__": "Google 帳號登入完成",
             "__DESCRIPTION__": "授權已完成。現在可以關閉這個頁面，返回「新楓之谷自動外掛檢舉工具」繼續操作。",
-            "__STATUS__": "Google Drive 已連結",
+            "__STATUS__": "Google 帳號已登入",
             "__NOTE__": "此頁面由本機程式（localhost）提供，不會顯示你的授權資料。",
         }
         if success
         else {
-            "__PAGE_TITLE__": "Google 帳號連結失敗",
+            "__PAGE_TITLE__": "Google 帳號登入失敗",
             "__RESULT_CLASS__": "failure",
             "__RESULT_ICON__": FAILURE_ICON,
-            "__HEADING__": "Google 帳號連結失敗",
+            "__HEADING__": "Google 帳號登入失敗",
             "__DESCRIPTION__": "帳戶尚未連結，可能是授權被取消、連線中斷，或 Google 無法完成驗證。",
-            "__STATUS__": "未連結 Google Drive",
-            "__NOTE__": "請關閉此頁面，返回應用程式後重新授權。",
+            "__STATUS__": "尚未登入 Google 帳號",
+            "__NOTE__": "請關閉此頁面，返回應用程式後重新登入。",
         }
     )
     html = OAUTH_RESULT_HTML
@@ -513,18 +513,18 @@ class GoogleDriveManager:
             self._save_credentials()
             self._delete_legacy_token()
             self.service = build("drive", "v3", credentials=self.creds)
-            return True, "Google 帳號已連結，之後可直接使用 Google Drive。"
+            return True, "Google 帳號已登入，之後可直接使用 Google Drive。"
         except OAuthConfigError as error:
             return False, str(error)
         except Exception as error:
             LOGGER.warning("Google OAuth 登入失敗 (%s)", type(error).__name__)
-            return False, "Google OAuth 登入失敗，請稍後重新授權。"
+            return False, "Google 帳號登入失敗，請稍後重新登入。"
 
     def get_or_create_folder(self, folder_name: str = "MapleClassic_Reports") -> str:
         """Get or create the dedicated report folder in Google Drive."""
 
         if not self.service:
-            raise RuntimeError("Google Drive 尚未登入服務。")
+            raise RuntimeError("Google 帳號尚未登入。")
 
         escaped_folder_name = escape_drive_query_literal(folder_name)
         query = (
@@ -568,7 +568,7 @@ class GoogleDriveManager:
         """Upload an evidence file and return its shareable Drive URL."""
 
         if not self.is_authenticated():
-            return False, "Google Drive 尚未完成登入驗證，請先按「連結 Google 帳號」。"
+            return False, "Google 帳號尚未完成登入驗證，請先登入 Google 帳號。"
 
         try:
             folder_id = self.get_or_create_folder(folder_name)

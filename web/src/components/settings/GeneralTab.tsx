@@ -64,7 +64,7 @@ export default function GeneralTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">預設所在地圖名稱</span>
-          <span className="setting-desc">OCR 未能確定時自動預填</span>
+          <span className="setting-desc">辨識未能確定時自動預填</span>
         </div>
         <div style={{ width: '220px', minWidth: '180px' }}>
           <Input
@@ -153,8 +153,8 @@ export default function GeneralTab({
         }}
       >
         <div className="setting-info">
-          <span className="setting-label">白名單角色 ID 管理</span>
-          <span className="setting-desc">輸入逗號分隔文字或 Enter，自動切分為 Chip，辨識時將自動過濾</span>
+          <span className="setting-label">略過名單（白名單）角色 ID 管理</span>
+          <span className="setting-desc">輸入逗號分隔文字或按 Enter，可加入多個角色 ID；辨識時會自動略過</span>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -179,7 +179,7 @@ export default function GeneralTab({
                 type="button"
                 className="chip-remove-button"
                 onClick={() => onRemoveWhitelist(item)}
-                aria-label={`移除白名單 ${item}`}
+                aria-label={`移除略過名單 ${item}`}
               >
                 ×
               </button>
@@ -187,7 +187,7 @@ export default function GeneralTab({
           ))}
           {whitelist.length === 0 && (
             <span style={{ fontSize: '0.78rem', color: 'var(--color-text-tertiary)' }}>
-              尚無白名單成員
+              尚無略過名單成員
             </span>
           )}
         </div>
@@ -196,7 +196,7 @@ export default function GeneralTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">背景靜默送出檢舉</span>
-          <span className="setting-desc">啟用時 Playwright 自動填表於後台無聲執行；關閉時將開啟可見瀏覽器展示填表</span>
+          <span className="setting-desc">啟用時會在背景自動填寫表單；關閉時會開啟瀏覽器展示填寫過程</span>
         </div>
         <Switch
           checked={config.form_submit_headless !== false}
@@ -206,8 +206,8 @@ export default function GeneralTab({
 
       <div className="setting-row">
         <div className="setting-info">
-          <span className="setting-label">啟動時自動更新制裁公告</span>
-          <span className="setting-desc">啟動且距離上次完整檢查超過 6 小時時，在背景以隨機間隔存取官方最新制裁名單</span>
+          <span className="setting-label">啟動時自動更新官方處分公告</span>
+          <span className="setting-desc">啟動且距離上次完整檢查超過 6 小時時，會在背景更新官方最新處分名單</span>
         </div>
         <Switch
           checked={config.auto_check_sanction_status !== false}
@@ -217,8 +217,8 @@ export default function GeneralTab({
 
       <div className="setting-row no-border">
         <div className="setting-info">
-          <span className="setting-label">自動刪除已確認事證</span>
-          <span className="setting-desc">表單提交與上傳成功後，自動刪除本機錄影暫存檔</span>
+          <span className="setting-label">自動刪除已確認檢舉證據</span>
+          <span className="setting-desc">表單提交與上傳成功後，自動刪除本機暫存影片</span>
         </div>
         <Switch
           checked={config.auto_delete_after_upload || false}

@@ -59,7 +59,7 @@ class ReportPreviewModal(QDialog):
             media_box = QHBoxLayout()
             ext = os.path.splitext(self.file_path)[1].lower()
             is_video = ext in [".mp4", ".mkv", ".avi", ".mov"]
-            media_label_text = f"事證檔案：{os.path.basename(self.file_path)}"
+            media_label_text = f"檢舉證據檔案：{os.path.basename(self.file_path)}"
 
             lbl_media = QLabel(media_label_text)
             lbl_media.setStyleSheet("font-weight: bold; color: #333;")
@@ -99,8 +99,8 @@ class ReportPreviewModal(QDialog):
         else:
             self.id_combo.setEditText(suspect_id)
 
-        btn_add_whitelist = QPushButton("加入白名單")
-        btn_add_whitelist.setToolTip("將目前選擇的 ID 加入白名單（例如自己或隊友名稱），未來將自動過濾")
+        btn_add_whitelist = QPushButton("加入略過名單")
+        btn_add_whitelist.setToolTip("將目前選擇的 ID 加入略過名單（白名單），未來會自動略過")
         btn_add_whitelist.setStyleSheet("""
             QPushButton {
                 background-color: #78909c;
@@ -155,9 +155,9 @@ class ReportPreviewModal(QDialog):
         map_label.setBuddy(self.map_input)
         self.map_input.setAccessibleName("所在地圖名稱")
         self.map_input.setAccessibleDescription(
-            "可填入 OCR 辨識的地圖名稱，也可以使用預設地圖名稱"
+            "可填入文字辨識（OCR）得到的地圖名稱，也可以使用預設地圖名稱"
         )
-        self.map_input.setPlaceholderText("等待 OCR 辨識結果，或手動輸入")
+        self.map_input.setPlaceholderText("等待辨識結果，或手動輸入")
         self.map_input.textEdited.connect(self._on_map_name_edited)
 
         self.btn_use_default_map = QPushButton("使用預設地圖名稱")
@@ -181,7 +181,7 @@ class ReportPreviewModal(QDialog):
         layout.addWidget(self.note_input)
 
         destination_name = "Google Drive" if self.upload_destination == "gdrive" else "Discord"
-        layout.addWidget(QLabel(f"5. 上傳後自動產生的事證連結（{destination_name}）："))
+        layout.addWidget(QLabel(f"5. 上傳後自動產生的檢舉證據連結（{destination_name}）："))
         url_box = QHBoxLayout()
         self.url_input = QLineEdit(data.get("evidence_url", ""))
         self.url_input.setReadOnly(True)
@@ -198,7 +198,7 @@ class ReportPreviewModal(QDialog):
 
         # Buttons
         btn_layout = QHBoxLayout()
-        self.btn_submit = QPushButton("確認內容並上傳事證")
+        self.btn_submit = QPushButton("確認內容並上傳檢舉證據")
         self.btn_submit.setStyleSheet("""
             QPushButton {
                 background-color: #4caf50;
@@ -313,7 +313,7 @@ class ReportPreviewModal(QDialog):
         if curr_idx != -1:
             self.id_combo.removeItem(curr_idx)
 
-        self.lbl_ocr_status.setText(f"已將「{target_id}」加入白名單，未來會自動過濾。")
+        self.lbl_ocr_status.setText(f"已將「{target_id}」加入略過名單，未來會自動略過。")
         self.lbl_ocr_status.setStyleSheet("font-size: 11px; color: #d32f2f; font-weight: bold; margin-bottom: 5px;")
 
     def preview_file(self):
@@ -341,16 +341,16 @@ class ReportPreviewModal(QDialog):
             return
         note = self.note_input.text().strip() or "自動打怪/外掛行為"
         if not self.file_path or not os.path.isfile(self.file_path):
-            QMessageBox.warning(self, "無法送出", "找不到本次事證檔案；必須先成功上傳事證。")
+            QMessageBox.warning(self, "無法送出", "找不到本次檢舉證據檔案；必須先成功上傳檢舉證據。")
             return
         destination_name = "Google Drive" if self.upload_destination == "gdrive" else "Discord"
         if self.upload_destination == "gdrive":
             if not self.drive_mgr or not self.drive_mgr.is_authenticated():
-                QMessageBox.warning(self, "無法送出", "Google Drive 尚未授權；必須先成功上傳事證。")
+                QMessageBox.warning(self, "無法送出", "Google 帳號尚未登入；必須先成功上傳檢舉證據。")
                 return
         else:
             if not self.discord_webhook_url:
-                QMessageBox.warning(self, "無法送出", "尚未設定 Discord Webhook URL。")
+                QMessageBox.warning(self, "無法送出", "尚未設定 Discord 頻道連結。")
                 return
         self.pending_data = {
             "suspect_id": suspect_id,
@@ -366,7 +366,7 @@ class ReportPreviewModal(QDialog):
         self.btn_cancel.setEnabled(False)
         self.btn_submit.setText("上傳中…")
         self.lbl_upload_status.setText(f"正在上傳至 {destination_name}。影片較大時可能需要一段時間，請勿關閉視窗。")
-        description = f"檢舉事證｜ID: {suspect_id}｜伺服器: {server_name}｜地圖: {map_name}"
+        description = f"檢舉證據｜ID: {suspect_id}｜伺服器: {server_name}｜地圖: {map_name}"
         self.upload_thread = EvidenceUploadThread(
             self.upload_destination, self.file_path, self.drive_mgr, self.folder_name,
             self.discord_webhook_url, description, parent=self,
@@ -384,7 +384,7 @@ class ReportPreviewModal(QDialog):
         destination_name = "Google Drive" if self.upload_destination == "gdrive" else "Discord"
         self.btn_submit.setEnabled(True)
         self.btn_cancel.setEnabled(True)
-        self.btn_submit.setText("確認內容並上傳事證")
+        self.btn_submit.setText("確認內容並上傳檢舉證據")
         if not ok:
             self.lbl_upload_status.setText(f"{destination_name} 上傳失敗，表單尚未送出。")
             QMessageBox.warning(self, "上傳失敗", f"{evidence_url}\n表單尚未送出。")

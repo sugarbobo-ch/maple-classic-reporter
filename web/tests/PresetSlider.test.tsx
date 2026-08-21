@@ -32,7 +32,7 @@ describe('PresetSlider Component & Helpers', () => {
     expect(screen.getByText('較快 (省資源)')).toBeInTheDocument();
     expect(screen.getByText('更流暢 (高影格)')).toBeInTheDocument();
 
-    const rangeInput = screen.getByLabelText('效能與畫質設定檔滑桿');
+    const rangeInput = screen.getByLabelText('錄影模式調整滑桿');
     fireEvent.change(rangeInput, { target: { value: '0' } });
 
     expect(onChangePreset).toHaveBeenCalledWith('ultra_fast');
@@ -50,7 +50,7 @@ describe('PresetSlider Component & Helpers', () => {
       />
     );
 
-    expect(screen.getByText('自訂模式')).toBeInTheDocument();
+    expect(screen.getByText('自訂錄影模式')).toBeInTheDocument();
     expect(screen.getByText('12秒')).toBeInTheDocument();
     expect(screen.getByText('45 FPS')).toBeInTheDocument();
     expect(screen.getByText('循環 50秒')).toBeInTheDocument();

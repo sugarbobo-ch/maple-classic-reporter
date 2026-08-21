@@ -14,6 +14,9 @@ from maple_reporter.automation.playwright_runtime import (
 )
 from maple_reporter.gui.main_window import MainWindow
 from maple_reporter.gui.playwright_error_dialog import show_playwright_error_dialog
+from maple_reporter.update.updater import recover_interrupted_update
+from maple_reporter.update.runtime import mark_post_update_success
+from maple_reporter.utils.config import get_user_app_data_dir
 
 
 def get_application_icon_path() -> Path:
@@ -184,6 +187,8 @@ from maple_reporter.gui.webview_app import (
 
 
 def main():
+    if "--post-update" not in sys.argv:
+        recover_interrupted_update(get_user_app_data_dir() / "updates")
     if "--smoke-test" in sys.argv:
         sys.exit(run_bundle_smoke_test())
 
@@ -200,6 +205,7 @@ def main():
         window = MainWindow()
         window.setWindowIcon(icon)
         window.show()
+        mark_post_update_success()
 
         sys.exit(app.exec())
     else:

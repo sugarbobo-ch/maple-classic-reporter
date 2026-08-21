@@ -48,7 +48,7 @@ export default function RecordingTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">目標遊戲視窗</span>
-          <span className="setting-desc">鎖定並擷取畫面之 Windows 視窗</span>
+          <span className="setting-desc">鎖定要截圖與錄影的 Windows 視窗</span>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ width: '260px', minWidth: '200px' }}>
@@ -84,8 +84,8 @@ export default function RecordingTab({
 
       <div className="setting-row">
         <div className="setting-info">
-          <span className="setting-label">錄製短片秒數</span>
-          <span className="setting-desc">一般短片錄影持續長度 (1 ~ 60 秒)</span>
+          <span className="setting-label">錄影秒數</span>
+          <span className="setting-desc">一般錄影持續時間（1～60 秒）</span>
         </div>
         <div style={{ width: '140px', minWidth: '120px' }}>
           <Input
@@ -103,8 +103,8 @@ export default function RecordingTab({
 
       <div className="setting-row">
         <div className="setting-info">
-          <span className="setting-label">錄影流暢度 (FPS)</span>
-          <span className="setting-desc">影格幀率，建議 20 ~ 30 FPS 兼顧效能與順暢度</span>
+          <span className="setting-label">錄影流暢度（FPS）</span>
+          <span className="setting-desc">每秒畫面數，建議 20～30 FPS 兼顧效能與順暢度</span>
         </div>
         <div style={{ width: '140px', minWidth: '120px' }}>
           <Dropdown<number>
@@ -118,7 +118,7 @@ export default function RecordingTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">錄影前倒數時間</span>
-          <span className="setting-desc">按下錄影後預留之準備倒數</span>
+          <span className="setting-desc">按下錄影後預留的準備倒數時間</span>
         </div>
         <div style={{ width: '180px', minWidth: '140px' }}>
           <Dropdown<number>
@@ -132,7 +132,7 @@ export default function RecordingTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">錄音來源</span>
-          <span className="setting-desc">選擇只錄製遊戲程序、整個系統，或不加入聲音。</span>
+          <span className="setting-desc">選擇只錄影遊戲程式、整個系統，或不加入聲音。</span>
         </div>
         <div style={{ width: '220px', minWidth: '180px' }}>
           <Dropdown<AudioCaptureMode>

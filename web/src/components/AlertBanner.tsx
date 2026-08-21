@@ -7,7 +7,7 @@ export interface AlertBannerProps {
 }
 
 export default function AlertBanner({
-  message = '尚未設定事證上傳目的地',
+  message = '尚未設定檢舉證據上傳目的地',
   onStartSettings,
 }: AlertBannerProps) {
   return (

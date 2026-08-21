@@ -159,7 +159,7 @@ class TestVideoWorkflowCancellation(unittest.TestCase):
 
         inactive_style = window.btn_trigger_video.setStyleSheet.call_args.args[0]
         self.assertIn("#e65100", inactive_style)
-        window.btn_trigger_video.setText.assert_called_with("錄製影片並辨識")
+        window.btn_trigger_video.setText.assert_called_with("錄影並辨識")
 
     def test_cancel_state_disables_both_cancel_controls_immediately(self):
         window = Mock()

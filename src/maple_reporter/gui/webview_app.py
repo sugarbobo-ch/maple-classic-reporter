@@ -15,6 +15,7 @@ from maple_reporter.gui.native_window import (
     set_window_identity,
 )
 from maple_reporter.gui.pywebview_bridge import PyWebViewBridge
+from maple_reporter.update.runtime import mark_post_update_success
 from maple_reporter.utils.config import get_user_app_data_dir, load_config
 
 LOGGER = logging.getLogger(__name__)
@@ -156,7 +157,10 @@ def run_webview_app() -> None:
         easy_drag=False,
     )
 
+    post_update_marked = False
+
     def on_window_ready() -> None:
+        nonlocal post_update_marked
         hwnd = _window_handle(window)
         if not install_native_resize_support(window):
             LOGGER.warning("Native window resize support could not be installed")
@@ -167,6 +171,10 @@ def run_webview_app() -> None:
             APP_USER_MODEL_ID,
         ):
             LOGGER.debug("Native window identity could not be applied")
+        if not post_update_marked:
+            mark_post_update_success()
+            post_update_marked = True
+        bridge.start_update_check()
 
     window.events.shown += on_window_ready
     window.events.loaded += on_window_ready
