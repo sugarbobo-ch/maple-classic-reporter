@@ -100,19 +100,21 @@ jobs:
           $tagName = if ("${{ github.ref_name }}" -like "v*") { "${{ github.ref_name }}" } else { "v$projectVersion" }
           $isPrerelease = $tagName -match '-'
           $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'MapleClassicReporter-release'; Authorization = "Bearer $env:GITHUB_TOKEN" }
-          $releases = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/sugarbobo-ch/maple-classic-reporter/releases?per_page=30'
-          $previous = $releases | Where-Object { $_.tag_name -ne $tagName -and ([bool]$_.prerelease -eq $isPrerelease) } | Select-Object -First 1
           $previousBundle = $null
           $previousVersion = $null
-          if ($previous) {
-            $previousZip = $previous.assets | Where-Object { $_.name -like '*-windows-x64.zip' -and $_.name -notlike '*.patch.zip' } | Select-Object -First 1
-            if ($previousZip) {
-              $previousArchive = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release.zip'
-              Invoke-WebRequest -Headers $headers -Uri $previousZip.browser_download_url -OutFile $previousArchive
-              $previousExtract = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release'
-              Expand-Archive -LiteralPath $previousArchive -DestinationPath $previousExtract -Force
-              $previousBundle = Join-Path $previousExtract 'MapleClassicReporter'
-              $previousVersion = $previous.tag_name.TrimStart('v')
+          if ($projectVersion -ne '2.0.0') {
+            $releases = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/sugarbobo-ch/maple-classic-reporter/releases?per_page=30'
+            $previous = $releases | Where-Object { $_.tag_name -ne $tagName -and ([bool]$_.prerelease -eq $isPrerelease) } | Select-Object -First 1
+            if ($previous) {
+              $previousZip = $previous.assets | Where-Object { $_.name -like '*-windows-x64.zip' -and $_.name -notlike '*.patch.zip' } | Select-Object -First 1
+              if ($previousZip) {
+                $previousArchive = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release.zip'
+                Invoke-WebRequest -Headers $headers -Uri $previousZip.browser_download_url -OutFile $previousArchive
+                $previousExtract = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release'
+                Expand-Archive -LiteralPath $previousArchive -DestinationPath $previousExtract -Force
+                $previousBundle = Join-Path $previousExtract 'MapleClassicReporter'
+                $previousVersion = $previous.tag_name.TrimStart('v')
+              }
             }
           }
           $arguments = @(
