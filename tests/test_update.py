@@ -46,6 +46,19 @@ class _Session:
         )
 
 
+class _HeadlessProgressUI:
+    """Exercise updater transactions without opening Tk on CI runners."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def run_with_worker(self, worker):
+        return worker(lambda _percent, _message="": None)
+
+    def close(self):
+        pass
+
+
 class UpdateTests(unittest.TestCase):
     def test_updater_resolves_camera_icon_when_install_bundle_has_no_assets(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -213,7 +226,10 @@ class UpdateTests(unittest.TestCase):
                 (update_dir / f"success-{token}.json").write_text('{"ok": true}')
                 return Process()
 
-            with patch("maple_reporter.update.updater._launch", side_effect=fake_launch):
+            with (
+                patch("maple_reporter.update.updater.UpdateProgressUI", _HeadlessProgressUI),
+                patch("maple_reporter.update.updater._launch", side_effect=fake_launch),
+            ):
                 self.assertTrue(
                     apply_update(
                         package_path=package,
@@ -242,7 +258,10 @@ class UpdateTests(unittest.TestCase):
                 def poll(self):
                     return self.returncode
 
-            with patch("maple_reporter.update.updater._launch", return_value=Process()):
+            with (
+                patch("maple_reporter.update.updater.UpdateProgressUI", _HeadlessProgressUI),
+                patch("maple_reporter.update.updater._launch", return_value=Process()),
+            ):
                 with self.assertRaises(TimeoutError):
                     apply_update(
                         package_path=package,
