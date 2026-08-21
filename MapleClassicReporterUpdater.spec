@@ -4,12 +4,15 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(SPECPATH).resolve()
+CAMERA_ICON = PROJECT_ROOT / "assets" / "icon.ico"
 
 a = Analysis(
     [str(PROJECT_ROOT / "src" / "maple_reporter" / "update" / "updater_main.py")],
     pathex=[str(PROJECT_ROOT / "src")],
     binaries=[],
-    datas=[],
+    # Keep the camera icon beside the one-file updater so the Tk title bar and
+    # taskbar can use the same artwork as the executable resource.
+    datas=[(str(CAMERA_ICON), "assets")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -36,5 +39,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(PROJECT_ROOT / "assets" / "icon.ico"),
+    icon=str(CAMERA_ICON),
 )

@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from maple_reporter.update.manifest import SemVer, safe_relative_path
 from maple_reporter.update.service import UpdateService, UpdateState
-from maple_reporter.update.updater import _apply_delta, apply_update
+from maple_reporter.update.updater import _apply_delta, _find_update_icon, apply_update
 
 
 class _Response:
@@ -47,6 +47,13 @@ class _Session:
 
 
 class UpdateTests(unittest.TestCase):
+    def test_updater_resolves_camera_icon_when_install_bundle_has_no_assets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            icon = _find_update_icon(Path(temporary) / "MapleClassicReporter")
+
+        self.assertIsNotNone(icon)
+        self.assertEqual(icon.name, "icon.ico")
+
     def test_semver_prerelease_order_and_safe_paths(self):
         self.assertLess(SemVer.parse("2.0.0-pre"), SemVer.parse("2.0.0"))
         self.assertGreater(SemVer.parse("2.0.0-pre.2"), SemVer.parse("2.0.0-pre"))

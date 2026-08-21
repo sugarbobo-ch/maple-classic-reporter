@@ -27,6 +27,42 @@ LOGGER = logging.getLogger(__name__)
 _MAX_MEMBER_SIZE = 2 * 1024 * 1024 * 1024
 
 
+def _find_update_icon(install_dir: Path | None = None) -> Path | None:
+    """Find the camera icon for both frozen and source-mode updater runs."""
+
+    candidates: list[Path] = []
+    if install_dir:
+        candidates.extend(
+            [
+                install_dir / "assets" / "icon.ico",
+                install_dir / "_internal" / "assets" / "icon.ico",
+            ]
+        )
+
+    # The updater is a one-file executable.  Its bundled copy of the Windows
+    # icon lives under _MEIPASS after extraction.
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "assets" / "icon.ico")
+
+    executable_dir = Path(sys.executable).resolve().parent
+    candidates.extend(
+        [
+            executable_dir / "assets" / "icon.ico",
+            executable_dir / "_internal" / "assets" / "icon.ico",
+        ]
+    )
+
+    # Source-mode tests and local updater runs use the repository asset.  The
+    # ICO is the Windows packaging form of web/src/assets/icon.png.
+    candidates.append(Path(__file__).resolve().parents[3] / "assets" / "icon.ico")
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
@@ -380,16 +416,13 @@ class UpdateProgressUI:
             root.resizable(False, False)
             root.attributes("-topmost", True)
 
-            # Set camera icon if available
-            if install_dir:
-                icon_path = install_dir / "assets" / "icon.ico"
-                if not icon_path.is_file():
-                    icon_path = install_dir / "_internal" / "assets" / "icon.ico"
-                if icon_path.is_file():
-                    try:
-                        root.iconbitmap(str(icon_path))
-                    except Exception:
-                        pass
+            # Use the project camera icon for the title bar and taskbar.
+            icon_path = _find_update_icon(install_dir)
+            if icon_path:
+                try:
+                    root.iconbitmap(str(icon_path))
+                except Exception:
+                    pass
 
             root.update_idletasks()
             width = root.winfo_width()
