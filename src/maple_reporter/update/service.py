@@ -37,6 +37,7 @@ DELTA_ASSET_PATTERN = re.compile(
 CHECK_INTERVAL_SECONDS = 6 * 60 * 60
 MAX_UPDATE_CACHE_BYTES = 5 * 1024 * 1024
 UPDATE_PUBLIC_KEY_ENV = "MAPLE_REPORTER_UPDATE_PUBLIC_KEY"
+EMBEDDED_UPDATE_PUBLIC_KEY = "G2nZipsLXsnILUl80j4UR+6z01D6D8HyvvmLT+Yk4Qs="
 
 
 class UpdateState(str, Enum):
@@ -79,6 +80,13 @@ class ReleaseCandidate:
 
 def _now() -> float:
     return time.time()
+
+
+def _configured_public_key() -> str:
+    configured = os.environ.get(UPDATE_PUBLIC_KEY_ENV)
+    if configured is not None:
+        return configured.strip()
+    return EMBEDDED_UPDATE_PUBLIC_KEY if getattr(sys, "frozen", False) else ""
 
 
 def _asset_digest(value: Any) -> str:
@@ -410,7 +418,7 @@ class UpdateService:
         """
 
         candidate = self._candidate
-        public_key = os.environ.get(UPDATE_PUBLIC_KEY_ENV, "").strip()
+        public_key = _configured_public_key()
         if not candidate:
             return
         if not candidate.manifest_url:
@@ -432,7 +440,7 @@ class UpdateService:
                     raise ValueError("Update manifest signature is invalid")
             self._merge_manifest_assets(manifest)
         except Exception as error:
-            if os.environ.get(UPDATE_PUBLIC_KEY_ENV, "").strip():
+            if _configured_public_key():
                 raise
             LOGGER.warning("Unable to verify optional update manifest: %s", error)
 

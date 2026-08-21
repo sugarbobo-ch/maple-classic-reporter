@@ -2,7 +2,7 @@
 
 ## 使用者體驗
 
-程式啟動完成後會在背景檢查 GitHub Releases。`auto_update_enabled` 預設為 `true`，因此新版會自動下載與驗證，但不會在使用者操作中強制關閉程式。
+程式啟動完成後會在背景檢查 GitHub Releases。`auto_update_enabled` 預設為 `true`，新版會自動下載與驗證，但不會在使用者操作中強制關閉程式。
 
 Header 右側、明暗模式按鈕左側會依狀態顯示：
 
@@ -17,10 +17,10 @@ Header 右側、明暗模式按鈕左側會依狀態顯示：
 
 GitHub Actions 的 release workflow 會建置主程式與隨附的 `MapleClassicReporterUpdater.exe`，並產生完整 ZIP、bundle manifest、update manifest 及上一個相容版本的檔案級差分包。
 
-若要啟用 manifest 簽章，請在 repository secrets 設定：
+簽章設定如下：
 
-- `UPDATE_SIGNING_KEY`：Ed25519 private key 的 base64 編碼。
-- `MAPLE_REPORTER_UPDATE_PUBLIC_KEY`：測試或部署環境提供給客戶端的 public key；正式打包前應將同一把 public key 內嵌到發行版設定，再由 workflow 使用對應 private key。
+- `UPDATE_SIGNING_KEY`：GitHub Actions Secret，Ed25519 private key 的 base64 編碼。只存於 GitHub，不提交到 repository。
+- public key：嵌入 frozen 客戶端，用來驗證 update manifest。`MAPLE_REPORTER_UPDATE_PUBLIC_KEY` 只作為測試或金鑰輪替的環境覆寫，不是正式 private key 儲存位置。
 
 第一個包含 updater 的版本仍是導入版本；既有舊版使用者需最後一次手動下載完整 ZIP。之後的版本由主程式直接使用 GitHub Releases 更新。
 
