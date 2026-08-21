@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -15,15 +16,20 @@ from typing import Any
 from maple_reporter.update.manifest import CURRENT_MANIFEST_SCHEMA, canonical_json, sha256_file, safe_relative_path
 
 
+def _hash_bundle_entry(item: tuple[Path, Path]) -> tuple[str, dict[str, Any]]:
+    path, bundle = item
+    relative = path.relative_to(bundle).as_posix()
+    safe_relative_path(relative)
+    return relative, {"size": path.stat().st_size, "sha256": sha256_file(path)}
+
+
 def iter_bundle_files(bundle: Path) -> dict[str, dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
-    for path in sorted(bundle.rglob("*")):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(bundle).as_posix()
-        safe_relative_path(relative)
-        result[relative] = {"size": path.stat().st_size, "sha256": sha256_file(path)}
-    return result
+    file_paths = [p for p in sorted(bundle.rglob("*")) if p.is_file()]
+    max_workers = min(16, max(4, (os.cpu_count() or 4) * 2))
+    items = [(p, bundle) for p in file_paths]
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = executor.map(_hash_bundle_entry, items)
+    return dict(results)
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -48,11 +54,16 @@ def signed_json(path: Path, value: Any, private_key: str | None) -> None:
         path.with_suffix(path.suffix + ".sig").write_text(signature + "\n", encoding="ascii")
 
 
-def build_delta(previous_bundle: Path, current_bundle: Path, previous_version: str, version: str, output: Path) -> dict[str, Any]:
-    previous = iter_bundle_files(previous_bundle)
-    current = iter_bundle_files(current_bundle)
-    changed = {path: info for path, info in current.items() if previous.get(path, {}).get("sha256") != info["sha256"]}
-    deleted = sorted(set(previous) - set(current))
+def build_delta(
+    previous_files: dict[str, dict[str, Any]],
+    current_bundle: Path,
+    current_files: dict[str, dict[str, Any]],
+    previous_version: str,
+    version: str,
+    output: Path,
+) -> dict[str, Any]:
+    changed = {path: info for path, info in current_files.items() if previous_files.get(path, {}).get("sha256") != info["sha256"]}
+    deleted = sorted(set(previous_files) - set(current_files))
     patch = {
         "schema": CURRENT_MANIFEST_SCHEMA,
         "kind": "delta",
@@ -60,8 +71,8 @@ def build_delta(previous_bundle: Path, current_bundle: Path, previous_version: s
         "to_version": version,
         "files": {path: info["sha256"] for path, info in changed.items()},
         "delete": deleted,
-        "target_files": {path: info["sha256"] for path, info in current.items()},
-        "target_size": sum(info["size"] for info in current.values()),
+        "target_files": {path: info["sha256"] for path, info in current_files.items()},
+        "target_size": sum(info["size"] for info in current_files.values()),
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
@@ -80,6 +91,7 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--full-zip", type=Path, required=True)
     parser.add_argument("--previous-bundle", type=Path)
+    parser.add_argument("--previous-manifest", type=Path)
     parser.add_argument("--previous-version")
     parser.add_argument("--signing-key-env", default="UPDATE_SIGNING_KEY")
     args = parser.parse_args()
@@ -117,13 +129,24 @@ def main() -> int:
         "required_bytes": full_zip.stat().st_size + bundle_manifest["total_size"] + 64 * 1024 * 1024,
     }
     patches: list[dict[str, Any]] = []
-    if args.previous_bundle and args.previous_version:
-        previous_bundle = args.previous_bundle.resolve()
-        if previous_bundle.is_dir():
+    if args.previous_version:
+        previous_files: dict[str, dict[str, Any]] | None = None
+        if args.previous_manifest and args.previous_manifest.is_file():
+            try:
+                manifest_data = json.loads(args.previous_manifest.read_text(encoding="utf-8"))
+                if isinstance(manifest_data, dict) and isinstance(manifest_data.get("files"), dict):
+                    previous_files = manifest_data["files"]
+            except Exception:
+                previous_files = None
+        if previous_files is None and args.previous_bundle and args.previous_bundle.is_dir():
+            previous_files = iter_bundle_files(args.previous_bundle.resolve())
+
+        if previous_files is not None:
             patch_name = f"MapleClassicReporter-v{args.previous_version}-to-v{args.version}-windows-x64.patch.zip"
             patch = build_delta(
-                previous_bundle,
+                previous_files,
                 bundle,
+                files,
                 args.previous_version,
                 args.version,
                 output / patch_name,

@@ -86,7 +86,10 @@ jobs:
             throw "Missing onedir executable: $exePath"
           }
           $zipPath = "dist/MapleClassicReporter-$tagName-windows-x64.zip"
-          Compress-Archive -LiteralPath $bundlePath -DestinationPath $zipPath -CompressionLevel Optimal -Force
+          tar.exe -a -cf "$zipPath" -C dist MapleClassicReporter
+          if (-not (Test-Path -LiteralPath $zipPath)) {
+            Compress-Archive -LiteralPath $bundlePath -DestinationPath $zipPath -CompressionLevel Optimal -Force
+          }
           Write-Host "Created release package: $zipPath"
 
       - name: Build update manifests and delta package
@@ -95,32 +98,46 @@ jobs:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          $ProgressPreference = 'SilentlyContinue'
           $versionLine = Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"([^"]+)"'
           $projectVersion = $versionLine.Matches[0].Groups[1].Value
           $tagName = if ("${{ github.ref_name }}" -like "v*") { "${{ github.ref_name }}" } else { "v$projectVersion" }
           $isPrerelease = $tagName -match '-'
           $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'MapleClassicReporter-release'; Authorization = "Bearer $env:GITHUB_TOKEN" }
-          $previousBundle = $null
           $previousVersion = $null
+          $previousManifest = $null
+          $previousBundle = $null
           if ($projectVersion -ne '2.0.0') {
             $releases = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/sugarbobo-ch/maple-classic-reporter/releases?per_page=30'
             $previous = $releases | Where-Object { $_.tag_name -ne $tagName -and ([bool]$_.prerelease -eq $isPrerelease) } | Select-Object -First 1
             if ($previous) {
-              $previousZip = $previous.assets | Where-Object { $_.name -like '*-windows-x64.zip' -and $_.name -notlike '*.patch.zip' } | Select-Object -First 1
-              if ($previousZip) {
-                $previousArchive = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release.zip'
-                Invoke-WebRequest -Uri $previousZip.browser_download_url -OutFile $previousArchive
-                $previousExtract = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release'
-                Expand-Archive -LiteralPath $previousArchive -DestinationPath $previousExtract -Force
-                $candidate1 = Join-Path $previousExtract 'MapleClassicReporter'
-                if (Test-Path -LiteralPath (Join-Path $candidate1 'MapleClassicReporter.exe')) {
-                  $previousBundle = $candidate1
-                } elseif (Test-Path -LiteralPath (Join-Path $previousExtract 'MapleClassicReporter.exe')) {
-                  $previousBundle = $previousExtract
+              $previousVersion = $previous.tag_name.TrimStart('v')
+              $manifestAsset = $previous.assets | Where-Object { $_.name -eq 'bundle-manifest-v1.json' } | Select-Object -First 1
+              if ($manifestAsset) {
+                $manifestPath = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-bundle-manifest.json'
+                curl.exe -sL -H "Authorization: Bearer $env:GITHUB_TOKEN" $manifestAsset.browser_download_url -o $manifestPath
+                if (Test-Path -LiteralPath $manifestPath) {
+                  $previousManifest = $manifestPath
+                  Write-Host "Downloaded previous bundle manifest for v$previousVersion"
                 }
-                $previousVersion = $previous.tag_name.TrimStart('v')
-                if ($previousBundle) {
-                  Write-Host "Found previous release bundle at: $previousBundle (v$previousVersion)"
+              }
+              if (-not $previousManifest) {
+                $previousZip = $previous.assets | Where-Object { $_.name -like '*-windows-x64.zip' -and $_.name -notlike '*.patch.zip' } | Select-Object -First 1
+                if ($previousZip) {
+                  $previousArchive = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release.zip'
+                  curl.exe -sL -H "Authorization: Bearer $env:GITHUB_TOKEN" $previousZip.browser_download_url -o $previousArchive
+                  $previousExtract = Join-Path $env:GITHUB_WORKSPACE 'dist\previous-release'
+                  New-Item -ItemType Directory -Force -Path $previousExtract | Out-Null
+                  tar.exe -xf $previousArchive -C $previousExtract
+                  $candidate1 = Join-Path $previousExtract 'MapleClassicReporter'
+                  if (Test-Path -LiteralPath (Join-Path $candidate1 'MapleClassicReporter.exe')) {
+                    $previousBundle = $candidate1
+                  } elseif (Test-Path -LiteralPath (Join-Path $previousExtract 'MapleClassicReporter.exe')) {
+                    $previousBundle = $previousExtract
+                  }
+                  if ($previousBundle) {
+                    Write-Host "Extracted previous release bundle for v$previousVersion"
+                  }
                 }
               }
             }
@@ -132,7 +149,9 @@ jobs:
             '--version', $projectVersion,
             '--full-zip', "dist/MapleClassicReporter-$tagName-windows-x64.zip"
           )
-          if ($previousBundle -and (Test-Path -LiteralPath $previousBundle)) {
+          if ($previousManifest -and (Test-Path -LiteralPath $previousManifest)) {
+            $arguments += @('--previous-manifest', $previousManifest, '--previous-version', $previousVersion)
+          } elseif ($previousBundle -and (Test-Path -LiteralPath $previousBundle)) {
             $arguments += @('--previous-bundle', $previousBundle, '--previous-version', $previousVersion)
           }
           & uv run python @arguments
@@ -154,6 +173,7 @@ jobs:
           )
           Remove-Item -LiteralPath 'dist/previous-release.zip' -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath 'dist/previous-release' -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath 'dist/previous-bundle-manifest.json' -Force -ErrorAction SilentlyContinue
 
       - name: Upload release package
         uses: actions/upload-artifact@v4
