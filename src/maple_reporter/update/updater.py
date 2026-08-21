@@ -78,7 +78,8 @@ def _safe_zip_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     for member in archive.infolist():
         if member.is_dir():
             continue
-        safe_relative_path(member.filename)
+        clean_name = member.filename.replace("\\", "/")
+        safe_relative_path(clean_name)
         if member.file_size > _MAX_MEMBER_SIZE:
             raise ValueError(f"Update member is too large: {member.filename}")
         total_size += member.file_size
@@ -95,13 +96,23 @@ def _extract_safe(archive: zipfile.ZipFile, destination: Path) -> None:
     members = _safe_zip_members(archive)
     destination.mkdir(parents=True, exist_ok=True)
     for member in members:
-        relative = Path(safe_relative_path(member.filename))
+        clean_name = member.filename.replace("\\", "/")
+        relative = Path(safe_relative_path(clean_name))
         target = (destination / relative).resolve()
         if destination.resolve() not in target.parents:
             raise ValueError(f"Archive path escaped staging directory: {member.filename}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        with archive.open(member, "r") as source, target.open("wb") as output:
-            shutil.copyfileobj(source, output, length=1024 * 1024)
+        if getattr(member, "orig_filename", None):
+            member.filename = member.orig_filename
+        try:
+            with archive.open(member, "r") as source, target.open("wb") as output:
+                shutil.copyfileobj(source, output, length=1024 * 1024)
+        except ValueError as err:
+            if "differ" in str(err):
+                data = archive.read(member)
+                target.write_bytes(data)
+            else:
+                raise
 
 
 def _copy_backup(source: Path, backup_root: Path, relative: str) -> bool:
