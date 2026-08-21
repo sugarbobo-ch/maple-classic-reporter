@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Download, History, Minus, RefreshCw, Settings, Square, Sun, Moon, X } from 'lucide-react';
-import { IconButton, Badge } from './ui';
+import { IconButton, Badge, Button, CircularProgress } from './ui';
 import { usePyWebViewEvents, useTheme } from '../hooks';
 import { UpdateStatus, ViewType } from '../types';
 import appLogo from '../assets/icon.png';
@@ -47,8 +47,11 @@ export default function Header({
   theme: configTheme,
   onUpdateTheme,
   updateStatus,
+  updateBusy = false,
+  onRestartAndApplyUpdate,
   onOpenUpdateDetails,
 }: HeaderProps) {
+  const [isApplying, setIsApplying] = useState(false);
   const { isDark, toggleTheme } = useTheme(configTheme, onUpdateTheme);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -141,40 +144,106 @@ export default function Header({
 
   const renderUpdateControl = () => {
     if (!hasUpdateControl) return null;
-    let icon = Download;
-    let tooltip = updateLabel;
-    let isSpinning = false;
-    let active = false;
 
     if (updateState === 'downloading') {
-      icon = RefreshCw;
-      tooltip = `正在${updateLabel} (${updatePercent}%) - 點擊前往設定`;
-      isSpinning = true;
-      active = true;
-    } else if (updateState === 'ready' || updateState === 'waiting_for_idle') {
-      icon = RefreshCw;
-      tooltip = `v${updateStatus?.target_version || ''} 已下載完成 - 點擊前往套用`;
-      active = true;
-    } else if (updateState === 'error' || updateState === 'insufficient_space') {
-      icon = Download;
-      tooltip = updateStatus?.error_message || '更新異常 - 點擊查看';
-    } else if (updateState === 'available') {
-      icon = Download;
-      tooltip = `有可用更新：v${updateStatus?.target_version || ''} - 點擊前往查看`;
-      active = true;
+      return (
+        <button
+          type="button"
+          className="header-update-progress"
+          onClick={onOpenUpdateDetails}
+          aria-label={`正在${updateLabel}，進度 ${updatePercent}%`}
+          title={`正在${updateLabel} (${updatePercent}%) - 點擊查看詳細資料`}
+          aria-describedby="header-update-status"
+        >
+          <CircularProgress
+            value={updatePercent / 100}
+            size={32}
+            strokeWidth={3}
+            progressColor="var(--color-primary)"
+            trackColor="var(--color-border)"
+            ariaLabel={`正在${updateLabel}`}
+            ariaValueNow={updatePercent}
+          >
+            <span aria-hidden="true">{updatePercent}%</span>
+          </CircularProgress>
+          <span id="header-update-status" className="sr-only" role="status" aria-live="polite">
+            {`正在${updateLabel}，進度 ${updatePercent}%`}
+          </span>
+        </button>
+      );
+    }
+
+    if (updateState === 'ready' || updateState === 'waiting_for_idle' || updateState === 'applying') {
+      const waiting = isApplying || updateState === 'applying' || updateState === 'waiting_for_idle' || updateBusy;
+      const label = isApplying || updateState === 'applying'
+        ? '重啟中…'
+        : waiting
+          ? '完成後重啟'
+          : '重啟應用';
+
+      return (
+        <Button
+          variant="success"
+          size="sm"
+          icon={RefreshCw}
+          onClick={() => {
+            setIsApplying(true);
+            onRestartAndApplyUpdate?.();
+          }}
+          disabled={waiting}
+          title={waiting ? '目前工作完成後會自動重啟更新' : '關閉並套用更新'}
+          aria-label={waiting ? '目前工作完成後重啟更新' : '重啟應用並套用更新'}
+          className="header-update-button"
+        >
+          {label}
+        </Button>
+      );
+    }
+
+    if (updateState === 'insufficient_space') {
+      return (
+        <Button
+          variant="danger"
+          size="sm"
+          icon={Download}
+          onClick={onOpenUpdateDetails}
+          title={updateStatus?.error_message || '可用空間不足'}
+          aria-label="更新空間不足，查看詳細資料"
+          className="header-update-button"
+        >
+          空間不足
+        </Button>
+      );
+    }
+
+    if (updateState === 'error') {
+      return (
+        <Button
+          variant="danger"
+          size="sm"
+          icon={Download}
+          onClick={onOpenUpdateDetails}
+          title={updateStatus?.error_message || '更新失敗，點擊重試'}
+          aria-label="更新失敗，查看詳細資料並重試"
+          className="header-update-button"
+        >
+          更新失敗
+        </Button>
+      );
     }
 
     return (
-      <IconButton
-        icon={icon}
-        size="md"
-        variant={active ? 'primary' : 'ghost'}
-        active={active}
-        tooltip={tooltip}
+      <Button
+        variant="primary"
+        size="sm"
+        icon={Download}
         onClick={onOpenUpdateDetails}
-        className={`header-update-icon ${isSpinning ? 'spin-reverse' : ''}`}
-        aria-label={tooltip}
-      />
+        title={`有可用更新：v${updateStatus?.target_version || ''}`}
+        aria-label={`有可用更新：v${updateStatus?.target_version || ''}，點擊前往設定`}
+        className="header-update-button"
+      >
+        有可用更新
+      </Button>
     );
   };
 

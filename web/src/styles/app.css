@@ -237,6 +237,7 @@ body {
 .header-update-button {
   white-space: nowrap;
   min-width: 0;
+  border-radius: var(--radius-full);
 }
 
 .header-update-progress {
@@ -244,26 +245,29 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
   background: transparent;
   color: var(--color-text-heading);
   cursor: pointer;
   font: inherit;
   font-size: 0.62rem;
   font-variant-numeric: tabular-nums;
+  transition: background-color 0.15s ease;
 }
 
 .header-update-progress:hover {
   background: var(--color-surface-hover);
+  border-radius: 50%;
 }
 
 .header-update-progress:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+  border-radius: 50%;
 }
 
 .header-update-progress .circular-progress-content {

@@ -541,6 +541,7 @@ class UpdateService:
                     path.unlink(missing_ok=True)
             else:
                 self._package_path = package_paths[0]
+            _write_pending_update(self._update_dir, self._package_path, candidate.version)
             self._set_status(UpdateState.READY, downloaded_bytes=downloaded_total, total_bytes=total, progress_percent=100, package_kind="delta" if all(asset.kind == "delta" for asset in assets) else assets[0].kind, error_code=None, error_message=None)
         except Exception as error:
             LOGGER.warning("Update download failed: %s", error)

@@ -186,11 +186,56 @@ from maple_reporter.gui.webview_app import (
 )
 
 
+import shutil
+import os
+
+
+def _try_apply_pending_update() -> bool:
+    if "--post-update" in sys.argv or "--smoke-test" in sys.argv:
+        return False
+    update_dir = get_user_app_data_dir() / "updates"
+    pending_file = update_dir / "pending-update.json"
+    if not pending_file.is_file():
+        return False
+    try:
+        data = json.loads(pending_file.read_text(encoding="utf-8"))
+        package_str = data.get("package")
+        if not package_str:
+            return False
+        package_path = Path(package_str)
+        if not package_path.is_file():
+            pending_file.unlink(missing_ok=True)
+            return False
+        install_dir = get_frozen_root() if is_frozen() else None
+        if not install_dir or not install_dir.is_dir():
+            return False
+        helper = install_dir / "MapleClassicReporterUpdater.exe"
+        if not helper.is_file():
+            return False
+        target_version = str(data.get("target_version") or "")
+        helper_copy = update_dir / f"MapleClassicReporterUpdater-{target_version or 'boot'}.exe"
+        shutil.copy2(helper, helper_copy)
+        command = [
+            str(helper_copy),
+            "--package", str(package_path),
+            "--install-dir", str(install_dir),
+            "--update-dir", str(update_dir),
+            "--pid", str(os.getpid()),
+            "--target-version", target_version,
+        ]
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen(command, cwd=str(update_dir), creationflags=flags, close_fds=True)
+        sys.exit(0)
+    except Exception:
+        return False
+
+
 def main():
     if "--post-update" in sys.argv:
         mark_post_update_success()
     else:
         recover_interrupted_update(get_user_app_data_dir() / "updates")
+        _try_apply_pending_update()
     if "--smoke-test" in sys.argv:
         sys.exit(run_bundle_smoke_test())
 
