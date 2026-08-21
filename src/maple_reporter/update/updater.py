@@ -339,19 +339,25 @@ def _launch(executable: Path, token: str) -> subprocess.Popen[Any]:
 
 
 class UpdateProgressUI:
-    """Lightweight Windows progress dialog with project camera icon and real percentage bar."""
+    """Thread-safe Windows progress dialog with smooth percentage animation."""
 
     def __init__(self, target_version: str = "", install_dir: Path | None = None) -> None:
         self._root = None
         self._status_var = None
         self._percent_var = None
+        self._current_pct = 0.0
+        self._target_pct = 0.0
+        self._target_text = f"正在套用新版本 v{target_version}…" if target_version else "正在套用更新…"
+        self._lock = None
         try:
+            import threading
             import tkinter as tk
             from tkinter import ttk
 
+            self._lock = threading.Lock()
             root = tk.Tk()
             root.title("新楓之谷：經典版 - 套用更新")
-            root.geometry("380x135")
+            root.geometry("400x140")
             root.resizable(False, False)
             root.attributes("-topmost", True)
 
@@ -373,18 +379,16 @@ class UpdateProgressUI:
             y = (root.winfo_screenheight() // 2) - (height // 2)
             root.geometry(f"+{x}+{y}")
 
-            frame = ttk.Frame(root, padding="16 16 16 16")
+            frame = ttk.Frame(root, padding="18 18 18 18")
             frame.pack(fill="both", expand=True)
 
-            self._status_var = tk.StringVar(
-                value=f"正在套用新版本 v{target_version}…" if target_version else "正在套用更新…"
-            )
+            self._status_var = tk.StringVar(value=self._target_text)
             lbl = ttk.Label(
                 frame,
                 textvariable=self._status_var,
                 font=("Microsoft JhengHei UI", 10, "bold"),
             )
-            lbl.pack(anchor="w", pady=(0, 8))
+            lbl.pack(anchor="w", pady=(0, 10))
 
             self._percent_var = tk.DoubleVar(value=0.0)
             progress = ttk.Progressbar(
@@ -392,7 +396,7 @@ class UpdateProgressUI:
                 mode="determinate",
                 variable=self._percent_var,
                 maximum=100.0,
-                length=340,
+                length=360,
             )
             progress.pack(fill="x", pady=(0, 4))
 
@@ -402,18 +406,15 @@ class UpdateProgressUI:
             self._root = None
 
     def update_progress(self, percent: float, text: str = "") -> None:
-        if self._root:
-            try:
-                if self._percent_var is not None:
-                    self._percent_var.set(min(100.0, max(0.0, float(percent))))
-                if text and self._status_var is not None:
-                    self._status_var.set(text)
-                self._root.update_idletasks()
-            except Exception:
-                pass
+        """Called safely from worker thread."""
+        if self._lock:
+            with self._lock:
+                self._target_pct = min(100.0, max(0.0, float(percent)))
+                if text:
+                    self._target_text = text
 
     def run_with_worker(self, worker_func: Any) -> Any:
-        """Run worker function in background thread while keeping UI responsive."""
+        """Run worker function in background thread while main thread animates UI at 60 FPS."""
         if not self._root:
             return worker_func(lambda _p, _s="": None)
 
@@ -432,12 +433,28 @@ class UpdateProgressUI:
         t = threading.Thread(target=_bg_thread, daemon=True)
         t.start()
 
+        # 60 FPS main UI loop with smooth progress interpolation
         while not result_container["done"]:
             try:
+                if self._lock:
+                    with self._lock:
+                        target = self._target_pct
+                        text = self._target_text
+                    diff = target - self._current_pct
+                    if diff > 0:
+                        self._current_pct += max(0.4, diff * 0.25)
+                        if self._current_pct > target:
+                            self._current_pct = target
+                    elif diff < 0:
+                        self._current_pct = target
+                    if self._percent_var is not None:
+                        self._percent_var.set(self._current_pct)
+                    if self._status_var is not None and self._status_var.get() != text:
+                        self._status_var.set(text)
                 self._root.update()
             except Exception:
                 break
-            time.sleep(0.02)
+            time.sleep(0.016)
 
         if result_container["error"]:
             raise result_container["error"]
