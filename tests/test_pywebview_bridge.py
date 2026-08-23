@@ -84,6 +84,74 @@ class TestPyWebViewBridge(unittest.TestCase):
         self.assertIn("replay_duration", data)
         self.assertIn("sanction_sync_status", data)
 
+    def test_save_report_draft_copies_imported_media_and_exposes_availability(self):
+        source = Path(self.temp_dir.name) / "imported.mp4"
+        source.write_bytes(b"evidence")
+        recordings_dir = Path(self.temp_dir.name) / "recordings"
+        recordings_dir.mkdir()
+
+        with (
+            patch(
+                "maple_reporter.gui.pywebview_bridge.get_recordings_dir",
+                return_value=recordings_dir,
+            ),
+            patch(
+                "maple_reporter.gui.pywebview_bridge.is_owned_recording_path",
+                return_value=False,
+            ),
+        ):
+            result = self.bridge.save_report_draft(
+                {"file_path": str(source), "media_type": "video"}
+            )
+
+        self.assertEqual(result["status"], "success")
+        stored_path = Path(result["record"]["media_path"])
+        self.assertNotEqual(stored_path, source)
+        self.assertTrue(stored_path.is_file())
+        history = self.bridge.get_history()
+        self.assertEqual(history[0]["submission_state"], "draft")
+        self.assertTrue(history[0]["media_available"])
+
+    @patch(
+        "maple_reporter.gui.pywebview_bridge.submit_gamania_report",
+        return_value=(True, "送出成功"),
+    )
+    def test_submitting_a_draft_updates_the_original_history_record(self, _mock_submit):
+        evidence = Path(self.temp_dir.name) / "evidence.mp4"
+        evidence.write_bytes(b"evidence")
+        draft = self.bridge.sanction_repo.add_history_entry(
+            {
+                "time": "2026-08-23 12:00:00",
+                "submission_state": "draft",
+                "media_path": str(evidence),
+                "media_type": "video",
+                "status": "尚未送出",
+            }
+        )
+        self.bridge.drive_mgr.upload_file_and_make_public.return_value = (
+            True,
+            "https://drive.google.com/file/d/evidence/view",
+        )
+
+        result = self.bridge.submit_report(
+            {
+                "record_id": draft["record_id"],
+                "file_path": str(evidence),
+                "media_type": "video",
+                "suspect_id": "DraftPlayer",
+                "server": "雪吉拉",
+                "map_name": "墮落城市",
+                "note": "測試續報",
+            }
+        )
+
+        history = self.bridge.sanction_repo.load_history()
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["record_id"], draft["record_id"])
+        self.assertEqual(history[0]["submission_state"], "submitted")
+        self.assertEqual(history[0]["suspect_id"], "DraftPlayer")
+
     def test_initial_data_starts_update_check_when_window_is_attached(self):
         self.bridge._window = MagicMock()
         self.bridge.get_windows = MagicMock(return_value=[])
@@ -237,10 +305,52 @@ class TestPyWebViewBridge(unittest.TestCase):
             result = self.bridge.recognize_video_frame("evidence.mp4", 4.25)
 
         capture_frame.assert_called_once_with("evidence.mp4", 4.25)
-        perform_ocr.assert_called_once_with([frame])
+        perform_ocr.assert_called_once_with([frame], force=True)
         self.assertEqual(result["suspect_ids"], ["sample-player"])
         self.assertEqual(result["media_path"], "evidence.mp4")
         self.assertEqual(result["media_type"], "video")
+
+    def test_manual_video_frame_ocr_runs_when_auto_fill_is_disabled(self):
+        frame = Image.new("RGB", (320, 180), color="black")
+        self.bridge.config.update(
+            {
+                "default_map": "fallback-map",
+                "ocr_autofill_id": False,
+                "ocr_autofill_map": False,
+                "whitelist": [],
+            }
+        )
+
+        with (
+            patch("maple_reporter.gui.bridge.media_bridge.os.path.exists", return_value=True),
+            patch.object(
+                self.bridge.capture_controller,
+                "capture_video_frame",
+                return_value=frame,
+            ),
+            patch.object(self.bridge, "_emit_event"),
+            patch(
+                "maple_reporter.gui.pywebview_bridge.recognize_map_name_from_image_list",
+                return_value="recognized-map",
+            ) as recognize_map,
+            patch(
+                "maple_reporter.gui.pywebview_bridge.recognize_candidates_from_image_list",
+                return_value=["manual-player"],
+            ) as recognize_candidates,
+        ):
+            result = self.bridge.recognize_video_frame("evidence.mp4", 2.5)
+
+        self.assertEqual(result["suspect_ids"], ["manual-player"])
+        self.assertEqual(result["map_name"], "recognized-map")
+        recognize_map.assert_called_once_with(
+            [frame], on_progress=ANY, cancel_checker=ANY
+        )
+        recognize_candidates.assert_called_once_with(
+            [frame],
+            detected_map_name="recognized-map",
+            on_progress=ANY,
+            cancel_checker=ANY,
+        )
 
     @patch("maple_reporter.gui.pywebview_bridge.save_config", side_effect=OSError("disk full"))
     def test_config_save_failure_does_not_mutate_bridge_state(self, _mock_save):

@@ -5,6 +5,106 @@ import { ToastProvider } from '../src/components/ui';
 import { TEST_CONFIG, installMockPyWebView } from './mockPyWebViewApi';
 
 describe('ReportFlowModal evidence selection', () => {
+  it('hides draft save actions throughout a continued report', () => {
+    const draft = {
+      record_id: 'draft-1',
+      submission_state: 'draft' as const,
+      media_path: 'C:\\test\\evidence.mp4',
+      media_type: 'video' as const,
+      media_available: true,
+    };
+    const commonProps = {
+      config: TEST_CONFIG,
+      initialRecord: draft,
+      ocrResults: {
+        suspect_ids: [],
+        map_name: '',
+        media_path: draft.media_path,
+        media_type: 'video' as const,
+      },
+      onClose: vi.fn(),
+      onSaveDraft: vi.fn(),
+      onSubmitReport: vi.fn(),
+      onUpdateWhitelist: vi.fn(),
+    };
+    const { rerender } = render(
+      <ToastProvider>
+        <ReportFlowModal stage="progress" {...commonProps} />
+      </ToastProvider>
+    );
+
+    expect(screen.queryByTestId('save-draft-progress')).not.toBeInTheDocument();
+
+    rerender(
+      <ToastProvider>
+        <ReportFlowModal stage="form" {...commonProps} />
+      </ToastProvider>
+    );
+    expect(screen.queryByTestId('save-draft-form')).not.toBeInTheDocument();
+  });
+
+  it('saves only evidence metadata from the progress stage', async () => {
+    const onSaveDraft = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="progress"
+          config={TEST_CONFIG}
+          ocrResults={{
+            suspect_ids: ['RecognizedPlayer'],
+            map_name: 'Recognized Map',
+            media_path: 'C:\\test\\evidence.mp4',
+            media_type: 'video',
+          }}
+          onClose={vi.fn()}
+          onSaveDraft={onSaveDraft}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('save-draft-progress'));
+
+    await waitFor(() =>
+      expect(onSaveDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          suspect_id: '',
+          server: '',
+          map_name: '',
+          note: '',
+          media_path: 'C:\\test\\evidence.mp4',
+        })
+      )
+    );
+  });
+
+  it('allows saving an incomplete form for later reporting', async () => {
+    const onSaveDraft = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ToastProvider>
+        <ReportFlowModal
+          stage="form"
+          config={TEST_CONFIG}
+          ocrResults={{
+            suspect_ids: [],
+            map_name: '',
+            media_path: 'C:\\test\\evidence.png',
+            media_type: 'image',
+          }}
+          onClose={vi.fn()}
+          onSaveDraft={onSaveDraft}
+          onSubmitReport={vi.fn()}
+          onUpdateWhitelist={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    expect(screen.getByTestId('report-submit')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('save-draft-form'));
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledTimes(1));
+  });
+
   it('submits the edited media path instead of the original recording', async () => {
     const trimVideoSegment = vi.fn().mockResolvedValue({
       success: true,

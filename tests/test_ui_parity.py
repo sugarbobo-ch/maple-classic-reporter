@@ -236,6 +236,7 @@ class TestUiParity(unittest.TestCase):
         bridge._submission_lock = threading.Lock()
         with (
             patch.object(bridge_module, "focus_window"),
+            patch.object(bridge_module, "is_window_minimized", return_value=False),
             patch.object(bridge_module, "record_short_video", return_value=("evidence.mp4", keyframes)) as web_record,
             patch.object(PyWebViewBridge, "_emit_event"),
             patch.object(PyWebViewBridge, "_perform_ocr", return_value={"suspect_ids": [], "map_name": "Test Map"}),

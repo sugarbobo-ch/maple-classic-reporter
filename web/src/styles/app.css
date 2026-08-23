@@ -1293,6 +1293,29 @@ body {
   gap: 0;
 }
 
+.report-form-footer,
+.report-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-form-footer {
+  justify-content: space-between;
+  width: 100%;
+}
+
+@media (max-width: 620px) {
+  .report-form-footer,
+  .report-footer-actions {
+    flex-wrap: wrap;
+  }
+
+  .report-footer-actions {
+    justify-content: flex-end;
+  }
+}
+
 .report-flow-form > .step-block {
   padding: 16px 0;
   border: 0;
@@ -1579,7 +1602,7 @@ body {
 
 .history-table {
   width: 100%;
-  min-width: 820px;
+  min-width: 940px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.86rem;
@@ -1651,6 +1674,55 @@ body {
   gap: 6px;
 }
 
+.resume-draft-choice {
+  display: grid;
+  gap: 14px;
+}
+
+.resume-draft-choice p {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.55;
+}
+
+.resume-draft-setting {
+  padding: 11px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-primary-light);
+  color: var(--color-text-heading);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.resume-draft-setting.disabled {
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.resume-draft-footer,
+.resume-draft-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resume-draft-footer {
+  justify-content: space-between;
+  width: 100%;
+}
+
+@media (max-width: 620px) {
+  .resume-draft-footer,
+  .resume-draft-actions {
+    flex-wrap: wrap;
+  }
+
+  .resume-draft-actions {
+    justify-content: flex-end;
+  }
+}
+
 .history-view-header {
   display: flex;
   align-items: center;
@@ -1699,7 +1771,7 @@ body {
   gap: 4px;
 }
 
-.history-table.compact .history-actions .ui-btn {
+.history-table.compact .history-actions .ui-btn:not(.ui-btn-icon) {
   height: 24px;
   padding: 0 8px;
   font-size: 0.75rem;
@@ -2001,9 +2073,9 @@ body {
 }
 
 .submission-status-message.progress {
-  background-color: var(--color-info-bg, rgba(37, 99, 235, 0.1));
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  background-color: var(--color-status-important-bg);
+  border-color: var(--color-status-important);
+  color: var(--color-status-important);
 }
 
 .submission-status-message.success {

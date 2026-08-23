@@ -40,6 +40,12 @@ class RecordingBridgeMixin:
             if img is None or not file_path:
                 img, file_path = mod.record_capture_screenshot(bounds)
 
+            if file_path:
+                self._emit_event(
+                    "EVIDENCE_READY",
+                    {"file_path": file_path, "media_type": "image"},
+                )
+
             ocr_res = self._perform_ocr([img])
 
             return {

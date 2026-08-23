@@ -107,6 +107,10 @@ export interface HistoryRecord {
   evidence_url?: string;
   url?: string;
   note?: string;
+  submission_state?: 'draft' | 'submitted';
+  media_path?: string;
+  media_type?: 'video' | 'image' | string;
+  media_available?: boolean;
   ban_status?: 'pending' | 'banned' | 'unbanned' | string;
   ban_date?: string;
   ban_announcement_url?: string;
@@ -181,6 +185,12 @@ export interface SubmissionResponse {
   evidence_url?: string;
 }
 
+export interface DraftSaveResponse {
+  status: 'success' | 'error';
+  message: string;
+  record?: HistoryRecord;
+}
+
 export type SubmissionStatusKind = 'progress' | 'success' | 'error';
 
 export interface SubmissionStatusData {
@@ -213,6 +223,7 @@ export type PyWebViewEventType =
   | 'REPLAY_ERROR'
   | 'OCR_STATUS'
   | 'OCR_RESULT'
+  | 'EVIDENCE_READY'
   | 'SUBMISSION_STATUS'
   | 'GLOBAL_HOTKEY_TRIGGERED'
   | 'WINDOW_MAXIMIZED'
@@ -271,6 +282,7 @@ declare global {
         select_local_file: () => Promise<string | null>;
         process_imported_file: (filePath: string) => Promise<OcrResultData>;
         submit_report: (formData: Record<string, unknown>) => Promise<SubmissionResponse>;
+        save_report_draft: (formData: Record<string, unknown>) => Promise<DraftSaveResponse>;
         check_gdrive_auth: () => Promise<boolean>;
         authenticate_gdrive: () => Promise<AuthResponse>;
         get_gdrive_folder_url: (folderName?: string) => Promise<string>;

@@ -38,9 +38,26 @@ from maple_reporter.ocr.ocr_providers import (
 
 
 LOGGER = logging.getLogger(__name__)
-_MAP_LABELS = ("小地圖", "小地畫", "小地图", "小地画")
+# The compact map label is frequently read as 「小地國／地國」 by OCR.
+# Treat those label variants as structural noise so the following region and
+# map rows can still be selected.
+_MAP_LABELS = (
+    "小地圖",
+    "小地畫",
+    "小地图",
+    "小地画",
+    "小地國",
+    "小地国",
+    "地圖",
+    "地畫",
+    "地图",
+    "地画",
+    "地國",
+    "地国",
+)
 _MAP_NOISE = [*_MAP_LABELS, "NEWS", "NEW", "Pup", "Pdn", "HP", "MP", "EXP", "LV", "AUTO"]
 _GUILD_MEDAL_EXCLUSION_PX = 60
+_GUILD_MEDAL_HORIZONTAL_TOLERANCE = 0.04
 _BOTTOM_UI_CROP_Y = 0.91
 
 
@@ -286,7 +303,11 @@ def recognize_candidates_from_image_list(
         def in_guild_or_medal_zone(center_x: float, center_y: float) -> bool:
             for _, id_x, _, id_bottom, _ in frame_entries:
                 if center_y > id_bottom and center_y <= id_bottom + _GUILD_MEDAL_EXCLUSION_PX:
-                    if abs(center_x - id_x) <= width * 0.15:
+                    # Guild/medal labels are rendered directly below the ID.
+                    # A wide screen-relative tolerance also catches unrelated
+                    # labels in the character details window (for example,
+                    # the name can sit left of the stats column).
+                    if abs(center_x - id_x) <= width * _GUILD_MEDAL_HORIZONTAL_TOLERANCE:
                         return True
             return False
 

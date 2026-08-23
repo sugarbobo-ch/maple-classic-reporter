@@ -172,6 +172,59 @@ textarea:disabled {
   border-color: var(--color-border);
   color: var(--color-text-heading);
 }
+
+/* Button-style icon controls keep their circular surface at rest. */
+.ui-btn-icon.ui-btn-secondary {
+  background-color: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+
+.ui-btn-icon.ui-btn-outline {
+  background-color: var(--color-surface-card);
+  border-color: var(--color-border);
+}
+
+.ui-btn-icon.ui-btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.ui-btn-icon.ui-btn-success {
+  background-color: var(--color-status-success-button);
+  border-color: var(--color-status-success-button-hover);
+  color: var(--color-status-success-button-text);
+}
+
+.ui-btn-icon.ui-btn-danger {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger-hover);
+  color: #ffffff;
+}
+
+.ui-btn-icon.ui-btn-secondary:hover {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.ui-btn-icon.ui-btn-outline:hover {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.ui-btn-icon.ui-btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.ui-btn-icon.ui-btn-success:hover {
+  background-color: var(--color-status-success-button-hover);
+}
+
+.ui-btn-icon.ui-btn-danger:hover {
+  background-color: var(--color-danger-hover);
+}
 .ui-btn-icon.active {
   background-color: var(--color-primary);
   border-color: var(--color-primary);

@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath("src"))
 
 from maple_reporter.utils import config as config_module
 from maple_reporter.ocr.win_ocr import (
+    recognize_candidates_from_image_list,
     recognize_map_name_from_image_list,
     recognize_text_from_image,
 )
@@ -110,6 +111,33 @@ class TestMapleReporter(unittest.TestCase):
         res = recognize_text_from_image(img)
         self.assertIsInstance(res, str)
 
+    def test_character_window_name_is_not_filtered_as_guild_text(self):
+        def bbox(center_x, center_y, width=24, height=13):
+            left = center_x - width / 2
+            top = center_y - height / 2
+            right = center_x + width / 2
+            bottom = center_y + height / 2
+            return [[left, top], [right, top], [right, bottom], [left, bottom]]
+
+        ocr_results = [
+            (bbox(492.5, 475.0), "公會", 0.81),
+            (bbox(493.5, 449.0), "名聲", 0.95),
+            (bbox(400.0, 495.0), "TestPlayer5", 1.0),
+            (bbox(492.5, 500.0), "聚盟", 0.58),
+        ]
+        with (
+            patch("maple_reporter.ocr.win_ocr.HAS_RAPID_OCR", True),
+            patch(
+                "maple_reporter.ocr.win_ocr.RAPID_OCR_ENGINE",
+                return_value=(ocr_results, None),
+            ),
+        ):
+            candidates = recognize_candidates_from_image_list(
+                [Image.new("RGB", (1920, 1080))]
+            )
+
+        self.assertIn("TestPlayer5", candidates)
+
     def test_ocr_worker_releases_large_keyframes_after_use(self):
         from maple_reporter.ocr.ocr_worker import OcrWorkerThread
 
@@ -183,6 +211,35 @@ class TestMapleReporter(unittest.TestCase):
                 recognize_map_name_from_image_list([Image.new("RGB", (640, 480))]),
                 "弓箭手訓練場Ⅰ",
             )
+
+    def test_minimap_map_name_skips_duplicate_map_label_before_region(self):
+        def bbox(center_x, center_y, width=120, height=18):
+            left = center_x - width / 2
+            top = center_y - height / 2
+            right = center_x + width / 2
+            bottom = center_y + height / 2
+            return [[left, top], [right, top], [right, bottom], [left, bottom]]
+
+        ocr_results = [
+            # The game's map label is commonly misread as 「小地國／地國」.
+            (bbox(78, 30, width=150), "小地國", 0.79),
+            (bbox(572, 31, width=120), "地國", 0.68),
+            (bbox(193, 91, width=230), "維多利亞", 0.86),
+            (bbox(193, 133, width=230), "TestMap42", 0.99),
+            (bbox(691, 550, width=180), "角色資料", 0.67),
+        ]
+        with (
+            patch("maple_reporter.ocr.win_ocr.HAS_RAPID_OCR", True),
+            patch(
+                "maple_reporter.ocr.win_ocr.RAPID_OCR_ENGINE",
+                return_value=(ocr_results, None),
+            ),
+        ):
+            map_name = recognize_map_name_from_image_list(
+                [Image.new("RGB", (3578, 2012))]
+            )
+
+        self.assertEqual(map_name, "TestMap42")
 
     def test_is_valid_suspect_id_accepts_names_containing_ch_or_lv(self):
         from maple_reporter.ocr.win_ocr import is_valid_suspect_id

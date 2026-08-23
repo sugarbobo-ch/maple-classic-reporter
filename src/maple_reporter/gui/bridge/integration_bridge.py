@@ -34,7 +34,14 @@ class IntegrationBridgeMixin:
 
     def get_history(self) -> list[dict[str, Any]]:
         """Return the latest history records."""
-        return self.sanction_repo.load_history()
+        records = self.sanction_repo.load_history()
+        enriched: list[dict[str, Any]] = []
+        for item in records:
+            record = dict(item)
+            media_path = str(record.get("media_path", "") or "")
+            record["media_available"] = bool(media_path and os.path.isfile(media_path))
+            enriched.append(record)
+        return enriched
 
     def rebuild_sanction_cache_for_development(self) -> bool:
         """Reset sanction cache if developer mode is enabled."""

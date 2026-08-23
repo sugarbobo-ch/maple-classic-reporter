@@ -5,8 +5,11 @@ from __future__ import annotations
 from functools import wraps
 import logging
 import os
+from pathlib import Path
+import shutil
 import time
 from typing import Any
+import uuid
 
 from maple_reporter.automation.playwright_runtime import PlaywrightBrowserError
 
@@ -39,6 +42,105 @@ def _submission_guard(method):
 class SubmissionBridgeMixin:
     """Methods for uploading evidence and submitting official reports via Playwright or dev simulation."""
 
+    def save_report_draft(self, form_data: dict[str, Any]) -> dict[str, Any]:
+        """Persist evidence and form values without uploading or submitting them."""
+        mod = _bridge_mod()
+        raw_path = form_data.get("file_path") or form_data.get("media_path") or ""
+        source_path = Path(os.fspath(raw_path)).expanduser() if raw_path else None
+        if source_path is None or not source_path.is_file():
+            return {
+                "status": "error",
+                "message": "找不到可儲存的證據檔案，請等待檔案建立完成後再試。",
+            }
+
+        try:
+            if mod.is_owned_recording_path(source_path):
+                stored_path = source_path.resolve()
+            else:
+                recordings_dir = mod.get_recordings_dir()
+                suffix = source_path.suffix.lower()
+                target_name = (
+                    f"maple_evidence_draft_{time.time_ns()}_{uuid.uuid4().hex[:8]}{suffix}"
+                )
+                stored_path = recordings_dir / target_name
+                shutil.copy2(source_path, stored_path)
+        except OSError as error:
+            LOGGER.warning("Failed to preserve draft evidence: %s", error)
+            return {"status": "error", "message": "儲存證據檔案失敗，請確認磁碟空間後重試。"}
+
+        media_type = form_data.get("media_type")
+        if media_type not in {"video", "image"}:
+            media_type = (
+                "video"
+                if stored_path.suffix.lower() in {".mp4", ".mkv", ".avi", ".mov"}
+                else "image"
+            )
+        payload = {
+            "suspect_id": str(form_data.get("suspect_id", "") or "").strip(),
+            "server": str(form_data.get("server_name") or form_data.get("server") or ""),
+            "map": str(form_data.get("map_name", "") or "").strip(),
+            "map_name": str(form_data.get("map_name", "") or "").strip(),
+            "url": "",
+            "status": "尚未送出",
+            "note": str(form_data.get("note", "") or "").strip(),
+            "submission_state": "draft",
+            "media_path": str(stored_path),
+            "media_type": media_type,
+            "ban_status": "pending",
+        }
+        record_id = str(form_data.get("record_id", "") or "").strip()
+        if record_id:
+            record = self.sanction_repo.update_history_entry(record_id, payload)
+            if record is None:
+                return {"status": "error", "message": "找不到要更新的未送出紀錄。"}
+        else:
+            record = self.sanction_repo.add_history_entry(
+                {"time": time.strftime("%Y-%m-%d %H:%M:%S"), **payload}
+            )
+        return {
+            "status": "success",
+            "message": "已儲存至回報紀錄",
+            "record": record,
+        }
+
+    def _persist_submission_history(
+        self,
+        form_data: dict[str, Any],
+        *,
+        file_path: str,
+        evidence_url: str,
+        status: str,
+        note: str | None = None,
+        submitted: bool,
+    ) -> dict[str, Any] | None:
+        payload = {
+            "suspect_id": form_data.get("suspect_id", ""),
+            "server": form_data.get("server_name") or form_data.get("server", "雪吉拉"),
+            "map": form_data.get("map_name", ""),
+            "map_name": form_data.get("map_name", ""),
+            "url": evidence_url,
+            "status": status,
+            "note": form_data.get("note", "") if note is None else note,
+            "submission_state": "submitted" if submitted else "draft",
+            "media_path": file_path,
+            "media_type": form_data.get("media_type", ""),
+        }
+        record_id = str(form_data.get("record_id", "") or "").strip()
+        repo = getattr(self, "sanction_repo", None)
+        if record_id:
+            if repo is None:
+                return None
+            return repo.update_history_entry(
+                record_id, payload, evaluate=submitted
+            )
+        if not submitted:
+            return None
+        entry = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), **payload}
+        if repo is not None:
+            return repo.add_history_entry(entry)
+        _bridge_mod().add_history_entry(entry)
+        return entry
+
     @_submission_guard
     def submit_report(self, form_data: dict[str, Any]) -> dict[str, Any]:
         """Upload evidence to GDrive/Discord and submit report via Playwright."""
@@ -54,6 +156,14 @@ class SubmissionBridgeMixin:
         )
         dest = form_data.get("upload_destination") or self.config.get("upload_destination", "gdrive")
         evidence_url = form_data.get("evidence_url", "")
+        if form_data.get("record_id"):
+            self._persist_submission_history(
+                form_data,
+                file_path=file_path,
+                evidence_url=evidence_url,
+                status="尚未送出",
+                submitted=False,
+            )
 
         # 1. Upload evidence if URL not yet provided
         if not evidence_url:
@@ -104,30 +214,14 @@ class SubmissionBridgeMixin:
             except Exception as e:
                 LOGGER.warning("Could not open external url: %s", e)
 
-            # Record in local history with dev mode note
-            repo = getattr(self, "sanction_repo", None)
-            if repo:
-                repo.add_history_entry({
-                    "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "suspect_id": form_data.get("suspect_id", ""),
-                    "server": form_data.get("server_name") or form_data.get("server", "雪吉拉"),
-                    "map": form_data.get("map_name", ""),
-                    "map_name": form_data.get("map_name", ""),
-                    "url": evidence_url,
-                    "status": "模擬成功",
-                    "note": f"[開發者模式] {form_data.get('note', '')}".strip(),
-                })
-            else:
-                mod.add_history_entry({
-                    "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "suspect_id": form_data.get("suspect_id", ""),
-                    "server": form_data.get("server_name") or form_data.get("server", "雪吉拉"),
-                    "map": form_data.get("map_name", ""),
-                    "map_name": form_data.get("map_name", ""),
-                    "url": evidence_url,
-                    "status": "模擬成功",
-                    "note": f"[開發者模式] {form_data.get('note', '')}".strip(),
-                })
+            self._persist_submission_history(
+                form_data,
+                file_path=file_path,
+                evidence_url=evidence_url,
+                status="模擬成功",
+                note=f"[開發者模式] {form_data.get('note', '')}".strip(),
+                submitted=True,
+            )
 
             success_message = "開發者模式：已模擬檢舉成功（未實際送出），已在系統瀏覽器開啟檢舉頁面"
             self._emit_submission_status("completed", success_message, "success")
@@ -165,30 +259,14 @@ class SubmissionBridgeMixin:
             self._emit_submission_status("filling", message, "error")
             return {"status": "error", "message": message}
 
-        # 3. Add to local history
-        repo = getattr(self, "sanction_repo", None)
-        if repo:
-            repo.add_history_entry({
-                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "suspect_id": form_data.get("suspect_id", ""),
-                "server": form_data.get("server_name") or form_data.get("server", "雪吉拉"),
-                "map": form_data.get("map_name", ""),
-                "map_name": form_data.get("map_name", ""),
-                "url": evidence_url,
-                "status": "成功" if ok else "失敗",
-                "note": form_data.get("note", ""),
-            })
-        else:
-            mod.add_history_entry({
-                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "suspect_id": form_data.get("suspect_id", ""),
-                "server": form_data.get("server_name") or form_data.get("server", "雪吉拉"),
-                "map": form_data.get("map_name", ""),
-                "map_name": form_data.get("map_name", ""),
-                "url": evidence_url,
-                "status": "成功" if ok else "失敗",
-                "note": form_data.get("note", ""),
-            })
+        # 3. Persist successful reports or keep the original draft available for retry.
+        self._persist_submission_history(
+            form_data,
+            file_path=file_path,
+            evidence_url=evidence_url,
+            status="成功" if ok else "尚未送出",
+            submitted=bool(ok),
+        )
 
         # 4. Auto-delete local recording if enabled
         if ok and bool(self.config.get("auto_delete_after_upload", False)):

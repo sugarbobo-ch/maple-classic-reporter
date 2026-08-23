@@ -26,6 +26,84 @@ function renderHistory(
 }
 
 describe('HistoryView evidence links and sanction status', () => {
+  it('offers continue reporting only for available drafts', () => {
+    const onContinueDraft = vi.fn();
+    const draft: HistoryRecord = {
+      record_id: 'draft-1',
+      time: '2026-08-23 12:00:00',
+      submission_state: 'draft',
+      media_path: 'C:\\test\\evidence.mp4',
+      media_type: 'video',
+      media_available: true,
+    };
+    renderHistory(vi.fn(), vi.fn(), vi.fn(), {
+      history: [draft],
+      onContinueDraft,
+    });
+
+    expect(screen.getByText('尚未送出')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('continue-draft-draft-1'));
+    expect(screen.getByText('要直接使用已儲存的資料，還是先重新辨識這份證據？')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('continue-draft-with-saved-data'));
+    expect(onContinueDraft).toHaveBeenCalledWith(draft, false);
+  });
+
+  it('offers recognition using the current ID and map settings', () => {
+    const onContinueDraft = vi.fn();
+    const draft: HistoryRecord = {
+      record_id: 'draft-recognize',
+      submission_state: 'draft',
+      media_path: 'C:\\test\\evidence.mp4',
+      media_available: true,
+    };
+    renderHistory(vi.fn(), vi.fn(), vi.fn(), {
+      history: [draft],
+      onContinueDraft,
+      ocrAutofillId: true,
+      ocrAutofillMap: false,
+    });
+
+    fireEvent.click(screen.getByTestId('continue-draft-draft-recognize'));
+    expect(screen.getByText('依目前設定，將重新辨識：角色 ID。')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('continue-draft-with-recognition'));
+    expect(onContinueDraft).toHaveBeenCalledWith(draft, true);
+  });
+
+  it('disables recognition when both OCR auto-fill settings are off', () => {
+    const draft: HistoryRecord = {
+      record_id: 'draft-no-ocr',
+      submission_state: 'draft',
+      media_path: 'C:\\test\\evidence.mp4',
+      media_available: true,
+    };
+    renderHistory(vi.fn(), vi.fn(), vi.fn(), {
+      history: [draft],
+      onContinueDraft: vi.fn(),
+      ocrAutofillId: false,
+      ocrAutofillMap: false,
+    });
+
+    fireEvent.click(screen.getByTestId('continue-draft-draft-no-ocr'));
+    expect(screen.getByTestId('continue-draft-with-recognition')).toBeDisabled();
+    expect(screen.getByText(/目前已關閉角色 ID 與地圖辨識/)).toBeInTheDocument();
+  });
+
+  it('disables continue reporting when draft evidence is missing', () => {
+    const draft: HistoryRecord = {
+      record_id: 'draft-missing',
+      submission_state: 'draft',
+      media_path: 'C:\\missing.mp4',
+      media_available: false,
+    };
+    renderHistory(vi.fn(), vi.fn(), vi.fn(), {
+      history: [draft],
+      onContinueDraft: vi.fn(),
+    });
+
+    expect(screen.getByText('檔案遺失')).toBeInTheDocument();
+    expect(screen.getByTestId('continue-draft-draft-missing')).toBeDisabled();
+  });
+
   it('opens and copies the real evidence URL from a history row', async () => {
     const onOpenUrl = vi.fn();
     const api = installMockPyWebView();
@@ -34,6 +112,8 @@ describe('HistoryView evidence links and sanction status', () => {
     const dataRow = screen.getAllByRole('row')[1];
     const actionButtons = within(dataRow).getAllByRole('button');
     expect(actionButtons).toHaveLength(2);
+    expect(actionButtons[0]).toHaveClass('ui-btn-ghost', 'ui-btn-icon');
+    expect(actionButtons[1]).toHaveClass('ui-btn-ghost', 'ui-btn-icon');
 
     fireEvent.click(actionButtons[0]);
     expect(onOpenUrl).toHaveBeenCalledWith(TEST_HISTORY[0].evidence_url);

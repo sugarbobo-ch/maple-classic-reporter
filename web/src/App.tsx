@@ -79,6 +79,7 @@ export default function App() {
   const [modalProgress, setModalProgress] = useState(0);
   const [modalStatusText, setModalStatusText] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatusData | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [reportWorkflowId, setReportWorkflowId] = useState(0);
@@ -88,6 +89,7 @@ export default function App() {
     media_path: '',
     media_type: 'video',
   });
+  const [activeHistoryRecord, setActiveHistoryRecord] = useState<HistoryRecord | null>(null);
   const ocrCancelledRef = useRef(false);
   const frameOcrActiveRef = useRef(false);
 
@@ -110,6 +112,7 @@ export default function App() {
     mediaType: OcrResultData['media_type'] = 'video'
   ) => {
     ocrCancelledRef.current = false;
+    setActiveHistoryRecord(null);
     setReportWorkflowId((previous) => previous + 1);
     resetOcrResultsForWorkflow(mediaPath, mediaType);
   };
@@ -193,6 +196,17 @@ export default function App() {
       setReplayTime(Math.floor(data.duration));
     },
     REPLAY_SAVED: (data?: { file_path?: string }) => {
+      if (ocrCancelledRef.current) {
+        const savedPath = data?.file_path || '';
+        if (savedPath) {
+          setOcrResults((previous) => ({
+            ...previous,
+            media_path: savedPath,
+            media_type: 'video',
+          }));
+        }
+        return;
+      }
       beginOcrWorkflow(data?.file_path || '', 'video');
       setSubmissionStatus(null);
       setModalStage('progress');
@@ -283,6 +297,15 @@ export default function App() {
         setHistory(data.history);
       }
       toast.warning('官方處分狀態同步未完成', data?.message || '部分公告未能成功下載，已保留既有結果');
+    },
+    EVIDENCE_READY: (data: { file_path?: string; media_type?: 'video' | 'image' }) => {
+      const filePath = data?.file_path || '';
+      if (!filePath) return;
+      setOcrResults((previous) => ({
+        ...previous,
+        media_path: filePath,
+        media_type: data.media_type || previous.media_type,
+      }));
     },
     UPDATE_STATUS: (data: UpdateStatus) => {
       if (!data || typeof data.state !== 'string') return;
@@ -925,6 +948,7 @@ export default function App() {
           toast.success('檢舉證據已成功提交！', res.message || '已自動加入歷史紀錄');
           const initData = await window.pywebview.api.get_initial_data();
           if (initData && initData.history) setHistory(initData.history);
+          setActiveHistoryRecord(null);
           setModalOpen(false);
         } else {
           const message = res?.message || '請確認網路與帳號授權狀態';
@@ -947,6 +971,140 @@ export default function App() {
     }
   };
 
+  const handleSaveReportDraft = async (formData: Record<string, unknown>) => {
+    if (isSavingDraft || isSubmittingReport) return;
+    if (modalStageRef.current === 'progress') {
+      ocrCancelledRef.current = true;
+      window.pywebview?.api?.cancel_ocr?.().catch(() => undefined);
+    }
+    if (!window.pywebview?.api?.save_report_draft) {
+      toast.info('瀏覽器預覽模式', '請在桌面應用程式中儲存回報紀錄');
+      return;
+    }
+
+    setIsSavingDraft(true);
+    try {
+      const result = await window.pywebview.api.save_report_draft(formData);
+      if (result.status !== 'success') {
+        toast.error('儲存失敗', result.message || '請確認證據檔案後重試');
+        return;
+      }
+      const records = await window.pywebview.api.get_history();
+      setHistory(Array.isArray(records) ? records : []);
+      toast.success('已儲存至回報紀錄', '你可以稍後從「回報紀錄」繼續檢舉。');
+      setModalOpen(false);
+      setModalProgress(0);
+      setModalStatusText('');
+      setSubmissionStatus(null);
+      setActiveHistoryRecord(null);
+    } catch (error: any) {
+      toast.error('儲存失敗', error?.message || '請確認磁碟空間後重試');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const openDraftForm = (record: HistoryRecord) => {
+    if (record.submission_state !== 'draft' || record.media_available === false) return;
+    ocrCancelledRef.current = false;
+    setActiveHistoryRecord(record);
+    setReportWorkflowId((previous) => previous + 1);
+    setOcrResults({
+      suspect_ids: record.suspect_id ? [record.suspect_id] : [],
+      map_name: record.map_name || record.map || '',
+      ocr_map_name: '',
+      map_name_source: record.map_name || record.map ? 'manual' : undefined,
+      media_path: record.media_path || '',
+      media_type: record.media_type === 'image' ? 'image' : 'video',
+    });
+    setSubmissionStatus(null);
+    setModalProgress(100);
+    setModalStatusText('');
+    setModalStage('form');
+    setModalOpen(true);
+  };
+
+  const handleContinueDraft = async (record: HistoryRecord, runRecognition: boolean) => {
+    if (!runRecognition) {
+      openDraftForm(record);
+      return;
+    }
+    if (record.submission_state !== 'draft' || record.media_available === false) return;
+
+    const mediaPath = record.media_path || '';
+    if (!window.pywebview?.api?.process_imported_file || !mediaPath) {
+      toast.warning('無法重新辨識', '已改為載入原本儲存的資料。');
+      openDraftForm(record);
+      return;
+    }
+
+    const savedMap = record.map_name || record.map || '';
+    const initialOcr: OcrResultData = {
+      suspect_ids: record.suspect_id ? [record.suspect_id] : [],
+      map_name: savedMap,
+      ocr_map_name: '',
+      map_name_source: savedMap ? 'manual' : undefined,
+      media_path: mediaPath,
+      media_type: record.media_type === 'image' ? 'image' : 'video',
+    };
+    ocrCancelledRef.current = false;
+    setActiveHistoryRecord(record);
+    setOcrResults(initialOcr);
+    setReportWorkflowId((previous) => previous + 1);
+    setSubmissionStatus(null);
+    setModalProgress(25);
+    setModalStatusText('正在依目前設定重新辨識證據...');
+    setModalStage('progress');
+    setModalOpen(true);
+
+    try {
+      const result = await window.pywebview.api.process_imported_file(mediaPath);
+      if (ocrCancelledRef.current) return;
+      if (result?.status !== 'success') {
+        toast.warning('重新辨識未完成', result?.message || '已載入原本儲存的資料。');
+        openDraftForm(record);
+        return;
+      }
+
+      const normalized = normalizeOcrResult(result, initialOcr, config);
+      const recognizedId =
+        config.ocr_autofill_id !== false
+          ? normalized.suspect_ids.find((id) => !config.whitelist.includes(id)) ||
+            normalized.suspect_ids[0] ||
+            record.suspect_id ||
+            ''
+          : record.suspect_id || '';
+      const hasRecognizedMap =
+        config.ocr_autofill_map !== false &&
+        (normalized.map_name_source === 'ocr' || Boolean(normalized.ocr_map_name));
+      const recognizedMap = hasRecognizedMap ? normalized.map_name : savedMap;
+      const recognizedRecord: HistoryRecord = {
+        ...record,
+        suspect_id: recognizedId,
+        map: recognizedMap,
+        map_name: recognizedMap,
+      };
+
+      setActiveHistoryRecord(recognizedRecord);
+      setOcrResults({
+        ...normalized,
+        suspect_ids: recognizedId ? [recognizedId, ...normalized.suspect_ids.filter((id) => id !== recognizedId)] : [],
+        map_name: recognizedMap,
+      });
+      setReportWorkflowId((previous) => previous + 1);
+      setModalProgress(100);
+      setModalStatusText('辨識完成');
+      setModalStage('form');
+    } catch (error: unknown) {
+      if (ocrCancelledRef.current) return;
+      toast.warning(
+        '重新辨識失敗',
+        error instanceof Error ? error.message : '已載入原本儲存的資料。'
+      );
+      openDraftForm(record);
+    }
+  };
+
   const handleCloseReport = () => {
     if (modalStageRef.current === 'progress' || frameOcrActiveRef.current) {
       ocrCancelledRef.current = true;
@@ -959,6 +1117,7 @@ export default function App() {
     setModalProgress(0);
     setModalStatusText('');
     setSubmissionStatus(null);
+    setActiveHistoryRecord(null);
   };
 
   const handleRefreshWindows = useCallback(
@@ -1266,6 +1425,9 @@ export default function App() {
               onClearHistory={handleClearHistory}
               onOpenUrl={handleOpenUrl}
               onCheckSanctions={handleCheckSanctions}
+              onContinueDraft={handleContinueDraft}
+              ocrAutofillId={config.ocr_autofill_id !== false}
+              ocrAutofillMap={config.ocr_autofill_map !== false}
               isCheckingSanctions={isCheckingSanctions}
               sanctionSyncStatus={sanctionSyncStatus}
               lastCompleteSyncAt={
@@ -1311,9 +1473,12 @@ export default function App() {
             ocrResults={ocrResults}
             config={config}
             history={history}
+            initialRecord={activeHistoryRecord}
+            isSavingDraft={isSavingDraft}
             onClose={handleCloseReport}
             onSkipOcr={handleSkipOcr}
             onSubmitReport={handleSubmitReport}
+            onSaveDraft={handleSaveReportDraft}
             onRecognizeCurrentFrame={handleRecognizeCurrentFrame}
             onOpenFilePath={(p) => {
               if (window.pywebview && window.pywebview.api) {

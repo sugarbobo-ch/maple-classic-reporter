@@ -6,6 +6,61 @@ import { ToastProvider } from '../src/components/ui';
 import { TEST_CONFIG, installMockPyWebView } from './mockPyWebViewApi';
 
 describe('App submission workflow', () => {
+  it('re-runs draft recognition using the current OCR settings before opening the form', async () => {
+    const draft = {
+      record_id: 'draft-1',
+      time: '2026-08-23 12:00:00',
+      suspect_id: 'saved-player',
+      server: 'Gamania',
+      map_name: 'Saved Map',
+      note: 'Saved note',
+      submission_state: 'draft' as const,
+      media_path: 'C:\\test\\draft.mp4',
+      media_type: 'video' as const,
+      media_available: true,
+    };
+    const processImportedFile = vi.fn().mockResolvedValue({
+      status: 'success',
+      suspect_ids: ['recognized-player'],
+      map_name: 'Recognized Map',
+      ocr_map_name: 'Recognized Map',
+      map_name_source: 'ocr',
+      media_path: draft.media_path,
+      media_type: 'video',
+    });
+    const config = { ...TEST_CONFIG, ocr_autofill_id: true, ocr_autofill_map: false };
+    const api = installMockPyWebView(
+      {
+        get_history: vi.fn().mockResolvedValue([draft]),
+        process_imported_file: processImportedFile,
+      },
+      {
+        config,
+        windows: [],
+        audio_devices: [],
+        history: [draft],
+        gdrive_authenticated: false,
+        replay_state: 'idle',
+        replay_duration: 0,
+      }
+    );
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '歷史紀錄' }));
+    fireEvent.click(await screen.findByTestId('continue-draft-draft-1'));
+    fireEvent.click(screen.getByTestId('continue-draft-with-recognition'));
+
+    await waitFor(() => expect(processImportedFile).toHaveBeenCalledWith(draft.media_path));
+    expect(await screen.findByTestId('report-suspect-id')).toHaveValue('recognized-player');
+    expect(screen.getByTestId('report-map-name')).toHaveValue('Saved Map');
+  });
+
   it('replaces a stale suspect candidate when a new replay is recognized', async () => {
     const api = installMockPyWebView();
 
@@ -53,6 +108,44 @@ describe('App submission workflow', () => {
     });
 
     expect(await screen.findByTestId('report-suspect-id')).toHaveValue('new-suspect');
+  });
+
+  it('does not reopen recognition progress when replay saving finishes after OCR is skipped', async () => {
+    const api = installMockPyWebView({
+      get_media_stream_url: vi.fn().mockResolvedValue('http://127.0.0.1:1234/saved-replay'),
+    });
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+
+    dispatchPyWebViewEvent({
+      type: 'REPLAY_STATE_CHANGED',
+      data: { state: 'ready', duration: 30, total: 30 },
+    });
+    await screen.findByText('REC');
+    await waitFor(() => {
+      expect(document.querySelectorAll('.status-actions-group button')).toHaveLength(2);
+    });
+    fireEvent.click(document.querySelectorAll('.status-actions-group button')[1]);
+    fireEvent.click(await screen.findByTestId('skip-ocr-button'));
+    expect(await screen.findByTestId('report-map-name')).toBeInTheDocument();
+    await waitFor(() => expect(api.cancel_ocr).toHaveBeenCalledTimes(1));
+
+    dispatchPyWebViewEvent({
+      type: 'REPLAY_SAVED',
+      data: { file_path: 'C:\\test\\saved-replay.mp4' },
+    });
+
+    await waitFor(() => {
+      expect(api.get_media_stream_url).toHaveBeenCalledWith('C:\\test\\saved-replay.mp4');
+    });
+    await waitFor(() => expect(screen.getByTestId('report-map-name')).toBeInTheDocument());
+    expect(screen.queryByTestId('skip-ocr-button')).not.toBeInTheDocument();
   });
 
   it('cancels pending recognition and ignores late OCR events', async () => {

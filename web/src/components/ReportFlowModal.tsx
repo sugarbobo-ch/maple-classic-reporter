@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, FileCheck } from 'lucide-react';
+import { ArrowRight, FileCheck, Save } from 'lucide-react';
 import { Dialog, Button, Badge } from './ui';
 import { useClipboard } from '../hooks';
 import { AppConfig, HistoryRecord, OcrResultData, SubmissionStatusData } from '../types';
@@ -19,9 +19,12 @@ export interface ReportFlowModalProps {
   ocrResults?: OcrResultData;
   config?: AppConfig;
   history?: HistoryRecord[];
+  initialRecord?: HistoryRecord | null;
+  isSavingDraft?: boolean;
   onClose: () => void;
   onSkipOcr?: () => void | Promise<void>;
   onSubmitReport: (formData: Record<string, unknown>) => Promise<void> | void;
+  onSaveDraft?: (formData: Record<string, unknown>) => Promise<void> | void;
   onOpenFilePath?: (path: string) => void;
   onOpenFileLocation?: (path: string) => void;
   onRecognizeCurrentFrame?: (
@@ -64,9 +67,12 @@ export default function ReportFlowModal({
     audio_output_device_id: '',
   },
   history = [],
+  initialRecord = null,
+  isSavingDraft = false,
   onClose,
   onSkipOcr,
   onSubmitReport,
+  onSaveDraft,
   onOpenFilePath,
   onOpenFileLocation,
   onRecognizeCurrentFrame,
@@ -76,8 +82,9 @@ export default function ReportFlowModal({
   const existingWhitelist = Array.isArray(config.whitelist) ? config.whitelist : [];
 
   // Form State - auto-populate suspect ID from OCR candidate if enabled
-  const initialSuspectId =
-    config.ocr_autofill_id !== false &&
+  const initialSuspectId = initialRecord
+    ? String(initialRecord.suspect_id || initialRecord.id || '')
+    : config.ocr_autofill_id !== false &&
     Array.isArray(ocrResults.suspect_ids) &&
     ocrResults.suspect_ids.length > 0
       ? ocrResults.suspect_ids.find((id) => !existingWhitelist.includes(id)) ||
@@ -85,9 +92,13 @@ export default function ReportFlowModal({
         ''
       : '';
   const [suspectId, setSuspectId] = useState(initialSuspectId);
-  const [server, setServer] = useState(config.default_server || '雪吉拉');
-  const [mapName, setMapName] = useState(ocrResults.map_name || '');
-  const [note, setNote] = useState(config.default_note || '自動打怪/外掛行為');
+  const [server, setServer] = useState(initialRecord?.server || config.default_server || '雪吉拉');
+  const [mapName, setMapName] = useState(
+    initialRecord ? String(initialRecord.map_name || initialRecord.map || '') : ocrResults.map_name || ''
+  );
+  const [note, setNote] = useState(
+    initialRecord ? String(initialRecord.note || '') : config.default_note || '自動打怪/外掛行為'
+  );
   const [formSubmitHeadless, setFormSubmitHeadless] = useState(
     config.form_submit_headless !== false
   );
@@ -97,14 +108,18 @@ export default function ReportFlowModal({
   const [selectedForWhitelist, setSelectedForWhitelist] = useState<string[]>([]);
 
   // Media State & Stream Player
-  const [currentMediaPath, setCurrentMediaPath] = useState<string>(ocrResults.media_path || '');
+  const [currentMediaPath, setCurrentMediaPath] = useState<string>(
+    initialRecord?.media_path || ocrResults.media_path || ''
+  );
   const [mediaStreamUrl, setMediaStreamUrl] = useState<string>('');
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [originalBackupPath, setOriginalBackupPath] = useState<string | null>(null);
 
   // Video playback & Trimming state
   const isVideo =
-    ocrResults.media_type === 'video' || /\.(mp4|mkv|avi|mov)$/i.test(currentMediaPath);
+    initialRecord?.media_type === 'video' ||
+    ocrResults.media_type === 'video' ||
+    /\.(mp4|mkv|avi|mov)$/i.test(currentMediaPath);
   const [isTrimOpen, setIsTrimOpen] = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
@@ -424,13 +439,30 @@ export default function ReportFlowModal({
       file_path: currentMediaPath || ocrResults.media_path,
       form_submit_headless: formSubmitHeadless,
       dev_mode: Boolean(config.dev_mode),
+      record_id: initialRecord?.record_id,
+      media_type: isVideo ? 'video' : 'image',
+    });
+  };
+
+  const handleSaveDraft = async () => {
+    if (!onSaveDraft || isSavingDraft || isSubmitting || !currentMediaPath) return;
+    const fromProgress = stage === 'progress';
+    await onSaveDraft({
+      suspect_id: fromProgress ? '' : suspectId.trim(),
+      server: fromProgress ? '' : server,
+      map_name: fromProgress ? '' : mapName.trim(),
+      note: fromProgress ? '' : note.trim(),
+      media_path: currentMediaPath,
+      file_path: currentMediaPath,
+      media_type: isVideo ? 'video' : 'image',
+      record_id: initialRecord?.record_id,
     });
   };
 
   return (
     <Dialog
       isOpen={true}
-      onClose={isSubmitting ? undefined : onClose}
+      onClose={isSubmitting || isSavingDraft ? undefined : onClose}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>{stage === 'progress' ? '檢舉證據辨識進度' : '檢舉證據回報表單'}</span>
@@ -454,45 +486,83 @@ export default function ReportFlowModal({
               gap: '12px',
             }}
           >
-            <Button variant="outline" size="md" onClick={onClose}>
+            <Button variant="outline" size="md" onClick={onClose} disabled={isSavingDraft}>
               取消
             </Button>
-            {onSkipOcr && (
+            <div className="report-footer-actions">
+              {onSaveDraft && !initialRecord && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={handleSaveDraft}
+                  icon={Save}
+                  loading={isSavingDraft}
+                  disabled={!currentMediaPath || isSavingDraft}
+                  data-testid="save-draft-progress"
+                >
+                  {isSavingDraft ? '儲存中…' : '先儲存，稍後檢舉'}
+                </Button>
+              )}
+              {onSkipOcr && (
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={onSkipOcr}
+                  icon={ArrowRight}
+                  iconPosition="right"
+                  disabled={isSavingDraft}
+                  data-testid="skip-ocr-button"
+                >
+                  略過辨識，直接填表
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="report-form-footer">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={onClose}
+              disabled={isSubmitting || isSavingDraft}
+            >
+              取消
+            </Button>
+            <div className="report-footer-actions">
+              {onSaveDraft && !initialRecord && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  icon={Save}
+                  onClick={handleSaveDraft}
+                  loading={isSavingDraft}
+                  disabled={!currentMediaPath || isSavingDraft || isSubmitting}
+                  data-testid="save-draft-form"
+                >
+                  {isSavingDraft ? '儲存中…' : '儲存，稍後檢舉'}
+                </Button>
+              )}
               <Button
                 variant="primary"
                 size="md"
-                onClick={onSkipOcr}
                 icon={ArrowRight}
                 iconPosition="right"
-                data-testid="skip-ocr-button"
+                onClick={handleSubmit}
+                disabled={!suspectId.trim() || !mapName.trim() || isSubmitting || isSavingDraft}
+                loading={isSubmitting}
+                aria-busy={isSubmitting}
+                data-testid="report-submit"
               >
-                略過辨識，直接填表
+                {isSubmitting
+                  ? '送出中…'
+                  : config.dev_mode
+                    ? '模擬送出檢舉 (不實際送出)'
+                    : initialRecord
+                      ? '送出檢舉'
+                      : '送出檢舉證據'}
               </Button>
-            )}
+            </div>
           </div>
-        ) : (
-          <>
-            <Button variant="outline" size="md" onClick={onClose} disabled={isSubmitting}>
-              取消
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              icon={ArrowRight}
-              iconPosition="right"
-              onClick={handleSubmit}
-              disabled={!suspectId.trim() || !mapName.trim() || isSubmitting}
-              loading={isSubmitting}
-              aria-busy={isSubmitting}
-              data-testid="report-submit"
-            >
-              {isSubmitting
-                ? '送出中…'
-                : config.dev_mode
-                  ? '模擬送出檢舉 (不實際送出)'
-                  : '送出檢舉證據'}
-            </Button>
-          </>
         )
       }
     >

@@ -16,6 +16,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Loader2,
+  FileText,
+  ScanSearch,
 } from 'lucide-react';
 import { Button, IconButton, Badge, Tooltip, Dialog, Dropdown } from './ui';
 import { useClipboard, useToast } from '../hooks';
@@ -34,6 +36,9 @@ export interface HistoryViewProps {
   isCheckingSanctions?: boolean;
   sanctionSyncStatus?: SanctionSyncStatus | null;
   lastCompleteSyncAt?: string | null;
+  onContinueDraft?: (record: HistoryRecord, runRecognition: boolean) => void;
+  ocrAutofillId?: boolean;
+  ocrAutofillMap?: boolean;
 }
 
 function formatLastSyncTime(isoStr?: string | null): string {
@@ -84,12 +89,16 @@ export default function HistoryView({
   isCheckingSanctions = false,
   sanctionSyncStatus = null,
   lastCompleteSyncAt = null,
+  onContinueDraft,
+  ocrAutofillId = true,
+  ocrAutofillMap = true,
 }: HistoryViewProps) {
   const { copy } = useClipboard();
   const { toast } = useToast();
   const [copiedUrl, setCopiedUrl] = useState('');
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [draftToContinue, setDraftToContinue] = useState<HistoryRecord | null>(null);
 
   const [isCompact, setIsCompact] = useState<boolean>(() => {
     if (typeof compactLayout === 'boolean') return compactLayout;
@@ -145,6 +154,7 @@ export default function HistoryView({
   const startIndex = (safeCurrentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalRecords);
   const paginatedHistory = history.slice(startIndex, endIndex);
+  const submittedHistory = history.filter((record) => record.submission_state !== 'draft');
 
   const handleOpenClearConfirm = () => {
     setClearConfirmOpen(true);
@@ -179,6 +189,9 @@ export default function HistoryView({
   };
 
   const renderBanStatus = (row: HistoryRecord) => {
+    if (row.submission_state === 'draft') {
+      return <span style={{ color: 'var(--color-text-secondary)' }}>-</span>;
+    }
     const s = (row.ban_status || '').trim().toLowerCase();
     const isBanned = s === 'banned' || s === '已制裁' || s === '已封鎖' || Boolean(row.ban_date);
     const resultText = row.ban_result || '已封鎖';
@@ -241,6 +254,17 @@ export default function HistoryView({
     );
   };
 
+  const renderReportStatus = (row: HistoryRecord) => {
+    if (row.submission_state === 'draft') {
+      return (
+        <Badge variant={row.media_available === false ? 'danger' : 'warning'} size="sm">
+          {row.media_available === false ? '檔案遺失' : '尚未送出'}
+        </Badge>
+      );
+    }
+    return renderUploadStatus(row.upload_status || row.status);
+  };
+
   const renderUploadStatus = (status?: string) => {
     const normalized = (status || '').trim().toLowerCase();
     if (!status || !normalized) {
@@ -285,6 +309,15 @@ export default function HistoryView({
     sanctionSyncStatus?.total
       ? `正在檢查第 ${sanctionSyncStatus.current}/${sanctionSyncStatus.total} 篇公告`
       : '正在同步官方公告…');
+  const recognitionEnabled = ocrAutofillId || ocrAutofillMap;
+  const recognitionScope =
+    ocrAutofillId && ocrAutofillMap
+      ? '角色 ID 與地圖'
+      : ocrAutofillId
+        ? '角色 ID'
+        : ocrAutofillMap
+          ? '地圖'
+          : '';
 
   return (
     <div
@@ -316,7 +349,7 @@ export default function HistoryView({
               }
             }}
             loading={isCheckingSanctions}
-            disabled={isCheckingSanctions || !onCheckSanctions}
+            disabled={isCheckingSanctions || !onCheckSanctions || submittedHistory.length === 0}
             aria-busy={isCheckingSanctions}
             data-testid="check-sanction-status"
           >
@@ -382,10 +415,10 @@ export default function HistoryView({
             <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>{syncMessage}</span>
           ) : (
             <span>
-              已同步遊戲官方處分公告，共 <strong>{history.length}</strong> 筆紀錄（
+              已同步遊戲官方處分公告，共 <strong>{submittedHistory.length}</strong> 筆已送出紀錄（
               <strong style={{ color: 'var(--color-danger)' }}>
                 {
-                  history.filter(
+                  submittedHistory.filter(
                     (h) => (h.ban_status || '').toLowerCase() === 'banned' || Boolean(h.ban_date)
                   ).length
                 }{' '}
@@ -394,7 +427,7 @@ export default function HistoryView({
               ，
               <strong style={{ color: 'var(--color-status-success)' }}>
                 {
-                  history.filter(
+                  submittedHistory.filter(
                     (h) => (h.ban_status || '').toLowerCase() === 'unbanned' && !h.ban_date
                   ).length
                 }{' '}
@@ -441,10 +474,11 @@ export default function HistoryView({
                 <th>嫌疑人 ID</th>
                 <th>伺服器</th>
                 <th>所在地圖</th>
-                <th>上傳狀態</th>
+                <th>檢舉狀態</th>
                 <th>官方處分狀態</th>
                 <th>處分時間</th>
                 <th style={{ textAlign: 'center' }}>證據連結</th>
+                <th style={{ textAlign: 'center' }}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -462,7 +496,7 @@ export default function HistoryView({
                     <td className="cell-nowrap">{row.server || '-'}</td>
                     <td>{row.map_name || row.map || '-'}</td>
                     <td className="cell-nowrap">
-                      {renderUploadStatus(row.upload_status || row.status)}
+                      {renderReportStatus(row)}
                     </td>
                     <td className="cell-nowrap">{renderBanStatus(row)}</td>
                     <td className="cell-date">{formatBanDate(row.ban_date)}</td>
@@ -470,14 +504,14 @@ export default function HistoryView({
                       {evidenceUrl ? (
                         <div className="history-actions">
                           <IconButton
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             icon={ExternalLink}
                             onClick={() => onOpenUrl(evidenceUrl)}
                             tooltip="開啟雲端證據連結"
                           />
                           <IconButton
-                            variant={isCopied ? 'success' : 'secondary'}
+                            variant="ghost"
                             size="sm"
                             icon={isCopied ? Check : Copy}
                             onClick={() => void handleCopyUrl(evidenceUrl)}
@@ -486,8 +520,33 @@ export default function HistoryView({
                         </div>
                       ) : (
                         <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
-                          無雲端連結
+                          {row.submission_state === 'draft' ? '尚未上傳' : '無雲端連結'}
                         </span>
+                      )}
+                    </td>
+                    <td className="cell-nowrap" style={{ textAlign: 'center' }}>
+                      {row.submission_state === 'draft' ? (
+                        <Tooltip
+                          content={
+                            row.media_available === false
+                              ? '找不到本機證據檔案，無法繼續檢舉'
+                              : '選擇是否重新辨識後繼續檢舉'
+                          }
+                        >
+                          <span style={{ display: 'inline-flex' }}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDraftToContinue(row)}
+                              disabled={row.media_available === false || !onContinueDraft}
+                              data-testid={`continue-draft-${row.record_id || idx}`}
+                            >
+                              繼續檢舉
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      ) : (
+                        <span style={{ color: 'var(--color-text-secondary)' }}>-</span>
                       )}
                     </td>
                   </tr>
@@ -642,6 +701,62 @@ export default function HistoryView({
               }}
             >
               ⚠️ 此操作將永久刪除本地紀錄，無法復原。
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {draftToContinue && (
+        <Dialog
+          isOpen={true}
+          onClose={() => setDraftToContinue(null)}
+          title="繼續檢舉"
+          titleIcon={ScanSearch}
+          maxWidth="480px"
+          footer={
+            <div className="resume-draft-footer">
+              <Button variant="outline" size="md" onClick={() => setDraftToContinue(null)}>
+                取消
+              </Button>
+              <div className="resume-draft-actions">
+                <Button
+                  variant="secondary"
+                  size="md"
+                  icon={FileText}
+                  onClick={() => {
+                    onContinueDraft?.(draftToContinue, false);
+                    setDraftToContinue(null);
+                  }}
+                  data-testid="continue-draft-with-saved-data"
+                >
+                  直接開啟表單
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  icon={ScanSearch}
+                  disabled={!recognitionEnabled}
+                  onClick={() => {
+                    onContinueDraft?.(draftToContinue, true);
+                    setDraftToContinue(null);
+                  }}
+                  data-testid="continue-draft-with-recognition"
+                >
+                  依設定重新辨識
+                </Button>
+              </div>
+            </div>
+          }
+        >
+          <div className="resume-draft-choice">
+            <p>要直接使用已儲存的資料，還是先重新辨識這份證據？</p>
+            <div
+              className={`resume-draft-setting ${recognitionEnabled ? '' : 'disabled'}`.trim()}
+              role="status"
+            >
+              {recognitionEnabled
+                ? `依目前設定，將重新辨識：${recognitionScope}。`
+                : '目前已關閉角色 ID 與地圖辨識；如需重新辨識，請先到設定開啟。'}
             </div>
           </div>
         </Dialog>

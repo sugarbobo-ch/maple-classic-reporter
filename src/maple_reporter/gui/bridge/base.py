@@ -166,8 +166,15 @@ class BaseBridgeMixin:
             self._ocr_cancel_event.set()
         return True
 
-    def _perform_ocr(self, keyframes: list[Image.Image]) -> dict[str, Any]:
-        """Run rapid OCR in stages with event callbacks and timeout safeguards."""
+    def _perform_ocr(
+        self, keyframes: list[Image.Image], *, force: bool = False
+    ) -> dict[str, Any]:
+        """Run rapid OCR in stages with event callbacks and timeout safeguards.
+
+        Automatic recognition follows the user's auto-fill settings. Explicit
+        manual recognition can force both OCR passes so the action remains
+        available even when automatic filling is disabled.
+        """
         mod = _bridge_mod()
         default_map = str(self.config.get("default_map", "") or "").strip()
         generation, cancel_event = self._begin_ocr()
@@ -208,8 +215,8 @@ class BaseBridgeMixin:
                 sampled_keyframes = keyframes
 
             whitelist = [w.strip() for w in self.config.get("whitelist", []) if w.strip()]
-            recognize_id = bool(self.config.get("ocr_autofill_id", True))
-            recognize_map = bool(self.config.get("ocr_autofill_map", True))
+            recognize_id = force or bool(self.config.get("ocr_autofill_id", True))
+            recognize_map = force or bool(self.config.get("ocr_autofill_map", True))
 
             detected_map = ""
             candidates = []

@@ -63,6 +63,9 @@ class SanctionDatabase:
                     url TEXT,
                     status TEXT,
                     note TEXT,
+                    submission_state TEXT NOT NULL DEFAULT 'submitted',
+                    media_path TEXT,
+                    media_type TEXT,
                     ban_status TEXT,
                     ban_date TEXT,
                     ban_announcement_url TEXT,
@@ -103,6 +106,17 @@ class SanctionDatabase:
                     value TEXT
                 );
             """)
+
+            report_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(reports);").fetchall()
+            }
+            for column, definition in (
+                ("submission_state", "TEXT NOT NULL DEFAULT 'submitted'"),
+                ("media_path", "TEXT"),
+                ("media_type", "TEXT"),
+            ):
+                if column not in report_columns:
+                    conn.execute(f"ALTER TABLE reports ADD COLUMN {column} {definition};")
 
         self._execute(_init)
 
@@ -147,10 +161,12 @@ class SanctionDatabase:
             insert_sql = """
                 INSERT INTO reports (
                     record_id, time, suspect_id, server, map, url, status, note,
+                    submission_state, media_path, media_type,
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
                     ban_result, ban_masked_name, ban_checked_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
+                    :submission_state, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
                     :ban_result, :ban_masked_name, :ban_checked_at
                 );
@@ -165,6 +181,9 @@ class SanctionDatabase:
                     "url": r.get("url") or r.get("evidence_url", ""),
                     "status": r.get("status") or r.get("upload_status", ""),
                     "note": r.get("note", ""),
+                    "submission_state": r.get("submission_state", "submitted"),
+                    "media_path": r.get("media_path", ""),
+                    "media_type": r.get("media_type", ""),
                     "ban_status": r.get("ban_status", "pending"),
                     "ban_date": r.get("ban_date"),
                     "ban_announcement_url": r.get("ban_announcement_url"),
@@ -188,6 +207,9 @@ class SanctionDatabase:
                 "url": r.get("url") or r.get("evidence_url", ""),
                 "status": r.get("status") or r.get("upload_status", ""),
                 "note": r.get("note", ""),
+                "submission_state": r.get("submission_state", "submitted"),
+                "media_path": r.get("media_path", ""),
+                "media_type": r.get("media_type", ""),
                 "ban_status": r.get("ban_status", "pending"),
                 "ban_date": r.get("ban_date"),
                 "ban_announcement_url": r.get("ban_announcement_url"),
@@ -199,10 +221,12 @@ class SanctionDatabase:
             conn.execute("""
                 INSERT INTO reports (
                     record_id, time, suspect_id, server, map, url, status, note,
+                    submission_state, media_path, media_type,
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
                     ban_result, ban_masked_name, ban_checked_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
+                    :submission_state, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
                     :ban_result, :ban_masked_name, :ban_checked_at
                 )
@@ -214,6 +238,9 @@ class SanctionDatabase:
                     url=excluded.url,
                     status=excluded.status,
                     note=excluded.note,
+                    submission_state=excluded.submission_state,
+                    media_path=excluded.media_path,
+                    media_type=excluded.media_type,
                     ban_status=excluded.ban_status,
                     ban_date=excluded.ban_date,
                     ban_announcement_url=excluded.ban_announcement_url,

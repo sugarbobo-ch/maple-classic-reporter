@@ -93,7 +93,9 @@ class MediaBridgeMixin:
             if frame is None:
                 return {"status": "error", "message": "無法擷取目前影片畫面"}
 
-            ocr_res = self._perform_ocr([frame])
+            # This is an explicit user action, so it must remain functional
+            # even when automatic OCR auto-fill is disabled in settings.
+            ocr_res = self._perform_ocr([frame], force=True)
             if ocr_res.get("cancelled"):
                 return {"status": "cancelled", "message": "辨識已取消"}
 
@@ -223,12 +225,19 @@ class MediaBridgeMixin:
             return {"success": False, "error": str(err)}
 
     def clear_all_recordings(self) -> dict[str, Any]:
-        """Delete all media files in recordings directory and return count and freed bytes."""
+        """Delete unreferenced media while preserving evidence for report drafts."""
         rec_dir = get_recordings_dir()
         files = [f for f in rec_dir.iterdir() if f.is_file()]
+        protected_paths = {
+            Path(str(record.get("media_path", ""))).resolve(strict=False)
+            for record in self.sanction_repo.load_history()
+            if record.get("submission_state") == "draft" and record.get("media_path")
+        }
         deleted = 0
         total_bytes = 0
         for f in files:
+            if f.resolve(strict=False) in protected_paths:
+                continue
             try:
                 size = f.stat().st_size
                 f.unlink()

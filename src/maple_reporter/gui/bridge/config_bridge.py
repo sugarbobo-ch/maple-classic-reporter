@@ -74,7 +74,7 @@ class ConfigBridgeMixin:
         self.config = mod.load_config()
         windows = self.get_windows()
         audio_devices = self.get_audio_devices()
-        history = self.sanction_repo.load_history()
+        history = self.get_history()
         gdrive_auth = self.drive_mgr.is_authenticated()
         sync_status = self.sanction_coordinator.get_status().to_dict()
         cache = self.sanction_repo.load_cache()

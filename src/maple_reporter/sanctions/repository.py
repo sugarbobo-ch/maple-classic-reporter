@@ -138,7 +138,7 @@ class SanctionRepository:
             # 1. Try loading from SQLite database
             db_reports = self.db.load_reports()
             if db_reports:
-                return db_reports
+                return [self._normalize_history_record(record) for record in db_reports]
 
             # 2. Fallback to JSON
             target_path = self._history_path if self._history_path.exists() else HISTORY_FILE
@@ -161,7 +161,7 @@ class SanctionRepository:
                 record = dict(item)
                 if not record.get("record_id"):
                     record["record_id"] = str(uuid.uuid4())
-                records.append(record)
+                records.append(self._normalize_history_record(record))
 
             self.save_history(records)
             return records
@@ -174,7 +174,7 @@ class SanctionRepository:
                 record = dict(r)
                 if not record.get("record_id"):
                     record["record_id"] = str(uuid.uuid4())
-                clean_records.append(record)
+                clean_records.append(self._normalize_history_record(record))
 
             # 1. Save to SQLite database
             self.db.save_reports(clean_records)
@@ -193,11 +193,36 @@ class SanctionRepository:
             if not record.get("record_id"):
                 record["record_id"] = str(uuid.uuid4())
 
-            # Evaluate against current cache
-            evaluated = self._evaluate_single_record(record, cache)
+            record = self._normalize_history_record(record)
+            evaluated = (
+                record
+                if record["submission_state"] == "draft"
+                else self._evaluate_single_record(record, cache)
+            )
             records.insert(0, evaluated)
             self.save_history(records)
             return evaluated
+
+    def update_history_entry(
+        self,
+        record_id: str,
+        updates: dict[str, Any],
+        *,
+        evaluate: bool = False,
+    ) -> dict[str, Any] | None:
+        """Update one report history entry without changing its list position."""
+        with self._lock:
+            records = self.load_history()
+            for index, item in enumerate(records):
+                if item.get("record_id") != record_id:
+                    continue
+                updated = self._normalize_history_record({**item, **updates, "record_id": record_id})
+                if evaluate and updated["submission_state"] == "submitted":
+                    updated = self._evaluate_single_record(updated, self.load_cache())
+                records[index] = updated
+                self.save_history(records)
+                return updated
+            return None
 
     def clear_history(self) -> None:
         """Clear history records while preserving sanction cache."""
@@ -279,6 +304,9 @@ class SanctionRepository:
             updated_records: list[dict[str, Any]] = []
 
             for record in records:
+                if record.get("submission_state", "submitted") == "draft":
+                    updated_records.append(record)
+                    continue
                 checked_count += 1
                 suspect_id = str(record.get("suspect_id") or record.get("id") or "").strip()
                 raw_time = str(record.get("timestamp") or record.get("time") or "")
@@ -344,12 +372,24 @@ class SanctionRepository:
             )
             return summary, updated_records
 
+    @staticmethod
+    def _normalize_history_record(record: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(record)
+        normalized["submission_state"] = (
+            "draft" if normalized.get("submission_state") == "draft" else "submitted"
+        )
+        normalized["media_path"] = str(normalized.get("media_path") or "")
+        normalized["media_type"] = str(normalized.get("media_type") or "")
+        return normalized
+
     def _evaluate_single_record(
         self,
         record: dict[str, Any],
         cache: SanctionCache,
     ) -> dict[str, Any]:
         """Evaluate a single history record against the cache."""
+        if record.get("submission_state", "submitted") == "draft":
+            return record
         suspect_id = str(record.get("suspect_id") or record.get("id") or "").strip()
         raw_time = str(record.get("timestamp") or record.get("time") or "")
         report_date = parse_taiwan_date(raw_time)

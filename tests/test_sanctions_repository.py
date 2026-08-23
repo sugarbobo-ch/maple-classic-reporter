@@ -1,6 +1,7 @@
 """Unit tests for SanctionRepository persistence, cache schema, and history evaluation."""
 
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -80,6 +81,90 @@ class TestSanctionRepository(unittest.TestCase):
         self.assertTrue(bool(loaded[0].get("record_id")))
         self.assertTrue(bool(loaded[1].get("record_id")))
         self.assertNotEqual(loaded[0]["record_id"], loaded[1]["record_id"])
+        self.assertTrue(all(item["submission_state"] == "submitted" for item in loaded))
+
+    def test_sqlite_history_schema_migrates_draft_columns(self):
+        legacy_db = Path(self.temp_dir.name) / "legacy.db"
+        with sqlite3.connect(legacy_db) as connection:
+            connection.execute(
+                """
+                CREATE TABLE reports (
+                    record_id TEXT PRIMARY KEY, time TEXT, suspect_id TEXT,
+                    server TEXT, map TEXT, url TEXT, status TEXT, note TEXT,
+                    ban_status TEXT, ban_date TEXT, ban_announcement_url TEXT,
+                    ban_bulletin_id INTEGER, ban_result TEXT,
+                    ban_masked_name TEXT, ban_checked_at TEXT
+                )
+                """
+            )
+            connection.execute(
+                "INSERT INTO reports (record_id, time, suspect_id, status) VALUES (?, ?, ?, ?)",
+                ("legacy-1", "2026-08-16 12:00:00", "Player1", "成功"),
+            )
+
+        migrated_repo = SanctionRepository(
+            cache_path=Path(self.temp_dir.name) / "legacy-cache.json",
+            history_path=Path(self.temp_dir.name) / "legacy-history.json",
+            db_path=legacy_db,
+        )
+        loaded = migrated_repo.load_history()
+
+        self.assertEqual(loaded[0]["submission_state"], "submitted")
+        self.assertEqual(loaded[0]["media_path"], "")
+
+    def test_draft_round_trip_and_in_place_submission_update(self):
+        draft = self.repo.add_history_entry(
+            {
+                "time": "2026-08-16 12:00:00",
+                "submission_state": "draft",
+                "media_path": "C:/evidence.mp4",
+                "media_type": "video",
+                "status": "尚未送出",
+            }
+        )
+
+        updated = self.repo.update_history_entry(
+            draft["record_id"],
+            {
+                "submission_state": "submitted",
+                "suspect_id": "Player1",
+                "map": "墮落城市",
+                "status": "成功",
+            },
+            evaluate=True,
+        )
+
+        loaded = self.repo.load_history()
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(updated["record_id"], draft["record_id"])
+        self.assertEqual(loaded[0]["submission_state"], "submitted")
+        self.assertEqual(loaded[0]["suspect_id"], "Player1")
+
+    def test_sanction_sync_skips_drafts(self):
+        self.repo.save_history(
+            [
+                {
+                    "record_id": "draft-1",
+                    "time": "2026-08-16 10:00:00",
+                    "suspect_id": "DraftPlayer",
+                    "submission_state": "draft",
+                    "ban_status": "pending",
+                },
+                {
+                    "record_id": "submitted-1",
+                    "time": "2026-08-16 11:00:00",
+                    "suspect_id": "SubmittedPlayer",
+                    "submission_state": "submitted",
+                    "ban_status": "pending",
+                },
+            ]
+        )
+
+        summary, records = self.repo.commit_sync_progress(SanctionCache(), is_complete=True)
+
+        self.assertEqual(summary.checked_record_count, 1)
+        self.assertEqual(records[0]["ban_status"], "pending")
+        self.assertEqual(records[1]["ban_status"], "unbanned")
 
     def test_add_history_entry_evaluates_against_cache(self):
         # Setup cache with a banned entry
