@@ -141,7 +141,10 @@ class SanctionRepository:
                 return [self._normalize_history_record(record) for record in db_reports]
 
             # 2. Fallback to JSON
-            target_path = self._history_path if self._history_path.exists() else HISTORY_FILE
+            # __init__ already resolves the default/legacy path. When callers
+            # provide an explicit path (notably tests), an absent file means an
+            # empty history and must never fall back to another user's data.
+            target_path = self._history_path
             if not target_path.exists():
                 return []
             try:
