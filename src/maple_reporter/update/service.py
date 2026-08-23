@@ -179,6 +179,7 @@ class UpdateService:
         self._download_assets: list[ReleaseAsset] = []
         self._package_path: Path | None = None
         self._last_check = 0.0
+        self._etag = ""
         self._status: dict[str, Any] = self._default_status()
         self._load_cache()
         self._cleanup_stale_cache()
@@ -220,6 +221,7 @@ class UpdateService:
             cached = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(cached, dict):
                 self._last_check = float(cached.get("checked_at") or 0)
+                self._etag = str(cached.get("etag") or "")
                 releases_raw = cached.get("releases", [])
                 if isinstance(releases_raw, list):
                     self._releases = [
@@ -335,14 +337,21 @@ class UpdateService:
                 headers={
                     "Accept": "application/vnd.github+json",
                     "User-Agent": "MapleClassicReporter-Updater",
+                    **({"If-None-Match": self._etag} if self._etag else {}),
                 },
                 timeout=(8, 20),
             )
-            response.raise_for_status()
-            payload = response.json()
-            if not isinstance(payload, list):
-                raise ValueError("GitHub releases response was not a list")
-            releases = [candidate for raw in payload if isinstance(raw, dict) and (candidate := _release_candidate(raw))]
+            if response.status_code == 304:
+                releases = list(self._releases)
+            else:
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, list):
+                    raise ValueError("GitHub releases response was not a list")
+                releases = [candidate for raw in payload if isinstance(raw, dict) and (candidate := _release_candidate(raw))]
+                self._etag = str(
+                    response.headers.get("ETag") or response.headers.get("etag") or self._etag
+                )
             current = SemVer.parse(__version__)
             eligible = [candidate for candidate in releases if channel == "preview" or not candidate.prerelease]
             eligible = [candidate for candidate in eligible if SemVer.parse(candidate.version) > current]

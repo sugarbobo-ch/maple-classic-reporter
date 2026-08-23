@@ -100,7 +100,14 @@ class ConfigBridgeMixin:
         if getattr(self, "_window", None) is not None and getattr(
             self, "update_service", None
         ):
-            self.update_service.start_check(force=False)
+            # The first initial-data request belongs to this app launch and
+            # must contact GitHub even when a previous run checked recently.
+            # Later refreshes in the same process retain the normal throttle.
+            force_update_check = not bool(
+                getattr(self, "_startup_update_check_requested", False)
+            )
+            self._startup_update_check_requested = True
+            self.update_service.start_check(force=force_update_check)
 
         return {
             "config": self.config,

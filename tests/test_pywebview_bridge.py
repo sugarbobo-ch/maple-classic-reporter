@@ -165,7 +165,13 @@ class TestPyWebViewBridge(unittest.TestCase):
 
         self.bridge.get_initial_data()
 
-        self.bridge.update_service.start_check.assert_called_once_with(force=False)
+        self.bridge.update_service.start_check.assert_called_once_with(force=True)
+
+        self.bridge.get_initial_data()
+        self.assertEqual(
+            self.bridge.update_service.start_check.call_args_list[-1].kwargs,
+            {"force": False},
+        )
 
     def test_clear_history_delegates_to_persistence(self):
         with patch.object(self.bridge.sanction_repo, "clear_history") as mock_clear:

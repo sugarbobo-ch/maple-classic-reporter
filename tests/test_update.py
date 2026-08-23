@@ -46,6 +46,15 @@ class _Session:
         )
 
 
+class _NotModifiedSession:
+    def __init__(self):
+        self.request_headers = {}
+
+    def get(self, url, **kwargs):
+        self.request_headers = dict(kwargs.get("headers") or {})
+        return _Response(status_code=304)
+
+
 class _UnavailableResponse:
     status_code = 404
     headers = {}
@@ -81,6 +90,63 @@ class _HeadlessProgressUI:
 
 
 class UpdateTests(unittest.TestCase):
+    def test_forced_startup_check_uses_cached_etag_and_handles_not_modified(self):
+        candidate = ReleaseCandidate(
+            version="2.1.0",
+            prerelease=False,
+            release_url="https://github.com/release/v2.1.0",
+            body="Fixes",
+            assets=[
+                ReleaseAsset(
+                    name="MapleClassicReporter-v2.1.0-windows-x64.zip",
+                    url="https://github.com/download/update.zip",
+                    size=128,
+                    kind="full",
+                    to_version="2.1.0",
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            update_dir = root / "updates"
+            update_dir.mkdir()
+            checked_at = time.time() - 60
+            (update_dir / "release-cache.json").write_text(
+                json.dumps(
+                    {
+                        "checked_at": checked_at,
+                        "etag": 'W/"cached-releases"',
+                        "releases": [UpdateService._candidate_dict(candidate)],
+                        "candidate": UpdateService._candidate_dict(candidate),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            session = _NotModifiedSession()
+            with patch("maple_reporter.update.service.__version__", "2.0.0"):
+                service = UpdateService(
+                    emit_event=lambda *_: None,
+                    get_config=lambda: {"auto_update_enabled": False, "update_channel": "stable"},
+                    is_busy=lambda: False,
+                    session=session,
+                    install_dir=root / "MapleClassicReporter",
+                    update_dir=update_dir,
+                )
+                self.assertTrue(service.start_check(force=True))
+                deadline = time.time() + 3
+                while time.time() < deadline and service.status()["state"] in {
+                    UpdateState.IDLE.value,
+                    UpdateState.CHECKING.value,
+                }:
+                    time.sleep(0.01)
+
+                self.assertEqual(session.request_headers["If-None-Match"], 'W/"cached-releases"')
+                self.assertEqual(service.status()["state"], UpdateState.AVAILABLE.value)
+                refreshed = json.loads((update_dir / "release-cache.json").read_text(encoding="utf-8"))
+                self.assertGreater(refreshed["checked_at"], checked_at)
+                self.assertEqual(refreshed["etag"], 'W/"cached-releases"')
+                service.shutdown()
+
     def test_updater_resolves_camera_icon_when_install_bundle_has_no_assets(self):
         with tempfile.TemporaryDirectory() as temporary:
             icon = _find_update_icon(Path(temporary) / "MapleClassicReporter")
