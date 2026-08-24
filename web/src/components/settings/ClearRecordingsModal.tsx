@@ -40,7 +40,7 @@ export default function ClearRecordingsModal({
               onClick={onExecuteClear}
               disabled={clearingProgress}
             >
-              {clearingProgress ? '清理中...' : '確認清理'}
+              {clearingProgress ? '清理中...' : '清理暫存檔案'}
             </Button>
           </>
         )

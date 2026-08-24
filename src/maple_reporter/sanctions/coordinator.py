@@ -97,7 +97,7 @@ class SanctionSyncCoordinator:
                 history = [
                     record
                     for record in self.repository.load_history()
-                    if record.get("submission_state", "submitted") != "draft"
+                    if record.get("submission_state", "submitted") == "submitted"
                 ]
                 if not history:
                     return StartSyncResult(
@@ -162,7 +162,7 @@ class SanctionSyncCoordinator:
         history = [
             record
             for record in self.repository.load_history()
-            if record.get("submission_state", "submitted") != "draft"
+            if record.get("submission_state", "submitted") == "submitted"
         ]
         earliest_report_dt = None
         for h in history:

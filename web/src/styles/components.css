@@ -615,6 +615,7 @@ textarea::placeholder {
 }
 
 .ui-dropdown-option {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -669,6 +670,23 @@ textarea::placeholder {
   background-color: var(--color-primary-subtle);
   color: var(--color-primary);
   font-weight: 600;
+}
+
+/* Compact menus cannot fit semibold text and an in-flow checkmark together. */
+.ui-dropdown-menu.compact .ui-dropdown-check {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.ui-dropdown-menu.compact .ui-dropdown-option.selected {
+  font-weight: 400;
+}
+
+.ui-dropdown-menu.compact .ui-dropdown-option.selected .ui-dropdown-option-label {
+  padding-inline-end: 4px;
 }
 
 /* Quick Link Drag & Drop items */

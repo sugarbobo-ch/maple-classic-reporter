@@ -1,6 +1,6 @@
 import React from 'react';
 import { Plus, GripVertical, ArrowUp, ArrowDown, Edit2, Trash2 } from 'lucide-react';
-import { Button, IconButton, Badge, DynamicIcon } from '../ui';
+import { Button, Dialog, IconButton, Badge, DynamicIcon } from '../ui';
 import { QuickLinkItem } from '../../types';
 
 export interface QuickLinksTabProps {
@@ -30,6 +30,8 @@ export default function QuickLinksTab({
   onDrop,
   onDragEnd,
 }: QuickLinksTabProps) {
+  const [pendingDelete, setPendingDelete] = React.useState<QuickLinkItem | null>(null);
+
   return (
     <>
       <div className="setting-row no-border">
@@ -113,14 +115,45 @@ export default function QuickLinksTab({
               <IconButton
                 icon={Trash2}
                 size="sm"
-                variant="danger"
+                variant="ghost"
+                className="quick-link-delete-button"
                 tooltip="刪除"
-                onClick={() => onDeleteQuickLink(item.id)}
+                onClick={() => setPendingDelete(item)}
               />
             </div>
           </div>
         ))}
       </div>
+
+      {pendingDelete && (
+        <Dialog
+          isOpen={true}
+          onClose={() => setPendingDelete(null)}
+          title="刪除快捷連結？"
+          maxWidth="420px"
+          footer={
+            <div className="quick-link-delete-actions">
+              <Button variant="outline" size="md" onClick={() => setPendingDelete(null)}>
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                onClick={() => {
+                  onDeleteQuickLink(pendingDelete.id);
+                  setPendingDelete(null);
+                }}
+              >
+                刪除快捷連結
+              </Button>
+            </div>
+          }
+        >
+          <p className="quick-link-delete-message">
+            確定要刪除「{pendingDelete.title}」嗎？此連結會從首頁快捷連結中移除。
+          </p>
+        </Dialog>
+      )}
     </>
   );
 }

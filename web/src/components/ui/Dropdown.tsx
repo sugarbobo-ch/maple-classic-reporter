@@ -147,15 +147,14 @@ export default function Dropdown<T extends string | number = string>({
         ReactDOM.createPortal(
           <div
             ref={menuRef}
-            className="ui-dropdown-menu"
+            className={`ui-dropdown-menu ${menuPosition.width <= 110 ? 'compact' : ''}`.trim()}
             style={{
               top: `${menuPosition.top}px`,
               left: `${menuPosition.left}px`,
-              // Keep the trigger width as the menu's minimum, but let the
-              // options determine a comfortable width so selected labels do
-              // not lose characters to the trailing check icon.
-              minWidth: `${menuPosition.width}px`,
-              width: 'max-content',
+              // Match the trigger width. Long window titles stay inside the
+              // viewport and remain available through the option title.
+              minWidth: 0,
+              width: `${menuPosition.width}px`,
               maxWidth: 'calc(100vw - 20px)',
               ...menuStyle,
             }}

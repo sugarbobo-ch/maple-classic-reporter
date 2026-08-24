@@ -198,9 +198,9 @@ class SanctionRepository:
 
             record = self._normalize_history_record(record)
             evaluated = (
-                record
-                if record["submission_state"] == "draft"
-                else self._evaluate_single_record(record, cache)
+                self._evaluate_single_record(record, cache)
+                if record["submission_state"] == "submitted"
+                else record
             )
             records.insert(0, evaluated)
             self.save_history(records)
@@ -307,7 +307,7 @@ class SanctionRepository:
             updated_records: list[dict[str, Any]] = []
 
             for record in records:
-                if record.get("submission_state", "submitted") == "draft":
+                if record.get("submission_state", "submitted") != "submitted":
                     updated_records.append(record)
                     continue
                 checked_count += 1
@@ -378,8 +378,9 @@ class SanctionRepository:
     @staticmethod
     def _normalize_history_record(record: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(record)
+        raw_state = normalized.get("submission_state")
         normalized["submission_state"] = (
-            "draft" if normalized.get("submission_state") == "draft" else "submitted"
+            raw_state if raw_state in {"draft", "awaiting_manual", "submitted"} else "submitted"
         )
         normalized["media_path"] = str(normalized.get("media_path") or "")
         normalized["media_type"] = str(normalized.get("media_type") or "")
@@ -391,7 +392,7 @@ class SanctionRepository:
         cache: SanctionCache,
     ) -> dict[str, Any]:
         """Evaluate a single history record against the cache."""
-        if record.get("submission_state", "submitted") == "draft":
+        if record.get("submission_state", "submitted") != "submitted":
             return record
         suspect_id = str(record.get("suspect_id") or record.get("id") or "").strip()
         raw_time = str(record.get("timestamp") or record.get("time") or "")

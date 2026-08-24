@@ -1,10 +1,10 @@
 import { FolderOpen, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { Dropdown, Input, Button, Badge } from '../ui';
-import { AppConfig, DropdownOption } from '../../types';
+import { AppConfig, DropdownOption, UploadDestination } from '../../types';
 
 export interface UploadTabProps {
   config: AppConfig;
-  destinationOptions: DropdownOption<'gdrive' | 'discord'>[];
+  destinationOptions: DropdownOption<UploadDestination>[];
   gdriveFolder: string;
   discordWebhook: string;
   testingDiscord: boolean;
@@ -122,7 +122,7 @@ export default function UploadTab({
           <span className="setting-desc">自動選擇預設上傳管道</span>
         </div>
         <div style={{ width: '200px', minWidth: '160px' }}>
-          <Dropdown<'gdrive' | 'discord'>
+          <Dropdown<UploadDestination>
             options={destinationOptions}
             value={config.upload_destination || 'gdrive'}
             onChange={(val) => onUpdateConfig('upload_destination', val)}

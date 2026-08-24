@@ -760,5 +760,81 @@ class TestPyWebViewBridge(unittest.TestCase):
             self.assertEqual(cfg.get("selected_window_title"), "新楓之谷：經典版 (1920x1080)")
 
 
+    def test_manual_report_uploads_without_playwright_and_waits_for_confirmation(self):
+        evidence = Path(self.temp_dir.name) / "manual-evidence.mp4"
+        evidence.write_bytes(b"manual evidence")
+        self.bridge.drive_mgr.upload_file_and_make_public.return_value = (
+            True,
+            "https://drive.google.com/file/d/manual/view",
+        )
+
+        with patch("maple_reporter.gui.pywebview_bridge.submit_gamania_report") as mock_submit:
+            result = self.bridge.submit_report(
+                {
+                    "file_path": str(evidence),
+                    "submission_mode": "manual",
+                    "suspect_id": "ManualPlayer",
+                    "server_name": "雪吉拉",
+                    "map_name": "墮落城市",
+                    "note": "疑似自動打怪",
+                }
+            )
+
+        self.assertEqual(result["status"], "manual_ready")
+        mock_submit.assert_not_called()
+        history = self.bridge.sanction_repo.load_history()
+        self.assertEqual(history[0]["submission_state"], "awaiting_manual")
+        self.assertEqual(history[0]["submission_mode"], "manual")
+
+    def test_confirm_manual_report_marks_submitted_then_deletes_owned_evidence(self):
+        evidence = Path(self.temp_dir.name) / "manual-confirm.mp4"
+        evidence.write_bytes(b"manual evidence")
+        self.bridge.config["auto_delete_after_upload"] = True
+        prepared = self.bridge.submit_report(
+            {
+                "file_path": str(evidence),
+                "evidence_url": "https://example.com/manual-evidence",
+                "submission_mode": "manual",
+                "suspect_id": "ManualPlayer",
+                "server_name": "雪吉拉",
+                "map_name": "墮落城市",
+                "note": "疑似自動打怪",
+            }
+        )
+
+        with patch(
+            "maple_reporter.gui.pywebview_bridge.is_owned_recording_path",
+            return_value=True,
+        ):
+            confirmed = self.bridge.confirm_manual_report(prepared["record_id"])
+
+        self.assertEqual(confirmed["status"], "success")
+        self.assertTrue(confirmed["deleted"])
+        self.assertFalse(evidence.exists())
+        history = self.bridge.sanction_repo.load_history()
+        self.assertEqual(history[0]["submission_state"], "submitted")
+
+
+    def test_no_upload_trial_mode_never_calls_cloud_uploaders(self):
+        evidence = Path(self.temp_dir.name) / "trial-only.mp4"
+        evidence.write_bytes(b"trial")
+
+        with patch(
+            "maple_reporter.gui.pywebview_bridge.upload_evidence_to_discord"
+        ) as discord_upload:
+            result = self.bridge.submit_report(
+                {
+                    "file_path": str(evidence),
+                    "upload_destination": "none",
+                    "submission_mode": "manual",
+                }
+            )
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("只試用模式", result["message"])
+        self.bridge.drive_mgr.upload_file_and_make_public.assert_not_called()
+        discord_upload.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

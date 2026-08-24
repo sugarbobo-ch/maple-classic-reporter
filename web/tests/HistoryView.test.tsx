@@ -130,8 +130,9 @@ describe('HistoryView evidence links and sanction status', () => {
     renderHistory(vi.fn(), onClearHistory);
 
     fireEvent.click(screen.getByTestId('clear-history'));
-    expect(screen.getByText('清空歷史紀錄')).toBeInTheDocument();
-    expect(screen.getByTestId('confirm-clear-history-button')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: '清空歷史紀錄' });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '清空歷史紀錄' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('confirm-clear-history-button'));
     await waitFor(() => expect(onClearHistory).toHaveBeenCalledTimes(1));

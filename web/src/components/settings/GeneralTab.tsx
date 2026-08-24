@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Plus, Edit2, Trash2, AlertCircle } from 'lucide-react';
-import { Switch, Dropdown, Input, Textarea, Button } from '../ui';
+import { Dialog, Switch, Dropdown, Input, Textarea, Button } from '../ui';
 import { AppConfig, DropdownOption, ViolationTemplateItem } from '../../types';
 
 export interface GeneralTabProps {
@@ -41,6 +42,7 @@ export default function GeneralTab({
   onOpenEditTemplate,
   onDeleteTemplate,
 }: GeneralTabProps) {
+  const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null);
   const handleToggle = (key: keyof AppConfig) => {
     onUpdateConfig(key, !config[key]);
   };
@@ -122,7 +124,13 @@ export default function GeneralTab({
             variant="danger"
             size="md"
             icon={Trash2}
-            onClick={() => onDeleteTemplate(selectedTemplateIndex)}
+            onClick={() => {
+              if (templates.length <= 1) {
+                onDeleteTemplate(selectedTemplateIndex);
+              } else {
+                setPendingDeleteIndex(selectedTemplateIndex);
+              }
+            }}
           >
             刪除
           </Button>
@@ -225,6 +233,37 @@ export default function GeneralTab({
           onChange={() => handleToggle('auto_delete_after_upload')}
         />
       </div>
+
+      {pendingDeleteIndex !== null && templates[pendingDeleteIndex] && (
+        <Dialog
+          isOpen={true}
+          onClose={() => setPendingDeleteIndex(null)}
+          title="刪除違規範本？"
+          titleIcon={Trash2}
+          maxWidth="420px"
+          footer={
+            <div className="quick-link-delete-actions">
+              <Button variant="outline" size="md" onClick={() => setPendingDeleteIndex(null)}>
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                onClick={() => {
+                  onDeleteTemplate(pendingDeleteIndex);
+                  setPendingDeleteIndex(null);
+                }}
+              >
+                刪除範本
+              </Button>
+            </div>
+          }
+        >
+          <p className="quick-link-delete-message">
+            確定要刪除「{templates[pendingDeleteIndex].name}」嗎？此範本會從違規範本清單中移除。
+          </p>
+        </Dialog>
+      )}
     </>
   );
 }

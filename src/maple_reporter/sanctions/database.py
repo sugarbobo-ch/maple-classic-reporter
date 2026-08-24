@@ -64,6 +64,7 @@ class SanctionDatabase:
                     status TEXT,
                     note TEXT,
                     submission_state TEXT NOT NULL DEFAULT 'submitted',
+                    submission_mode TEXT NOT NULL DEFAULT 'automatic',
                     media_path TEXT,
                     media_type TEXT,
                     ban_status TEXT,
@@ -112,6 +113,7 @@ class SanctionDatabase:
             }
             for column, definition in (
                 ("submission_state", "TEXT NOT NULL DEFAULT 'submitted'"),
+                ("submission_mode", "TEXT NOT NULL DEFAULT 'automatic'"),
                 ("media_path", "TEXT"),
                 ("media_type", "TEXT"),
             ):
@@ -161,12 +163,12 @@ class SanctionDatabase:
             insert_sql = """
                 INSERT INTO reports (
                     record_id, time, suspect_id, server, map, url, status, note,
-                    submission_state, media_path, media_type,
+                    submission_state, submission_mode, media_path, media_type,
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
                     ban_result, ban_masked_name, ban_checked_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
-                    :submission_state, :media_path, :media_type,
+                    :submission_state, :submission_mode, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
                     :ban_result, :ban_masked_name, :ban_checked_at
                 );
@@ -182,6 +184,7 @@ class SanctionDatabase:
                     "status": r.get("status") or r.get("upload_status", ""),
                     "note": r.get("note", ""),
                     "submission_state": r.get("submission_state", "submitted"),
+                    "submission_mode": r.get("submission_mode", "automatic"),
                     "media_path": r.get("media_path", ""),
                     "media_type": r.get("media_type", ""),
                     "ban_status": r.get("ban_status", "pending"),
@@ -208,6 +211,7 @@ class SanctionDatabase:
                 "status": r.get("status") or r.get("upload_status", ""),
                 "note": r.get("note", ""),
                 "submission_state": r.get("submission_state", "submitted"),
+                "submission_mode": r.get("submission_mode", "automatic"),
                 "media_path": r.get("media_path", ""),
                 "media_type": r.get("media_type", ""),
                 "ban_status": r.get("ban_status", "pending"),
@@ -221,12 +225,12 @@ class SanctionDatabase:
             conn.execute("""
                 INSERT INTO reports (
                     record_id, time, suspect_id, server, map, url, status, note,
-                    submission_state, media_path, media_type,
+                    submission_state, submission_mode, media_path, media_type,
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
                     ban_result, ban_masked_name, ban_checked_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
-                    :submission_state, :media_path, :media_type,
+                    :submission_state, :submission_mode, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
                     :ban_result, :ban_masked_name, :ban_checked_at
                 )
@@ -239,6 +243,7 @@ class SanctionDatabase:
                     status=excluded.status,
                     note=excluded.note,
                     submission_state=excluded.submission_state,
+                    submission_mode=excluded.submission_mode,
                     media_path=excluded.media_path,
                     media_type=excluded.media_type,
                     ban_status=excluded.ban_status,

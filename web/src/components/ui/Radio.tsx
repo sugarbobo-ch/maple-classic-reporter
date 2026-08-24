@@ -111,6 +111,7 @@ export interface RadioGroupProps<T = string | number> {
   direction?: 'horizontal' | 'vertical';
   disabled?: boolean;
   className?: string;
+  itemClassName?: string;
 }
 
 export function RadioGroup<T extends string | number = string>({
@@ -122,6 +123,7 @@ export function RadioGroup<T extends string | number = string>({
   direction = 'horizontal',
   disabled = false,
   className = '',
+  itemClassName = '',
 }: RadioGroupProps<T>) {
   return (
     <RadioContext.Provider
@@ -140,6 +142,7 @@ export function RadioGroup<T extends string | number = string>({
                 value={opt.value}
                 label={opt.label}
                 disabled={opt.disabled || disabled}
+                className={itemClassName}
               />
             ))
           : children}

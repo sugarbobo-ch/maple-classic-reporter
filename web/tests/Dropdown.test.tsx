@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import Dropdown from '../src/components/ui/Dropdown';
 
 describe('Dropdown layout', () => {
-  it('lets option content size the menu while keeping the trigger width as a floor', () => {
+  it('keeps long option labels inside the trigger and viewport width', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 320,
       height: 36,
@@ -30,13 +30,42 @@ describe('Dropdown layout', () => {
     fireEvent.click(screen.getByRole('button', { name: '新楓之谷：經典版' }));
 
     const menu = screen.getByRole('listbox');
+    expect(menu).not.toHaveClass('compact');
     expect(menu).toHaveStyle({
-      minWidth: '320px',
-      width: 'max-content',
+      minWidth: '0',
+      width: '320px',
       maxWidth: 'calc(100vw - 20px)',
     });
     expect(screen.getByRole('option', { name: longLabel })).toHaveAttribute('title', longLabel);
 
     vi.restoreAllMocks();
+  });
+
+  it('uses compact selected-option spacing only for narrow menus', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 80,
+      height: 36,
+      top: 20,
+      right: 100,
+      bottom: 56,
+      left: 20,
+      x: 20,
+      y: 20,
+      toJSON: () => ({}),
+    });
+
+    render(
+      <Dropdown
+        value={20}
+        options={[
+          { value: 15, label: '15 FPS' },
+          { value: 20, label: '20 FPS' },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '20 FPS' }));
+
+    expect(screen.getByRole('listbox')).toHaveClass('compact');
   });
 });

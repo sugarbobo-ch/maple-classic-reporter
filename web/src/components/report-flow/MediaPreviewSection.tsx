@@ -1,4 +1,4 @@
-import React, { RefObject } from 'react';
+import React, { RefObject, useState } from 'react';
 import {
   Film,
   Image as ImageIcon,
@@ -9,7 +9,7 @@ import {
   Clock,
   ScanLine,
 } from 'lucide-react';
-import { Button, Badge } from '../ui';
+import { Button, Badge, Dialog } from '../ui';
 
 export interface MediaPreviewSectionProps {
   currentMediaPath: string;
@@ -76,6 +76,8 @@ export default function MediaPreviewSection({
   isRecognizingCurrentFrame = false,
   isVideoPaused = true,
 }: MediaPreviewSectionProps) {
+  const [confirmCutOpen, setConfirmCutOpen] = useState(false);
+
   return (
     <div className="step-block">
       <div
@@ -244,7 +246,7 @@ export default function MediaPreviewSection({
                   variant="danger"
                   size="sm"
                   icon={Scissors}
-                  onClick={onExecuteCut}
+                  onClick={() => setConfirmCutOpen(true)}
                   disabled={isTrimming || cutEnd <= cutStart}
                   aria-label="套用影片剪輯"
                 >
@@ -360,6 +362,37 @@ export default function MediaPreviewSection({
           )}
         </div>
       </div>
+
+      {confirmCutOpen && (
+        <Dialog
+          isOpen={true}
+          onClose={() => setConfirmCutOpen(false)}
+          title="刪除此區段？"
+          titleIcon={Scissors}
+          maxWidth="420px"
+          footer={
+            <div className="quick-link-delete-actions">
+              <Button variant="outline" size="md" onClick={() => setConfirmCutOpen(false)}>
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                onClick={() => {
+                  setConfirmCutOpen(false);
+                  onExecuteCut();
+                }}
+              >
+                刪除此區段
+              </Button>
+            </div>
+          }
+        >
+          <p className="quick-link-delete-message">
+            將移除 {formatTime(cutStart)} 至 {formatTime(cutEnd)} 的影片片段，請確認選取範圍。
+          </p>
+        </Dialog>
+      )}
     </div>
   );
 }

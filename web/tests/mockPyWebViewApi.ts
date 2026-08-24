@@ -10,6 +10,8 @@ import type {
 type PyWebViewApi = NonNullable<NonNullable<Window['pywebview']>['api']>;
 
 export const TEST_CONFIG: AppConfig = {
+  onboarding_completed: true,
+  report_submission_mode: 'automatic',
   default_server: 'Gamania',
   default_map: 'Test Map',
   default_note: 'Test note',
@@ -111,6 +113,10 @@ export function createMockPyWebViewApi(
       status: 'success',
       message: 'Submitted',
       evidence_url: TEST_HISTORY[0].evidence_url,
+    }),
+    confirm_manual_report: vi.fn().mockResolvedValue({
+      status: 'success',
+      message: 'Confirmed',
     }),
     check_gdrive_auth: vi.fn().mockResolvedValue(false),
     authenticate_gdrive: vi.fn().mockResolvedValue({

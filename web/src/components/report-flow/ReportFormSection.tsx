@@ -1,12 +1,11 @@
-import { AlertCircle, Zap } from 'lucide-react';
-import { RadioGroup, Input, Textarea, Switch } from '../ui';
+import { AlertCircle } from 'lucide-react';
+import { RadioGroup, Input, Textarea } from '../ui';
 import { ViolationTemplateItem } from '../../types';
 
 export interface ReportFormSectionProps {
   server: string;
   mapName: string;
   note: string;
-  formSubmitHeadless: boolean;
   mapOcrEnabled: boolean;
   ocrMapName: string;
   historicalMaps: string[];
@@ -14,14 +13,12 @@ export interface ReportFormSectionProps {
   onServerChange: (val: string) => void;
   onMapNameChange: (val: string) => void;
   onNoteChange: (val: string) => void;
-  onFormSubmitHeadlessChange: (val: boolean) => void;
 }
 
 export default function ReportFormSection({
   server,
   mapName,
   note,
-  formSubmitHeadless,
   mapOcrEnabled,
   ocrMapName,
   historicalMaps,
@@ -29,7 +26,6 @@ export default function ReportFormSection({
   onServerChange,
   onMapNameChange,
   onNoteChange,
-  onFormSubmitHeadlessChange,
 }: ReportFormSectionProps) {
   return (
     <>
@@ -186,34 +182,6 @@ export default function ReportFormSection({
         )}
       </div>
 
-      {/* Submission Mode: Background Headless Switch */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 14px',
-          backgroundColor: 'var(--color-surface)',
-          borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--color-border)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Zap size={18} color="var(--color-primary)" />
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>背景靜默送出檢舉</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-              {formSubmitHeadless
-                ? '已啟用背景模式：會在後台自動填寫表單'
-                : '已關閉背景模式：將開啟可見瀏覽器視窗，展示填表與送出過程'}
-            </div>
-          </div>
-        </div>
-        <Switch
-          checked={formSubmitHeadless}
-          onChange={(val) => onFormSubmitHeadlessChange(val)}
-        />
-      </div>
     </>
   );
 }

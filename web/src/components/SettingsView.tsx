@@ -8,6 +8,7 @@ import {
   GeneralTab,
   OcrTab,
   UploadTab,
+  ReportTab,
   RecordingTab,
   ReplayTab,
   HotkeysTab,
@@ -21,6 +22,7 @@ import {
   DropdownOption,
   WindowItem,
   AudioDeviceItem,
+  UploadDestination,
   ViolationTemplateItem,
   ClearRecordingsResponse,
   UpdateStatus,
@@ -49,12 +51,14 @@ export interface SettingsViewProps {
   onCancelUpdateDownload?: () => void;
   onRestartAndApplyUpdate?: () => void;
   updateBusy?: boolean;
+  onReplayOnboarding?: () => void;
 }
 
 const SETTINGS_TABS = [
   { id: 'general', label: '一般與表單預設' },
   { id: 'ocr', label: '文字辨識（OCR）設定' },
   { id: 'upload', label: '上傳與帳號' },
+  { id: 'report', label: '檢舉方式' },
   { id: 'recording', label: '錄影與音訊' },
   { id: 'replay', label: '循環錄影' },
   { id: 'hotkeys', label: '快捷鍵' },
@@ -84,6 +88,7 @@ export default function SettingsView({
   onCancelUpdateDownload,
   onRestartAndApplyUpdate,
   updateBusy = false,
+  onReplayOnboarding,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState(initialTab);
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -545,9 +550,10 @@ export default function SettingsView({
     { value: '菇菇寶貝', label: '菇菇寶貝' },
   ];
 
-  const destinationOptions: DropdownOption<'gdrive' | 'discord'>[] = [
+  const destinationOptions: DropdownOption<UploadDestination>[] = [
     { value: 'gdrive', label: 'Google Drive（建議）' },
     { value: 'discord', label: 'Discord 頻道連結' },
+    { value: 'none', label: '只試用，不上傳' },
   ];
 
   const fpsOptions: DropdownOption<number>[] = [
@@ -641,7 +647,7 @@ export default function SettingsView({
       className="card-section"
       style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
     >
-      <div className="modal-header">
+      <div className="modal-header settings-view-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <IconButton
             icon={ArrowLeft}
@@ -742,6 +748,10 @@ export default function SettingsView({
             />
           )}
 
+          {activeTab === 'report' && (
+            <ReportTab config={config} onUpdateConfig={onUpdateConfig} />
+          )}
+
           {/* Tab 4: 錄影與音訊 */}
           {activeTab === 'recording' && (
             <RecordingTab
@@ -823,6 +833,7 @@ export default function SettingsView({
               onCancelUpdateDownload={onCancelUpdateDownload}
               onRestartAndApplyUpdate={onRestartAndApplyUpdate}
               updateBusy={updateBusy}
+              onReplayOnboarding={onReplayOnboarding}
             />
           )}
         </div>

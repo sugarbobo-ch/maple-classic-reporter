@@ -37,6 +37,7 @@ export interface HistoryViewProps {
   sanctionSyncStatus?: SanctionSyncStatus | null;
   lastCompleteSyncAt?: string | null;
   onContinueDraft?: (record: HistoryRecord, runRecognition: boolean) => void;
+  onContinueManual?: (record: HistoryRecord) => void;
   ocrAutofillId?: boolean;
   ocrAutofillMap?: boolean;
 }
@@ -90,6 +91,7 @@ export default function HistoryView({
   sanctionSyncStatus = null,
   lastCompleteSyncAt = null,
   onContinueDraft,
+  onContinueManual,
   ocrAutofillId = true,
   ocrAutofillMap = true,
 }: HistoryViewProps) {
@@ -154,7 +156,9 @@ export default function HistoryView({
   const startIndex = (safeCurrentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalRecords);
   const paginatedHistory = history.slice(startIndex, endIndex);
-  const submittedHistory = history.filter((record) => record.submission_state !== 'draft');
+  const submittedHistory = history.filter(
+    (record) => !record.submission_state || record.submission_state === 'submitted'
+  );
 
   const handleOpenClearConfirm = () => {
     setClearConfirmOpen(true);
@@ -189,7 +193,7 @@ export default function HistoryView({
   };
 
   const renderBanStatus = (row: HistoryRecord) => {
-    if (row.submission_state === 'draft') {
+    if (row.submission_state === 'draft' || row.submission_state === 'awaiting_manual') {
       return <span style={{ color: 'var(--color-text-secondary)' }}>-</span>;
     }
     const s = (row.ban_status || '').trim().toLowerCase();
@@ -261,6 +265,9 @@ export default function HistoryView({
           {row.media_available === false ? '檔案遺失' : '尚未送出'}
         </Badge>
       );
+    }
+    if (row.submission_state === 'awaiting_manual') {
+      return <Badge variant="warning" size="sm">待手動檢舉</Badge>;
     }
     return renderUploadStatus(row.upload_status || row.status);
   };
@@ -529,8 +536,8 @@ export default function HistoryView({
                         <Tooltip
                           content={
                             row.media_available === false
-                              ? '找不到本機證據檔案，無法繼續檢舉'
-                              : '選擇是否重新辨識後繼續檢舉'
+                              ? '找不到本機證據檔案，無法繼續處理'
+                              : '選擇如何繼續處理這份檢舉'
                           }
                         >
                           <span style={{ display: 'inline-flex' }}>
@@ -541,10 +548,20 @@ export default function HistoryView({
                               disabled={row.media_available === false || !onContinueDraft}
                               data-testid={`continue-draft-${row.record_id || idx}`}
                             >
-                              繼續檢舉
+                              繼續處理
                             </Button>
                           </span>
                         </Tooltip>
+                      ) : row.submission_state === 'awaiting_manual' ? (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => onContinueManual?.(row)}
+                          disabled={!onContinueManual}
+                          data-testid={`continue-manual-${row.record_id || idx}`}
+                        >
+                          繼續手動檢舉
+                        </Button>
                       ) : (
                         <span style={{ color: 'var(--color-text-secondary)' }}>-</span>
                       )}
@@ -676,15 +693,14 @@ export default function HistoryView({
                 取消
               </Button>
               <Button
-                variant="primary"
+                variant="danger"
                 size="md"
                 onClick={handleConfirmClear}
                 loading={isClearingHistory}
                 disabled={isClearingHistory}
-                style={{ backgroundColor: 'var(--color-status-danger, #ef5350)' }}
                 data-testid="confirm-clear-history-button"
               >
-                確定清空
+                清空歷史紀錄
               </Button>
             </div>
           }
@@ -693,15 +709,7 @@ export default function HistoryView({
             style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: '1.5' }}
           >
             確定要清空本機的所有檢舉歷史紀錄嗎？
-            <div
-              style={{
-                marginTop: '8px',
-                color: 'var(--color-status-danger, #ef5350)',
-                fontSize: '0.85rem',
-              }}
-            >
-              ⚠️ 此操作將永久刪除本地紀錄，無法復原。
-            </div>
+            <div className="history-clear-warning">此操作將永久刪除本機紀錄，無法復原。</div>
           </div>
         </Dialog>
       )}
@@ -710,7 +718,7 @@ export default function HistoryView({
         <Dialog
           isOpen={true}
           onClose={() => setDraftToContinue(null)}
-          title="繼續檢舉"
+          title="繼續處理檢舉"
           titleIcon={ScanSearch}
           maxWidth="480px"
           footer={

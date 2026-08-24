@@ -110,6 +110,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "upload_destination": "gdrive",
     "violation_templates": [{"name": "自動打怪／外掛行為", "content": "自動打怪/外掛行為"}],
     "onboarding_completed": False,
+    "report_submission_mode": "automatic",
     "whitelist": [],
     "auto_submit_without_preview": False,
     "auto_delete_after_upload": False,

@@ -12,6 +12,8 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   replay_buffer_sec: 20,
   recording_preset: 'balanced',
   has_initialized_defaults: false,
+  onboarding_completed: false,
+  report_submission_mode: 'automatic',
   upload_destination: 'gdrive',
   gdrive_folder_name: 'MapleClassic_Reports',
   discord_webhook_url: '',

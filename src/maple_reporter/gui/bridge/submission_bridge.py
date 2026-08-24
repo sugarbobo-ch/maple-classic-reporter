@@ -111,8 +111,11 @@ class SubmissionBridgeMixin:
         evidence_url: str,
         status: str,
         note: str | None = None,
-        submitted: bool,
+        submission_state: str,
     ) -> dict[str, Any] | None:
+        if submission_state not in {"draft", "awaiting_manual", "submitted"}:
+            raise ValueError(f"Unsupported submission state: {submission_state}")
+        submitted = submission_state == "submitted"
         payload = {
             "suspect_id": form_data.get("suspect_id", ""),
             "server": form_data.get("server_name") or form_data.get("server", "雪吉拉"),
@@ -121,7 +124,8 @@ class SubmissionBridgeMixin:
             "url": evidence_url,
             "status": status,
             "note": form_data.get("note", "") if note is None else note,
-            "submission_state": "submitted" if submitted else "draft",
+            "submission_state": submission_state,
+            "submission_mode": form_data.get("submission_mode", "automatic"),
             "media_path": file_path,
             "media_type": form_data.get("media_type", ""),
         }
@@ -133,7 +137,7 @@ class SubmissionBridgeMixin:
             return repo.update_history_entry(
                 record_id, payload, evaluate=submitted
             )
-        if not submitted:
+        if submission_state == "draft":
             return None
         entry = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), **payload}
         if repo is not None:
@@ -156,13 +160,17 @@ class SubmissionBridgeMixin:
         )
         dest = form_data.get("upload_destination") or self.config.get("upload_destination", "gdrive")
         evidence_url = form_data.get("evidence_url", "")
+        if dest == "none":
+            message = "目前是只試用模式，不會上傳證據。請先在設定中選擇 Google Drive 或 Discord。"
+            self._emit_submission_status("uploading", message, "error")
+            return {"status": "error", "message": message}
         if form_data.get("record_id"):
             self._persist_submission_history(
                 form_data,
                 file_path=file_path,
                 evidence_url=evidence_url,
                 status="尚未送出",
-                submitted=False,
+                submission_state="draft",
             )
 
         # 1. Upload evidence if URL not yet provided
@@ -203,6 +211,36 @@ class SubmissionBridgeMixin:
                     return {"status": "error", "message": message}
                 evidence_url = res_msg
 
+        submission_mode = str(
+            form_data.get("submission_mode")
+            or self.config.get("report_submission_mode", "automatic")
+        ).strip().lower()
+        if submission_mode not in {"manual", "automatic"}:
+            submission_mode = "automatic"
+        form_data["submission_mode"] = submission_mode
+
+        if submission_mode == "manual":
+            record = self._persist_submission_history(
+                form_data,
+                file_path=file_path,
+                evidence_url=evidence_url,
+                status="待手動檢舉",
+                submission_state="awaiting_manual",
+            )
+            if record is None:
+                message = "無法建立待手動檢舉紀錄，請稍後再試。"
+                self._emit_submission_status("uploading", message, "error")
+                return {"status": "error", "message": message}
+            message = "證據已上傳，請依序填寫官方檢舉表單。"
+            self._emit_submission_status("manual_ready", message, "success")
+            return {
+                "status": "manual_ready",
+                "message": message,
+                "evidence_url": evidence_url,
+                "record_id": record.get("record_id", ""),
+                "record": record,
+            }
+
         # 2. Automated form submission via Playwright (or Dev Mode Dry-Run)
         dev_mode = form_data.get("dev_mode", self.config.get("dev_mode", False))
         if dev_mode:
@@ -220,7 +258,7 @@ class SubmissionBridgeMixin:
                 evidence_url=evidence_url,
                 status="模擬成功",
                 note=f"[開發者模式] {form_data.get('note', '')}".strip(),
-                submitted=True,
+                submission_state="submitted",
             )
 
             success_message = "開發者模式：已模擬檢舉成功（未實際送出），已在系統瀏覽器開啟檢舉頁面"
@@ -265,7 +303,7 @@ class SubmissionBridgeMixin:
             file_path=file_path,
             evidence_url=evidence_url,
             status="成功" if ok else "尚未送出",
-            submitted=bool(ok),
+            submission_state="submitted" if ok else "draft",
         )
 
         # 4. Auto-delete local recording if enabled
@@ -286,4 +324,54 @@ class SubmissionBridgeMixin:
             "status": "success" if ok else "error",
             "message": msg,
             "evidence_url": evidence_url,
+        }
+
+    def confirm_manual_report(self, record_id: str) -> dict[str, Any]:
+        """Confirm a user-completed manual report and apply safe evidence cleanup."""
+        normalized_id = str(record_id or "").strip()
+        if not normalized_id:
+            return {"status": "error", "message": "找不到待確認的檢舉紀錄。"}
+
+        record = next(
+            (
+                item
+                for item in self.sanction_repo.load_history()
+                if item.get("record_id") == normalized_id
+            ),
+            None,
+        )
+        if record is None or record.get("submission_state") != "awaiting_manual":
+            return {"status": "error", "message": "這筆紀錄已完成或無法繼續確認。"}
+
+        updated = self.sanction_repo.update_history_entry(
+            normalized_id,
+            {
+                "submission_state": "submitted",
+                "submission_mode": "manual",
+                "status": "成功",
+            },
+            evaluate=True,
+        )
+        if updated is None:
+            return {"status": "error", "message": "無法更新檢舉紀錄，請稍後再試。"}
+
+        deleted = False
+        file_path = str(updated.get("media_path") or "")
+        if bool(self.config.get("auto_delete_after_upload", False)):
+            mod = _bridge_mod()
+            if file_path and mod.is_owned_recording_path(file_path):
+                try:
+                    os.remove(file_path)
+                    deleted = True
+                    LOGGER.info("Auto-deleted confirmed manual evidence: %s", file_path)
+                except FileNotFoundError:
+                    pass
+                except OSError as err:
+                    LOGGER.warning("Failed to auto-delete manual evidence: %s", err)
+
+        return {
+            "status": "success",
+            "message": "已記錄為完成檢舉。",
+            "record": updated,
+            "deleted": deleted,
         }

@@ -1,9 +1,11 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef, type MouseEvent } from 'react';
 import Header from './components/Header';
 import AlertBanner from './components/AlertBanner';
 import ActionCards from './components/ActionCards';
 import StatusBar from './components/StatusBar';
 import WindowResizeHandles from './components/WindowResizeHandles';
+import WindowControls from './components/WindowControls';
+import OnboardingFlow from './components/OnboardingFlow';
 import { useToast, usePyWebViewEvents, useAppConfig } from './hooks';
 import {
   WindowItem,
@@ -39,6 +41,7 @@ export default function App() {
     updateConfig,
     updateConfigBatch,
     isDevMode,
+    isLoading: isConfigLoading,
     saveError,
     clearSaveError,
   } = useAppConfig();
@@ -58,6 +61,7 @@ export default function App() {
   const [isCheckingSanctions, setIsCheckingSanctions] = useState<boolean>(false);
   const [lastCompleteSyncAt, setLastCompleteSyncAt] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [onboardingReplay, setOnboardingReplay] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const manualUpdateCheckRef = useRef(false);
 
@@ -90,6 +94,8 @@ export default function App() {
     media_type: 'video',
   });
   const [activeHistoryRecord, setActiveHistoryRecord] = useState<HistoryRecord | null>(null);
+  const [manualReport, setManualReport] = useState<HistoryRecord | null>(null);
+  const [isConfirmingManual, setIsConfirmingManual] = useState(false);
   const ocrCancelledRef = useRef(false);
   const frameOcrActiveRef = useRef(false);
 
@@ -113,6 +119,7 @@ export default function App() {
   ) => {
     ocrCancelledRef.current = false;
     setActiveHistoryRecord(null);
+    setManualReport(null);
     setReportWorkflowId((previous) => previous + 1);
     resetOcrResultsForWorkflow(mediaPath, mediaType);
   };
@@ -400,6 +407,7 @@ export default function App() {
     if (window.pywebview) {
       initPyWebView();
     } else {
+      initPyWebView();
       window.addEventListener('pywebviewready', initPyWebView);
     }
     return () => window.removeEventListener('pywebviewready', initPyWebView);
@@ -939,7 +947,27 @@ export default function App() {
           file_path: evidencePath,
           upload_destination: config.upload_destination || 'gdrive',
         });
-        if (res && res.status === 'success') {
+        if (res && res.status === 'manual_ready') {
+          const record: HistoryRecord = res.record || {
+            record_id: res.record_id,
+            suspect_id: String(formData.suspect_id || ''),
+            server: String(formData.server || ''),
+            map_name: String(formData.map_name || ''),
+            note: String(formData.note || ''),
+            evidence_url: res.evidence_url || '',
+            url: res.evidence_url || '',
+            media_path: evidencePath,
+            submission_state: 'awaiting_manual',
+            submission_mode: 'manual',
+          };
+          setManualReport(record);
+          setActiveHistoryRecord(record);
+          setSubmissionStatus(null);
+          setModalStatusText('');
+          const records = await window.pywebview.api.get_history();
+          if (Array.isArray(records)) setHistory(records);
+          toast.success('證據已上傳', res.message);
+        } else if (res && res.status === 'success') {
           setSubmissionStatus({
             step: 'completed',
             status: 'success',
@@ -971,6 +999,28 @@ export default function App() {
     }
   };
 
+  const handleConfirmManualReport = async (recordId: string) => {
+    if (isConfirmingManual || !window.pywebview?.api?.confirm_manual_report) return;
+    setIsConfirmingManual(true);
+    try {
+      const result = await window.pywebview.api.confirm_manual_report(recordId);
+      if (result.status !== 'success') {
+        toast.error('無法完成確認', result.message);
+        return;
+      }
+      const records = await window.pywebview.api.get_history();
+      if (Array.isArray(records)) setHistory(records);
+      toast.success('已完成檢舉', result.deleted ? '紀錄已更新，本機證據已清理。' : result.message);
+      setManualReport(null);
+      setActiveHistoryRecord(null);
+      setModalOpen(false);
+    } catch (error: unknown) {
+      toast.error('無法完成確認', error instanceof Error ? error.message : '請稍後再試。');
+    } finally {
+      setIsConfirmingManual(false);
+    }
+  };
+
   const handleSaveReportDraft = async (formData: Record<string, unknown>) => {
     if (isSavingDraft || isSubmittingReport) return;
     if (modalStageRef.current === 'progress') {
@@ -991,7 +1041,7 @@ export default function App() {
       }
       const records = await window.pywebview.api.get_history();
       setHistory(Array.isArray(records) ? records : []);
-      toast.success('已儲存至回報紀錄', '你可以稍後從「回報紀錄」繼續檢舉。');
+      toast.success('已儲存至回報紀錄', '你可以稍後從「回報紀錄」繼續處理。');
       setModalOpen(false);
       setModalProgress(0);
       setModalStatusText('');
@@ -1020,6 +1070,15 @@ export default function App() {
     setSubmissionStatus(null);
     setModalProgress(100);
     setModalStatusText('');
+    setModalStage('form');
+    setModalOpen(true);
+  };
+
+  const handleContinueManual = (record: HistoryRecord) => {
+    if (record.submission_state !== 'awaiting_manual') return;
+    setActiveHistoryRecord(record);
+    setManualReport(record);
+    setReportWorkflowId((previous) => previous + 1);
     setModalStage('form');
     setModalOpen(true);
   };
@@ -1118,6 +1177,7 @@ export default function App() {
     setModalStatusText('');
     setSubmissionStatus(null);
     setActiveHistoryRecord(null);
+    setManualReport(null);
   };
 
   const handleRefreshWindows = useCallback(
@@ -1260,12 +1320,72 @@ export default function App() {
   const activeTotalCountdown = countdownTotal || config.record_countdown_sec || 3;
 
   const alertUnconfigured =
+    config.upload_destination === 'none' ||
     (config.upload_destination === 'discord' && !config.discord_webhook_url) ||
     (config.upload_destination === 'gdrive' && gdriveAuthenticated === false);
   const configurationWarning =
-    config.upload_destination === 'gdrive'
+    config.upload_destination === 'none'
+      ? '目前是只試用模式，不會上傳證據。送出檢舉前請選擇 Google Drive 或 Discord。'
+      : config.upload_destination === 'gdrive'
       ? '尚未登入 Google 帳號，檢舉證據目前無法上傳。'
       : '尚未設定 Discord 頻道連結，檢舉證據目前無法上傳。';
+
+  const handleOnboardingWindowDrag = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.window-controls, button, a, input, select')) return;
+    window.pywebview?.api?.drag_window?.('proportional');
+  };
+
+  const handleOnboardingHeaderDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('.window-controls, button, a, input, select')) return;
+    void window.pywebview?.api?.toggle_window_maximized?.();
+  };
+
+  if (isInitializing || isConfigLoading) {
+    return (
+      <div className="app-container app-initializing">
+        <WindowResizeHandles />
+        <div className="route-loading" role="status">正在準備應用程式…</div>
+      </div>
+    );
+  }
+
+  if (onboardingReplay || config.onboarding_completed !== true) {
+    return (
+      <div className="app-container onboarding-app-container">
+        <WindowResizeHandles />
+        <div
+          className="onboarding-window-controls pywebview-drag-region"
+          onMouseDown={handleOnboardingWindowDrag}
+          onDoubleClick={handleOnboardingHeaderDoubleClick}
+        >
+          <WindowControls />
+        </div>
+        <OnboardingFlow
+          config={config}
+          windows={windows}
+          gdriveAuthenticated={gdriveAuthenticated}
+          gdriveAuthLoading={isAuthenticatingDrive}
+          onUpdateConfig={updateConfig}
+          onUpdateConfigBatch={updateConfigBatch}
+          onAuthenticateDrive={handleAuthenticateDrive}
+          onFinish={async () => {
+            await updateConfig('onboarding_completed', true);
+            setOnboardingReplay(false);
+          }}
+          onSkip={async () => {
+            await updateConfigBatch({
+              onboarding_completed: true,
+              report_submission_mode: 'automatic',
+            });
+            setOnboardingReplay(false);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -1396,6 +1516,7 @@ export default function App() {
               onCancelUpdateDownload={handleCancelUpdateDownload}
               onRestartAndApplyUpdate={handleRestartAndApplyUpdate}
               updateBusy={statusState !== 'idle' || isSubmittingReport || modalOpen}
+              onReplayOnboarding={() => setOnboardingReplay(true)}
             />
           </Suspense>
         )}
@@ -1426,6 +1547,7 @@ export default function App() {
               onOpenUrl={handleOpenUrl}
               onCheckSanctions={handleCheckSanctions}
               onContinueDraft={handleContinueDraft}
+              onContinueManual={handleContinueManual}
               ocrAutofillId={config.ocr_autofill_id !== false}
               ocrAutofillMap={config.ocr_autofill_map !== false}
               isCheckingSanctions={isCheckingSanctions}
@@ -1497,6 +1619,11 @@ export default function App() {
             onPersistFormSubmitHeadless={(enabled) =>
               updateConfig('form_submit_headless', enabled)
             }
+            onPersistSubmissionMode={(mode) => updateConfig('report_submission_mode', mode)}
+            manualReport={manualReport}
+            isConfirmingManual={isConfirmingManual}
+            onOpenReportPage={() => handleOpenUrl('https://forms.gamania.com/s/eLGg4')}
+            onConfirmManual={handleConfirmManualReport}
           />
         </Suspense>
       )}

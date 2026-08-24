@@ -156,6 +156,7 @@ describe('ReportFlowModal evidence selection', () => {
     fireEvent.timeUpdate(video);
     fireEvent.click(screen.getByRole('button', { name: '將目前播放位置設為影片剪輯終點' }));
     fireEvent.click(screen.getByRole('button', { name: '套用影片剪輯' }));
+    fireEvent.click(screen.getByRole('button', { name: '刪除此區段' }));
 
     await waitFor(() => {
       expect(trimVideoSegment).toHaveBeenCalledWith('C:\\test\\original.mp4', 2, 5, undefined);

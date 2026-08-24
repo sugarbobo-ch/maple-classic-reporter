@@ -1,6 +1,7 @@
 export { default as GeneralTab } from './GeneralTab';
 export { default as OcrTab } from './OcrTab';
 export { default as UploadTab } from './UploadTab';
+export { default as ReportTab } from './ReportTab';
 export { default as RecordingTab } from './RecordingTab';
 export { default as ReplayTab } from './ReplayTab';
 export { default as HotkeysTab } from './HotkeysTab';

@@ -231,7 +231,8 @@ class MediaBridgeMixin:
         protected_paths = {
             Path(str(record.get("media_path", ""))).resolve(strict=False)
             for record in self.sanction_repo.load_history()
-            if record.get("submission_state") == "draft" and record.get("media_path")
+            if record.get("submission_state") in {"draft", "awaiting_manual"}
+            and record.get("media_path")
         }
         deleted = 0
         total_bytes = 0

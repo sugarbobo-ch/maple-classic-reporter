@@ -14,6 +14,8 @@ export interface ViolationTemplateItem {
 }
 
 export type AudioCaptureMode = 'process' | 'system' | 'off';
+export type ReportSubmissionMode = 'manual' | 'automatic';
+export type UploadDestination = 'gdrive' | 'discord' | 'none';
 
 export interface AppConfig {
   default_server: string;
@@ -24,7 +26,7 @@ export interface AppConfig {
   record_fps: number;
   record_countdown_sec?: number;
   replay_buffer_sec: number;
-  upload_destination: 'gdrive' | 'discord';
+  upload_destination: UploadDestination;
   gdrive_folder_name: string;
   discord_webhook_url: string;
   whitelist: string[];
@@ -38,6 +40,8 @@ export interface AppConfig {
   save_replay_hotkey?: string;
   record_video_hotkey?: string;
   form_submit_headless?: boolean;
+  onboarding_completed?: boolean;
+  report_submission_mode?: ReportSubmissionMode;
   dev_mode?: boolean;
   auto_check_sanction_status?: boolean;
   theme?: 'light' | 'dark';
@@ -107,7 +111,8 @@ export interface HistoryRecord {
   evidence_url?: string;
   url?: string;
   note?: string;
-  submission_state?: 'draft' | 'submitted';
+  submission_state?: 'draft' | 'awaiting_manual' | 'submitted';
+  submission_mode?: ReportSubmissionMode;
   media_path?: string;
   media_type?: 'video' | 'image' | string;
   media_available?: boolean;
@@ -180,9 +185,18 @@ export interface InitialDataResponse {
 }
 
 export interface SubmissionResponse {
-  status: 'success' | 'error';
+  status: 'success' | 'manual_ready' | 'error';
   message: string;
   evidence_url?: string;
+  record_id?: string;
+  record?: HistoryRecord;
+}
+
+export interface ConfirmManualReportResponse {
+  status: 'success' | 'error';
+  message: string;
+  record?: HistoryRecord;
+  deleted?: boolean;
 }
 
 export interface DraftSaveResponse {
@@ -282,6 +296,7 @@ declare global {
         select_local_file: () => Promise<string | null>;
         process_imported_file: (filePath: string) => Promise<OcrResultData>;
         submit_report: (formData: Record<string, unknown>) => Promise<SubmissionResponse>;
+        confirm_manual_report: (recordId: string) => Promise<ConfirmManualReportResponse>;
         save_report_draft: (formData: Record<string, unknown>) => Promise<DraftSaveResponse>;
         check_gdrive_auth: () => Promise<boolean>;
         authenticate_gdrive: () => Promise<AuthResponse>;

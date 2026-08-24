@@ -12,6 +12,7 @@
   "upload_destination": "gdrive",
   "violation_templates": [],
   "onboarding_completed": true,
+  "report_submission_mode": "automatic",
   "whitelist": [],
   "auto_submit_without_preview": false,
   "auto_delete_after_upload": false,

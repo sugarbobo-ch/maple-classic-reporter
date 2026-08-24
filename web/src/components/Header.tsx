@@ -1,29 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, History, Minus, RefreshCw, Settings, Square, Sun, Moon, X } from 'lucide-react';
+import { Download, History, MoreHorizontal, RefreshCw, Settings, Sun, Moon } from 'lucide-react';
 import { IconButton, Badge, Button, CircularProgress } from './ui';
-import { usePyWebViewEvents, useTheme } from '../hooks';
+import { useTheme } from '../hooks';
 import { UpdateStatus, ViewType } from '../types';
 import appLogo from '../assets/icon.png';
 import { APP_VERSION } from '../constants/version';
-
-function RestoreWindowIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M6 2.5h7.5V10H11" />
-      <path d="M2.5 6h8v7.5h-8z" />
-    </svg>
-  );
-}
+import WindowControls from './WindowControls';
 
 export interface HeaderProps {
   currentView: ViewType;
@@ -54,13 +36,9 @@ export default function Header({
 }: HeaderProps) {
   const [isApplying, setIsApplying] = useState(false);
   const { isDark, toggleTheme } = useTheme(configTheme, onUpdateTheme);
-  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
-
-  usePyWebViewEvents({
-    WINDOW_MAXIMIZED: () => setIsWindowMaximized(true),
-    WINDOW_RESTORED: () => setIsWindowMaximized(false),
-  });
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const actionsEl = actionsRef.current;
@@ -76,30 +54,25 @@ export default function Header({
     };
   }, []);
 
-  const handleMinimizeWindow = async () => {
-    try {
-      await window.pywebview?.api?.minimize_window?.();
-    } catch (error) {
-      console.warn('Failed to minimize window:', error);
-    }
-  };
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
 
-  const handleToggleWindowMaximized = async () => {
-    try {
-      const maximized = await window.pywebview?.api?.toggle_window_maximized?.();
-      if (typeof maximized === 'boolean') setIsWindowMaximized(maximized);
-    } catch (error) {
-      console.warn('Failed to toggle window state:', error);
-    }
-  };
+    const handleOutsidePointer = (event: MouseEvent) => {
+      if (!actionsRef.current?.contains(event.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+    };
 
-  const handleCloseWindow = async () => {
-    try {
-      await window.pywebview?.api?.close_window?.();
-    } catch (error) {
-      console.warn('Failed to close window:', error);
-    }
-  };
+    document.addEventListener('mousedown', handleOutsidePointer);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePointer);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isMobileMenuOpen]);
 
   const handleDragWindow = (e: React.MouseEvent) => {
     if (e.button === 0) {
@@ -122,6 +95,14 @@ export default function Header({
       }
 
       window.pywebview?.api?.drag_window?.(anchorMode);
+    }
+  };
+
+  const handleToggleWindowMaximized = async () => {
+    try {
+      await window.pywebview?.api?.toggle_window_maximized?.();
+    } catch (error) {
+      console.warn('Failed to toggle window state:', error);
     }
   };
 
@@ -316,61 +297,90 @@ export default function Header({
         onMouseDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        {renderUpdateControl()}
-        <IconButton
-          icon={isDark ? Sun : Moon}
-          size="md"
-          variant="ghost"
-          tooltip={isDark ? '切換為淺色模式' : '切換為深色模式'}
-          onClick={toggleTheme}
-        />
+        <div className="header-navigation-actions">
+          {renderUpdateControl()}
+          <IconButton
+            icon={isDark ? Sun : Moon}
+            size="md"
+            variant="ghost"
+            tooltip={isDark ? '切換為淺色模式' : '切換為深色模式'}
+            onClick={toggleTheme}
+          />
 
-        <IconButton
-          icon={History}
-          size="md"
-          variant={currentView === 'history' ? 'primary' : 'ghost'}
-          active={currentView === 'history'}
-          tooltip="歷史紀錄"
-          onClick={() => setCurrentView(currentView === 'history' ? 'home' : 'history')}
-        />
+          <IconButton
+            icon={History}
+            size="md"
+            variant={currentView === 'history' ? 'primary' : 'ghost'}
+            active={currentView === 'history'}
+            tooltip="歷史紀錄"
+            onClick={() => setCurrentView(currentView === 'history' ? 'home' : 'history')}
+          />
 
-        <IconButton
-          icon={Settings}
-          size="md"
-          variant={currentView === 'settings' ? 'primary' : 'ghost'}
-          active={currentView === 'settings'}
-          tooltip="設定"
-          onClick={() => setCurrentView(currentView === 'settings' ? 'home' : 'settings')}
-        />
-        <div className="window-controls" role="group" aria-label="視窗控制">
-          <button
-            type="button"
-            className="window-control-button"
-            aria-label="最小化"
-            title="最小化"
-            onClick={handleMinimizeWindow}
-          >
-            <Minus size={16} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="window-control-button"
-            aria-label={isWindowMaximized ? '還原' : '最大化'}
-            title={isWindowMaximized ? '還原' : '最大化'}
-            onClick={handleToggleWindowMaximized}
-          >
-            {isWindowMaximized ? <RestoreWindowIcon /> : <Square size={15} aria-hidden="true" />}
-          </button>
-          <button
-            type="button"
-            className="window-control-button window-control-close"
-            aria-label="關閉"
-            title="關閉"
-            onClick={handleCloseWindow}
-          >
-            <X size={20} strokeWidth={1.8} aria-hidden="true" />
-          </button>
+          <IconButton
+            icon={Settings}
+            size="md"
+            variant={currentView === 'settings' ? 'primary' : 'ghost'}
+            active={currentView === 'settings'}
+            tooltip="設定"
+            onClick={() => setCurrentView(currentView === 'settings' ? 'home' : 'settings')}
+          />
         </div>
+        <IconButton
+          className="header-mobile-menu-toggle"
+          icon={MoreHorizontal}
+          size="md"
+          variant={isMobileMenuOpen ? 'primary' : 'ghost'}
+          active={isMobileMenuOpen}
+          tooltip="更多功能"
+          aria-label="更多功能"
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="header-mobile-menu"
+          onClick={() => setIsMobileMenuOpen((open) => !open)}
+        />
+        {isMobileMenuOpen && (
+          <div ref={mobileMenuRef} id="header-mobile-menu" className="header-mobile-menu" role="menu" aria-label="更多功能">
+            <div className="header-mobile-update" aria-live="polite">
+              {renderUpdateControl()}
+            </div>
+            <button
+              type="button"
+              role="menuitem"
+              className="header-mobile-menu-item"
+              onClick={() => {
+                toggleTheme();
+                setIsMobileMenuOpen(false);
+              }}
+            >
+              {isDark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+              <span>{isDark ? '切換為淺色模式' : '切換為深色模式'}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="header-mobile-menu-item"
+              onClick={() => {
+                setCurrentView(currentView === 'history' ? 'home' : 'history');
+                setIsMobileMenuOpen(false);
+              }}
+            >
+              <History size={16} aria-hidden="true" />
+              <span>歷史紀錄</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="header-mobile-menu-item"
+              onClick={() => {
+                setCurrentView(currentView === 'settings' ? 'home' : 'settings');
+                setIsMobileMenuOpen(false);
+              }}
+            >
+              <Settings size={16} aria-hidden="true" />
+              <span>設定</span>
+            </button>
+          </div>
+        )}
+        <WindowControls />
       </div>
     </header>
   );

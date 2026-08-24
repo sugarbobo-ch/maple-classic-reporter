@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, FileCheck, Save } from 'lucide-react';
-import { Dialog, Button, Badge } from './ui';
+import { Dialog, Button, Badge, RadioGroup, Switch } from './ui';
 import { useClipboard } from '../hooks';
 import { AppConfig, HistoryRecord, OcrResultData, SubmissionStatusData } from '../types';
 import {
@@ -8,6 +8,7 @@ import {
   MediaPreviewSection,
   SuspectSelector,
   ReportFormSection,
+  ManualReportAssistant,
 } from './report-flow';
 
 export interface ReportFlowModalProps {
@@ -33,6 +34,11 @@ export interface ReportFlowModalProps {
   ) => Promise<OcrResultData | null>;
   onUpdateWhitelist: (newWhitelist: string[]) => void;
   onPersistFormSubmitHeadless?: (enabled: boolean) => void;
+  onPersistSubmissionMode?: (mode: 'manual' | 'automatic') => void;
+  manualReport?: HistoryRecord | null;
+  isConfirmingManual?: boolean;
+  onOpenReportPage?: () => void;
+  onConfirmManual?: (recordId: string) => void | Promise<void>;
 }
 
 export default function ReportFlowModal({
@@ -64,6 +70,7 @@ export default function ReportFlowModal({
     audio_capture_mode: 'process',
     ocr_autofill_id: true,
     form_submit_headless: true,
+    report_submission_mode: 'automatic',
     audio_output_device_id: '',
   },
   history = [],
@@ -78,6 +85,11 @@ export default function ReportFlowModal({
   onRecognizeCurrentFrame,
   onUpdateWhitelist,
   onPersistFormSubmitHeadless,
+  onPersistSubmissionMode,
+  manualReport = null,
+  isConfirmingManual = false,
+  onOpenReportPage,
+  onConfirmManual,
 }: ReportFlowModalProps) {
   const existingWhitelist = Array.isArray(config.whitelist) ? config.whitelist : [];
 
@@ -102,6 +114,25 @@ export default function ReportFlowModal({
   const [formSubmitHeadless, setFormSubmitHeadless] = useState(
     config.form_submit_headless !== false
   );
+  const [submissionMode, setSubmissionMode] = useState<'manual' | 'automatic'>(
+    config.report_submission_mode === 'manual' ? 'manual' : 'automatic'
+  );
+  const backgroundSettingRef = useRef<HTMLDivElement>(null);
+  const shouldScrollToBackgroundRef = useRef(false);
+
+  useEffect(() => {
+    if (!shouldScrollToBackgroundRef.current || submissionMode !== 'automatic') return;
+    shouldScrollToBackgroundRef.current = false;
+    const frameId = requestAnimationFrame(() => {
+      const element = backgroundSettingRef.current;
+      if (!element || typeof element.scrollIntoView !== 'function') return;
+      const reduceMotion =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      element.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'end' });
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [submissionMode]);
 
   // Whitelist Mode State (Step 2)
   const [whitelistMode, setWhitelistMode] = useState(false);
@@ -438,6 +469,7 @@ export default function ReportFlowModal({
       media_path: currentMediaPath || ocrResults.media_path,
       file_path: currentMediaPath || ocrResults.media_path,
       form_submit_headless: formSubmitHeadless,
+      submission_mode: submissionMode,
       dev_mode: Boolean(config.dev_mode),
       record_id: initialRecord?.record_id,
       media_type: isVideo ? 'video' : 'image',
@@ -459,6 +491,26 @@ export default function ReportFlowModal({
     });
   };
 
+  if (manualReport) {
+    return (
+      <Dialog
+        isOpen={true}
+        onClose={isConfirmingManual ? undefined : onClose}
+        title="手動檢舉"
+        titleIcon={FileCheck}
+        maxWidth="680px"
+      >
+        <ManualReportAssistant
+          record={manualReport}
+          isConfirming={isConfirmingManual}
+          onOpenReportPage={() => onOpenReportPage?.()}
+          onConfirm={(recordId) => onConfirmManual?.(recordId)}
+          onLater={onClose}
+        />
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog
       isOpen={true}
@@ -466,7 +518,7 @@ export default function ReportFlowModal({
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>{stage === 'progress' ? '檢舉證據辨識進度' : '檢舉證據回報表單'}</span>
-          {config.dev_mode && stage === 'form' && (
+          {config.dev_mode && stage === 'form' && submissionMode === 'automatic' && (
             <Badge variant="event" size="sm">
               DEV 模擬送出
             </Badge>
@@ -554,12 +606,12 @@ export default function ReportFlowModal({
                 data-testid="report-submit"
               >
                 {isSubmitting
-                  ? '送出中…'
-                  : config.dev_mode
+                  ? submissionMode === 'manual' ? '上傳中…' : '送出中…'
+                  : config.dev_mode && submissionMode === 'automatic'
                     ? '模擬送出檢舉 (不實際送出)'
-                    : initialRecord
-                      ? '送出檢舉'
-                      : '送出檢舉證據'}
+                    : submissionMode === 'manual'
+                      ? '上傳並開始手動檢舉'
+                      : '送出自動檢舉'}
               </Button>
             </div>
           </div>
@@ -641,7 +693,6 @@ export default function ReportFlowModal({
             server={server}
             mapName={mapName}
             note={note}
-            formSubmitHeadless={formSubmitHeadless}
             mapOcrEnabled={mapOcrEnabled}
             ocrMapName={ocrMapName}
             historicalMaps={historicalMaps}
@@ -649,11 +700,63 @@ export default function ReportFlowModal({
             onServerChange={setServer}
             onMapNameChange={setMapName}
             onNoteChange={setNote}
-            onFormSubmitHeadlessChange={(value) => {
-              setFormSubmitHeadless(value);
-              onPersistFormSubmitHeadless?.(value);
-            }}
           />
+
+          <div className="step-block report-mode-selector" data-testid="report-mode-selector">
+            <div className="step-title-row">
+              <span className="step-number">6</span>
+              <span>檢舉方式</span>
+            </div>
+            <div className="report-mode-description">選擇手動填寫或由工具自動填寫。</div>
+            <RadioGroup<'manual' | 'automatic'>
+              name="submission-mode"
+              value={submissionMode}
+              direction="horizontal"
+              className="report-mode-choice-list"
+              onChange={(mode) => {
+                shouldScrollToBackgroundRef.current = mode === 'automatic';
+                setSubmissionMode(mode);
+                onPersistSubmissionMode?.(mode);
+              }}
+              options={[
+                {
+                  value: 'automatic',
+                  label: (
+                    <span><strong>自動檢舉</strong><small>使用獨立瀏覽器填寫官方表單，並可設定是否在背景進行。</small></span>
+                  ),
+                },
+                {
+                  value: 'manual',
+                  label: (
+                    <span><strong>手動檢舉</strong><small>上傳證據後，由你開啟官方頁面並複製欄位。</small></span>
+                  ),
+                },
+              ]}
+            />
+            {submissionMode === 'automatic' && (
+              <div
+                ref={backgroundSettingRef}
+                className="report-background-setting"
+                data-testid="report-background-setting"
+                role="region"
+                aria-label="自動檢舉設定"
+                aria-live="polite"
+              >
+                <div>
+                  <strong>在背景完成填表</strong>
+                  <span>開啟後不顯示瀏覽器視窗；關閉後可看到填表與送出過程。</span>
+                </div>
+                <Switch
+                  checked={formSubmitHeadless}
+                  onChange={(value) => {
+                    setFormSubmitHeadless(value);
+                    onPersistFormSubmitHeadless?.(value);
+                  }}
+                  aria-label="在背景完成填表"
+                />
+              </div>
+            )}
+          </div>
         </form>
       )}
     </Dialog>

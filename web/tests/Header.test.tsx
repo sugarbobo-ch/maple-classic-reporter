@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import Header from '../src/components/Header';
 import { UpdateStatus } from '../src/types';
@@ -23,6 +23,30 @@ function status(state: UpdateStatus['state'], progress = 0): UpdateStatus {
 }
 
 describe('Header update control', () => {
+  it('keeps navigation and theme actions available from the compact menu', () => {
+    const setCurrentView = vi.fn();
+    const onUpdateTheme = vi.fn();
+    render(
+      <Header
+        {...baseProps}
+        setCurrentView={setCurrentView}
+        onUpdateTheme={onUpdateTheme}
+        updateStatus={status('available')}
+        onStartUpdateDownload={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '更多功能' }));
+    const menu = screen.getByRole('menu', { name: '更多功能' });
+    expect(within(menu).getByRole('menuitem', { name: '切換為深色模式' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: '歷史紀錄' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: '設定' })).toBeInTheDocument();
+    expect(within(menu).getByRole('button', { name: /有可用更新/ })).toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '歷史紀錄' }));
+    expect(setCurrentView).toHaveBeenCalledWith('history');
+  });
+
   it('switches from available update to circular progress and restart action', () => {
     const startDownload = vi.fn();
     const openDetails = vi.fn();
