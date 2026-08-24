@@ -110,7 +110,7 @@ describe('HistoryView evidence links and sanction status', () => {
     renderHistory(onOpenUrl);
 
     const dataRow = screen.getAllByRole('row')[1];
-    const actionButtons = within(dataRow).getAllByRole('button');
+    const actionButtons = dataRow.querySelectorAll('.history-actions button');
     expect(actionButtons).toHaveLength(2);
     expect(actionButtons[0]).toHaveClass('ui-btn-ghost', 'ui-btn-icon');
     expect(actionButtons[1]).toHaveClass('ui-btn-ghost', 'ui-btn-icon');
@@ -129,13 +129,74 @@ describe('HistoryView evidence links and sanction status', () => {
     installMockPyWebView();
     renderHistory(vi.fn(), onClearHistory);
 
-    fireEvent.click(screen.getByTestId('clear-history'));
+    fireEvent.click(screen.getByTestId('history-more-actions'));
+    fireEvent.click(screen.getByRole('menuitem', { name: '清空歷史紀錄' }));
     const dialog = screen.getByRole('dialog', { name: '清空歷史紀錄' });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: '清空歷史紀錄' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('confirm-clear-history-button'));
     await waitFor(() => expect(onClearHistory).toHaveBeenCalledTimes(1));
+  });
+
+  it('offers manual evidence cleanup for a submitted Google Drive record', async () => {
+    const record: HistoryRecord = {
+      record_id: 'submitted-drive-1',
+      submission_state: 'submitted',
+      evidence_url: 'https://drive.google.com/file/d/file-123/view',
+      evidence_provider: 'gdrive',
+      remote_evidence_id: 'file-123',
+      remote_evidence_state: 'available',
+      media_cleanup_eligible: true,
+      media_path: 'C:\\recordings\\maple_evidence_1.mp4',
+      suspect_id: 'PlayerOne',
+    };
+    const cleanup = vi.fn().mockResolvedValue({ success: true, cleaned_record_ids: [record.record_id] });
+    renderHistory(vi.fn(), vi.fn(), vi.fn(), {
+      history: [record],
+      onCleanupEvidence: cleanup,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /更多操作/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '清理證據' }));
+    expect(screen.getByRole('dialog', { name: '清理證據' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: '將 Google Drive 檔案移至垃圾桶' }));
+    fireEvent.click(screen.getByRole('button', { name: '清理所選證據' }));
+
+    await waitFor(() => expect(cleanup).toHaveBeenCalledWith(['submitted-drive-1'], ['google_drive']));
+  });
+
+  it('lets users delete the record when Drive cleanup fails', async () => {
+    const record: HistoryRecord = {
+      record_id: 'submitted-drive-failure',
+      submission_state: 'submitted',
+      evidence_url: 'https://drive.google.com/file/d/file-456/view',
+      evidence_provider: 'gdrive',
+      remote_evidence_id: 'file-456',
+      remote_evidence_state: 'available',
+      suspect_id: 'PlayerTwo',
+    };
+    const deleteEntries = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: false,
+        failed_record_ids: [record.record_id],
+        failed: [{ record_id: record.record_id, message: 'Google Drive 權限不足' }],
+      })
+      .mockResolvedValueOnce({ success: true, deleted_record_ids: [record.record_id] });
+    renderHistory(vi.fn(), vi.fn(), vi.fn(), {
+      history: [record],
+      onDeleteHistoryEntries: deleteEntries,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /更多操作/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '刪除紀錄' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '將 Google Drive 檔案移至垃圾桶' }));
+    fireEvent.click(screen.getByRole('button', { name: '刪除紀錄' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '只刪除紀錄' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '只刪除紀錄' }));
+    await waitFor(() => expect(deleteEntries).toHaveBeenNthCalledWith(2, [record.record_id], []));
   });
 
   it('triggers sanction check when check button is clicked', async () => {
@@ -222,14 +283,31 @@ describe('HistoryView evidence links and sanction status', () => {
 
     expect(screen.getByRole('table')).not.toHaveClass('compact');
 
-    const toggleBtn = screen.getByTestId('toggle-compact-mode');
-    expect(toggleBtn).toHaveAccessibleName('切換為緊密排列');
+    fireEvent.click(screen.getByTestId('history-more-actions'));
+    const toggleBtn = screen.getByRole('menuitem', { name: '切換為緊湊排列' });
     fireEvent.click(toggleBtn);
     expect(screen.getByRole('table')).toHaveClass('compact');
 
-    expect(toggleBtn).toHaveAccessibleName('切換為標準排列');
-    fireEvent.click(toggleBtn);
+    fireEvent.click(screen.getByTestId('history-more-actions'));
+    fireEvent.click(screen.getByRole('menuitem', { name: '切換為標準排列' }));
     expect(screen.getByRole('table')).not.toHaveClass('compact');
+  });
+
+  it('does not show an empty pending tab when every record is submitted', () => {
+    renderHistory();
+
+    expect(screen.queryByRole('button', { name: /待處理/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /全部/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /已完成/ })).toBeInTheDocument();
+  });
+
+  it('keeps completed-row actions centered without a placeholder dash', () => {
+    renderHistory();
+
+    const operationCell = screen.getAllByRole('row')[1].querySelector('.history-operation-cell');
+    expect(operationCell).not.toBeNull();
+    expect(operationCell?.querySelector('.history-row-actions')).toBeInTheDocument();
+    expect(operationCell?.textContent).not.toContain('-');
   });
 
   it('paginates records and handles page navigation', () => {

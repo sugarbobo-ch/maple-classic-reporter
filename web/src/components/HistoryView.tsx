@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ExternalLink,
@@ -15,13 +15,22 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Loader2,
   FileText,
   ScanSearch,
+  MoreHorizontal,
+  Cloud,
+  X,
+  ListChecks,
 } from 'lucide-react';
 import { Button, IconButton, Badge, Tooltip, Dialog, Dropdown } from './ui';
 import { useClipboard, useToast } from '../hooks';
-import { HistoryRecord, SanctionSyncStatus } from '../types';
+import {
+  EvidenceCleanupResult,
+  EvidenceCleanupTarget,
+  HistoryDeleteResult,
+  HistoryRecord,
+  SanctionSyncStatus,
+} from '../types';
 
 export interface HistoryViewProps {
   history?: HistoryRecord[];
@@ -31,6 +40,14 @@ export interface HistoryViewProps {
   onUpdatePageSize?: (size: number) => void;
   onBack: () => void;
   onClearHistory?: () => Promise<boolean>;
+  onCleanupEvidence?: (
+    recordIds: string[],
+    targets: EvidenceCleanupTarget[]
+  ) => Promise<EvidenceCleanupResult>;
+  onDeleteHistoryEntries?: (
+    recordIds: string[],
+    cleanupTargets?: EvidenceCleanupTarget[]
+  ) => Promise<HistoryDeleteResult>;
   onOpenUrl: (url: string) => void;
   onCheckSanctions?: () => Promise<void>;
   isCheckingSanctions?: boolean;
@@ -85,6 +102,8 @@ export default function HistoryView({
   onUpdatePageSize,
   onBack,
   onClearHistory,
+  onCleanupEvidence,
+  onDeleteHistoryEntries,
   onOpenUrl,
   onCheckSanctions,
   isCheckingSanctions = false,
@@ -101,6 +120,24 @@ export default function HistoryView({
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [draftToContinue, setDraftToContinue] = useState<HistoryRecord | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'pending' | 'submitted'>('all');
+  const [managementOpen, setManagementOpen] = useState(false);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [actionDialog, setActionDialog] = useState<{
+    kind: 'cleanup' | 'delete';
+    records: HistoryRecord[];
+  } | null>(null);
+  const [actionTargets, setActionTargets] = useState<EvidenceCleanupTarget[]>([]);
+  const [actionError, setActionError] = useState('');
+  const [isRunningAction, setIsRunningAction] = useState(false);
+  const [deleteFailureIds, setDeleteFailureIds] = useState<string[]>([]);
+  const actionErrorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (actionError) actionErrorRef.current?.focus();
+  }, [actionError]);
 
   const [isCompact, setIsCompact] = useState<boolean>(() => {
     if (typeof compactLayout === 'boolean') return compactLayout;
@@ -150,18 +187,217 @@ export default function HistoryView({
     onUpdatePageSize?.(newSize);
   };
 
-  const totalRecords = history.length;
+  const filteredHistory = useMemo(
+    () =>
+      history.filter((record) => {
+        if (historyFilter === 'pending') {
+          return record.submission_state === 'draft' || record.submission_state === 'awaiting_manual';
+        }
+        if (historyFilter === 'submitted') {
+          return !record.submission_state || record.submission_state === 'submitted';
+        }
+        return true;
+      }),
+    [history, historyFilter]
+  );
+  const totalRecords = filteredHistory.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalRecords);
-  const paginatedHistory = history.slice(startIndex, endIndex);
+  const paginatedHistory = filteredHistory.slice(startIndex, endIndex);
   const submittedHistory = history.filter(
     (record) => !record.submission_state || record.submission_state === 'submitted'
   );
+  const pendingHistory = history.filter(
+    (record) => record.submission_state === 'draft' || record.submission_state === 'awaiting_manual'
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedRecordIds([]);
+    setOpenRowMenuId(null);
+  }, [historyFilter]);
+
+  useEffect(() => {
+    if (historyFilter === 'pending' && pendingHistory.length === 0) {
+      setHistoryFilter('all');
+    }
+  }, [historyFilter, pendingHistory.length]);
+
+  useEffect(() => {
+    setSelectedRecordIds((current) =>
+      current.filter((recordId) => filteredHistory.some((record) => record.record_id === recordId))
+    );
+  }, [filteredHistory]);
+
+  useEffect(() => {
+    if (!openRowMenuId && !headerMenuOpen) return;
+    const handleOutsidePointer = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.history-row-menu-wrap, .history-header-more-wrap')) return;
+      setOpenRowMenuId(null);
+      setHeaderMenuOpen(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenRowMenuId(null);
+        setHeaderMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsidePointer);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePointer);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [headerMenuOpen, openRowMenuId]);
+
+  const getRecordId = (record: HistoryRecord, index: number) =>
+    record.record_id || `history-${record.timestamp || record.time || 'item'}-${index}`;
+
+  const getCleanupTargets = (record: HistoryRecord): EvidenceCleanupTarget[] => {
+    const targets: EvidenceCleanupTarget[] = [];
+    if (record.media_cleanup_eligible) targets.push('local');
+    if (
+      record.evidence_provider === 'gdrive' &&
+      record.remote_evidence_state !== 'trashed' &&
+      Boolean(record.remote_evidence_id)
+    ) {
+      targets.push('google_drive');
+    }
+    return targets;
+  };
+
+  const openActionDialog = (kind: 'cleanup' | 'delete', records: HistoryRecord[]) => {
+    setActionDialog({ kind, records });
+    setActionTargets([]);
+    setActionError('');
+    setDeleteFailureIds([]);
+    setOpenRowMenuId(null);
+    setHeaderMenuOpen(false);
+  };
+
+  const closeActionDialog = () => {
+    setActionDialog(null);
+    setActionTargets([]);
+    setActionError('');
+    setDeleteFailureIds([]);
+  };
+
+  const toggleSelected = (recordId: string) => {
+    setSelectedRecordIds((current) =>
+      current.includes(recordId)
+        ? current.filter((id) => id !== recordId)
+        : [...current, recordId]
+    );
+  };
+
+  const selectedRecords = filteredHistory.filter((record, index) =>
+    selectedRecordIds.includes(getRecordId(record, index))
+  );
+
+  const actionAvailableTargets = actionDialog
+    ? Array.from(new Set(actionDialog.records.flatMap((record) => getCleanupTargets(record))))
+    : [];
+  const actionPendingCount = actionDialog
+    ? actionDialog.records.filter(
+        (record) => record.submission_state === 'draft' || record.submission_state === 'awaiting_manual'
+      ).length
+    : 0;
+  const actionSubmittedCount = actionDialog
+    ? actionDialog.records.filter(
+        (record) => !record.submission_state || record.submission_state === 'submitted'
+      ).length
+    : 0;
+
+  const handleSelectCurrentPage = () => {
+    const pageIds = paginatedHistory.map((record, index) => getRecordId(record, startIndex + index));
+    setSelectedRecordIds((current) => Array.from(new Set([...current, ...pageIds])));
+  };
+
+  const handleActionSubmit = async () => {
+    if (!actionDialog || isRunningAction) return;
+    const recordIds = (deleteFailureIds.length && actionDialog.kind === 'delete'
+      ? deleteFailureIds
+      : actionDialog.records.map((record, index) => getRecordId(record, index)))
+      .filter((recordId) => !recordId.startsWith('history-'));
+    if (!recordIds.length) {
+      setActionError('找不到可操作的紀錄 ID。');
+      return;
+    }
+    if (actionDialog.kind === 'cleanup' && !actionTargets.length) {
+      setActionError('請至少選擇一個清理目標。');
+      return;
+    }
+    if (!onCleanupEvidence && actionDialog.kind === 'cleanup') {
+      setActionError('目前無法清理證據，請使用桌面版程式操作。');
+      return;
+    }
+    if (!onDeleteHistoryEntries && actionDialog.kind === 'delete') {
+      setActionError('目前無法刪除紀錄，請使用桌面版程式操作。');
+      return;
+    }
+
+    setIsRunningAction(true);
+    setActionError('');
+    try {
+      if (actionDialog.kind === 'cleanup') {
+        const result = await onCleanupEvidence?.(recordIds, actionTargets);
+        if (!result?.success) {
+          setActionError(
+            result?.message ||
+              result?.results?.find((item) => !item.success)?.message ||
+              '清理證據失敗，請確認權限後重試。'
+          );
+          return;
+        }
+        toast.success('證據清理完成');
+        closeActionDialog();
+        return;
+      }
+
+      const result = await onDeleteHistoryEntries?.(recordIds, actionTargets);
+      if (!result?.success) {
+        const failedIds = result?.failed_record_ids || [];
+        setDeleteFailureIds(failedIds);
+        setActionError(
+          result?.failed?.[0]?.message || result?.message || '部分紀錄無法刪除，請重試或只刪除紀錄。'
+        );
+        return;
+      }
+      toast.success(`已刪除 ${result.deleted_record_ids?.length || recordIds.length} 筆紀錄`);
+      setSelectedRecordIds([]);
+      closeActionDialog();
+    } finally {
+      setIsRunningAction(false);
+    }
+  };
+
+  const handleDeleteFailuresOnly = async () => {
+    if (!deleteFailureIds.length || !onDeleteHistoryEntries || isRunningAction) return;
+    setIsRunningAction(true);
+    setActionError('');
+    try {
+      const result = await onDeleteHistoryEntries(deleteFailureIds, []);
+      if (!result.success) {
+        setActionError(result.failed?.[0]?.message || result.message || '仍有紀錄無法刪除。');
+        return;
+      }
+      toast.success(`已刪除 ${result.deleted_record_ids?.length || deleteFailureIds.length} 筆紀錄`);
+      setSelectedRecordIds((current) => current.filter((id) => !deleteFailureIds.includes(id)));
+      closeActionDialog();
+    } finally {
+      setIsRunningAction(false);
+    }
+  };
 
   const handleOpenClearConfirm = () => {
-    setClearConfirmOpen(true);
+    if (onDeleteHistoryEntries) {
+      openActionDialog('delete', history);
+    } else {
+      setClearConfirmOpen(true);
+    }
   };
 
   const handleConfirmClear = async () => {
@@ -301,6 +537,58 @@ export default function HistoryView({
     );
   };
 
+  const renderEvidenceState = (row: HistoryRecord, evidenceUrl: string) => {
+    const isCopied = copiedUrl === evidenceUrl;
+    const remoteState = row.remote_evidence_state;
+    const isTrashed = remoteState === 'trashed';
+    const cleanupError = remoteState === 'error' || Boolean(row.remote_cleanup_error);
+    const hasLocalCleaned = Boolean(row.local_evidence_cleaned_at);
+
+    return (
+      <div className="history-evidence-cell">
+        {evidenceUrl && !isTrashed ? (
+          <div className="history-actions">
+            <IconButton
+              variant="ghost"
+              size="sm"
+              icon={ExternalLink}
+              onClick={() => onOpenUrl(evidenceUrl)}
+              tooltip="開啟雲端證據連結"
+            />
+            <IconButton
+              variant="ghost"
+              size="sm"
+              icon={isCopied ? Check : Copy}
+              onClick={() => void handleCopyUrl(evidenceUrl)}
+              tooltip={isCopied ? '已複製雲端證據連結' : '複製雲端證據連結'}
+            />
+          </div>
+        ) : isTrashed ? (
+          <Badge variant="default" size="sm" icon={Cloud}>
+            Drive 已移至垃圾桶
+          </Badge>
+        ) : row.submission_state === 'draft' ? (
+          <span className="history-evidence-muted">尚未上傳</span>
+        ) : (
+          <span className="history-evidence-muted">無雲端連結</span>
+        )}
+        {cleanupError && (
+          <Badge variant="danger" size="sm">
+            Drive 清理失敗
+          </Badge>
+        )}
+        {hasLocalCleaned && (
+          <Badge variant="default" size="sm">
+            本機已清理
+          </Badge>
+        )}
+        {row.evidence_provider === 'discord' && evidenceUrl && (
+          <span className="history-evidence-muted">Discord 證據需手動刪除</span>
+        )}
+      </div>
+    );
+  };
+
   const formatBanDate = (dateStr?: string) => {
     if (!dateStr || dateStr.trim() === '') return '-';
     // Return only YYYY-MM-DD
@@ -364,49 +652,68 @@ export default function HistoryView({
           </Button>
           {history.length > 0 && (
             <>
-              <IconButton
-                icon={isCompact ? LayoutList : Rows}
+              <Button
+                variant={managementOpen ? 'primary' : 'outline'}
                 size="md"
-                variant="ghost"
-                active={isCompact}
-                tooltip={isCompact ? '切換為標準排列' : '切換為緊密排列'}
-                onClick={handleToggleCompact}
-                data-testid="toggle-compact-mode"
-              />
-              <IconButton
-                icon={isClearingHistory ? Loader2 : Trash2}
-                size="md"
-                variant="ghost"
-                tooltip="清空歷史紀錄"
-                className={`history-clear-button ${isClearingHistory ? 'spin-reverse' : ''}`}
-                onClick={handleOpenClearConfirm}
-                disabled={!onClearHistory || isCheckingSanctions || isClearingHistory}
-                aria-busy={isClearingHistory}
-                data-testid="clear-history"
-              />
+                icon={managementOpen ? X : ListChecks}
+                onClick={() => {
+                  setManagementOpen((open) => !open);
+                  setSelectedRecordIds([]);
+                  setOpenRowMenuId(null);
+                }}
+                aria-pressed={managementOpen}
+              >
+                {managementOpen ? '完成' : '管理紀錄'}
+              </Button>
+              <div className="history-header-more-wrap">
+                <IconButton
+                  icon={MoreHorizontal}
+                  size="md"
+                  variant="ghost"
+                  tooltip="更多歷史紀錄操作"
+                  data-testid="history-more-actions"
+                  aria-expanded={headerMenuOpen}
+                  onClick={() => setHeaderMenuOpen((open) => !open)}
+                />
+                {headerMenuOpen && (
+                  <div className="history-header-menu" role="menu" aria-label="更多歷史紀錄操作">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="history-menu-item"
+                      onClick={() => {
+                        handleToggleCompact();
+                        setHeaderMenuOpen(false);
+                      }}
+                    >
+                      {isCompact ? <Rows size={16} aria-hidden="true" /> : <LayoutList size={16} aria-hidden="true" />}
+                      <span>{isCompact ? '切換為標準排列' : '切換為緊湊排列'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="history-menu-item history-menu-item-danger"
+                      onClick={handleOpenClearConfirm}
+                      disabled={
+                        (!onClearHistory && !onDeleteHistoryEntries) ||
+                        isCheckingSanctions ||
+                        isClearingHistory
+                      }
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                      <span>清空歷史紀錄</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
       </div>
 
       {/* Sanction Sync Diagnostics Banner */}
-      <div
-        style={{
-          padding: '8px 16px',
-          backgroundColor: isCheckingSanctions
-            ? 'var(--color-primary-light)'
-            : 'var(--color-surface)',
-          borderBottom: '1px solid var(--color-border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '10px',
-          fontSize: '0.78rem',
-          color: 'var(--color-text-secondary)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      <div className={`history-sync-banner ${isCheckingSanctions ? 'is-checking' : ''}`.trim()}>
+        <div className="history-sync-content" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span
             style={{
               fontWeight: 600,
@@ -448,7 +755,7 @@ export default function HistoryView({
           上次完整檢查：
           {formatLastSyncTime(lastCompleteSyncAt || sanctionSyncStatus?.last_complete_sync_at)}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="history-sync-link" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <a
             href="https://maplestoryclassic.beanfun.com/main?section=mBulletin&kind=758"
             target="_blank"
@@ -457,14 +764,7 @@ export default function HistoryView({
               e.preventDefault();
               onOpenUrl('https://maplestoryclassic.beanfun.com/main?section=mBulletin&kind=758');
             }}
-            style={{
-              color: 'var(--color-primary)',
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontWeight: 500,
-            }}
+            className="history-sync-anchor"
           >
             開啟官方處分公告
             <ExternalLink size={12} />
@@ -472,11 +772,77 @@ export default function HistoryView({
         </div>
       </div>
 
+      <div className="history-filter-bar" role="toolbar" aria-label="歷史紀錄篩選">
+        {([
+          ['all', `全部 ${history.length}`],
+          ['pending', `待處理 ${pendingHistory.length}`],
+          ['submitted', `已完成 ${submittedHistory.length}`],
+        ] as const)
+          .filter(([value]) => value !== 'pending' || pendingHistory.length > 0)
+          .map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`history-filter-button ${historyFilter === value ? 'active' : ''}`.trim()}
+              onClick={() => setHistoryFilter(value)}
+              aria-pressed={historyFilter === value}
+            >
+              {label}
+            </button>
+          ))}
+      </div>
+
+      {managementOpen && (
+        <div className="history-selection-toolbar" role="toolbar" aria-label="管理歷史紀錄">
+          <span className="history-selection-count">已選 {selectedRecordIds.length} 筆</span>
+          <Button variant="ghost" size="sm" onClick={handleSelectCurrentPage}>
+            全選本頁
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedRecordIds([])}>
+            清除選取
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={Trash2}
+            disabled={!selectedRecordIds.length}
+            onClick={() => openActionDialog('delete', selectedRecords)}
+          >
+            刪除所選紀錄
+          </Button>
+        </div>
+      )}
+
       <div className="history-table-container" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {history.length > 0 ? (
+        {totalRecords > 0 ? (
           <table className={`history-table ${isCompact ? 'compact' : ''}`.trim()}>
             <thead>
               <tr>
+                {managementOpen && (
+                  <th className="history-select-column">
+                    <input
+                      type="checkbox"
+                      aria-label="全選本頁紀錄"
+                      checked={
+                        paginatedHistory.length > 0 &&
+                        paginatedHistory.every((record, index) =>
+                          selectedRecordIds.includes(getRecordId(record, startIndex + index))
+                        )
+                      }
+                      onChange={(event) => {
+                        if (event.target.checked) handleSelectCurrentPage();
+                        else {
+                          const pageIds = paginatedHistory.map((record, index) =>
+                            getRecordId(record, startIndex + index)
+                          );
+                          setSelectedRecordIds((current) =>
+                            current.filter((recordId) => !pageIds.includes(recordId))
+                          );
+                        }
+                      }}
+                    />
+                  </th>
+                )}
                 <th>檢舉時間</th>
                 <th>嫌疑人 ID</th>
                 <th>伺服器</th>
@@ -490,14 +856,23 @@ export default function HistoryView({
             </thead>
             <tbody>
               {paginatedHistory.map((row, idx) => {
-                const key =
-                  row.record_id ||
-                  `history-${row.timestamp || row.time || 'item'}-${row.suspect_id || row.id || idx}-${idx}`;
+                const recordId = getRecordId(row, startIndex + idx);
+                const cleanupTargets = getCleanupTargets(row);
+                const key = recordId;
                 const evidenceUrl = (row.evidence_url || row.url || '').trim();
-                const isCopied = copiedUrl === evidenceUrl;
 
                 return (
                   <tr key={key}>
+                    {managementOpen && (
+                      <td className="history-select-column">
+                        <input
+                          type="checkbox"
+                          aria-label={`選取紀錄 ${row.suspect_id || recordId}`}
+                          checked={selectedRecordIds.includes(recordId)}
+                          onChange={() => toggleSelected(recordId)}
+                        />
+                      </td>
+                    )}
                     <td className="cell-date">{row.timestamp || row.time || '-'}</td>
                     <td className="cell-suspect">{row.suspect_id || row.id || '-'}</td>
                     <td className="cell-nowrap">{row.server || '-'}</td>
@@ -508,31 +883,11 @@ export default function HistoryView({
                     <td className="cell-nowrap">{renderBanStatus(row)}</td>
                     <td className="cell-date">{formatBanDate(row.ban_date)}</td>
                     <td className="cell-nowrap" style={{ textAlign: 'center' }}>
-                      {evidenceUrl ? (
-                        <div className="history-actions">
-                          <IconButton
-                            variant="ghost"
-                            size="sm"
-                            icon={ExternalLink}
-                            onClick={() => onOpenUrl(evidenceUrl)}
-                            tooltip="開啟雲端證據連結"
-                          />
-                          <IconButton
-                            variant="ghost"
-                            size="sm"
-                            icon={isCopied ? Check : Copy}
-                            onClick={() => void handleCopyUrl(evidenceUrl)}
-                            tooltip={isCopied ? '已複製雲端證據連結' : '複製雲端證據連結'}
-                          />
-                        </div>
-                      ) : (
-                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
-                          {row.submission_state === 'draft' ? '尚未上傳' : '無雲端連結'}
-                        </span>
-                      )}
+                      {renderEvidenceState(row, evidenceUrl)}
                     </td>
-                    <td className="cell-nowrap" style={{ textAlign: 'center' }}>
-                      {row.submission_state === 'draft' ? (
+                    <td className="cell-nowrap history-operation-cell">
+                      <div className="history-row-actions">
+                      {!managementOpen && row.submission_state === 'draft' ? (
                         <Tooltip
                           content={
                             row.media_available === false
@@ -552,7 +907,7 @@ export default function HistoryView({
                             </Button>
                           </span>
                         </Tooltip>
-                      ) : row.submission_state === 'awaiting_manual' ? (
+                      ) : !managementOpen && row.submission_state === 'awaiting_manual' ? (
                         <Button
                           variant="primary"
                           size="sm"
@@ -562,9 +917,52 @@ export default function HistoryView({
                         >
                           繼續手動檢舉
                         </Button>
-                      ) : (
-                        <span style={{ color: 'var(--color-text-secondary)' }}>-</span>
+                      ) : null}
+                      {!managementOpen && (
+                        <div className="history-row-menu-wrap">
+                          <IconButton
+                            icon={MoreHorizontal}
+                            size="sm"
+                            variant="ghost"
+                            tooltip="更多操作"
+                            aria-expanded={openRowMenuId === recordId}
+                            onClick={() =>
+                              setOpenRowMenuId((current) => (current === recordId ? null : recordId))
+                            }
+                          />
+                          {openRowMenuId === recordId && (
+                            <div className="history-row-menu" role="menu" aria-label="紀錄操作">
+                              {row.submission_state === 'submitted' && cleanupTargets.length > 0 && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="history-menu-item"
+                                  onClick={() => openActionDialog('cleanup', [row])}
+                                >
+                                  <Cloud size={16} aria-hidden="true" />
+                                  <span>清理證據</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="history-menu-item history-menu-item-danger"
+                                onClick={() => openActionDialog('delete', [row])}
+                              >
+                                <Trash2 size={16} aria-hidden="true" />
+                                <span>
+                                  {row.submission_state === 'draft'
+                                    ? '刪除草稿'
+                                    : row.submission_state === 'awaiting_manual'
+                                      ? '放棄這筆檢舉'
+                                      : '刪除紀錄'}
+                                </span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -576,7 +974,7 @@ export default function HistoryView({
             <span className="history-empty-icon" aria-hidden="true">
               <ShieldCheck size={30} strokeWidth={1.6} />
             </span>
-            <span>目前尚無歷史檢舉紀錄</span>
+            <span>{history.length > 0 ? '目前篩選沒有符合的紀錄' : '目前尚無歷史檢舉紀錄'}</span>
           </div>
         )}
       </div>
@@ -592,7 +990,7 @@ export default function HistoryView({
           </div>
 
           <div className="history-pagination-controls">
-            <div style={{ width: '110px' }}>
+            <div className="history-page-size-select">
               <Dropdown<number>
                 options={[
                   { value: 10, label: '10 筆 / 頁' },
@@ -603,6 +1001,7 @@ export default function HistoryView({
                 ]}
                 value={pageSize}
                 onChange={handlePageSizeChange}
+                ariaLabel="每頁顯示筆數"
               />
             </div>
 
@@ -673,6 +1072,121 @@ export default function HistoryView({
             </button>
           </div>
         </div>
+      )}
+
+      {actionDialog && (
+        <Dialog
+          isOpen={true}
+          onClose={isRunningAction ? undefined : closeActionDialog}
+          title={actionDialog.kind === 'cleanup' ? '清理證據' : '刪除紀錄？'}
+          titleIcon={actionDialog.kind === 'cleanup' ? Cloud : Trash2}
+          maxWidth="480px"
+          footer={
+            <div className="history-action-dialog-footer">
+              <Button variant="outline" size="md" onClick={closeActionDialog} disabled={isRunningAction}>
+                取消
+              </Button>
+              {deleteFailureIds.length > 0 && actionDialog.kind === 'delete' ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={handleActionSubmit}
+                    loading={isRunningAction}
+                    disabled={isRunningAction}
+                  >
+                    {actionTargets.includes('google_drive') ? '重試 Drive 清理' : '重試清理'}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="md"
+                    onClick={handleDeleteFailuresOnly}
+                    loading={isRunningAction}
+                    disabled={isRunningAction}
+                  >
+                    只刪除紀錄
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant={actionDialog.kind === 'delete' ? 'danger' : 'primary'}
+                  size="md"
+                  onClick={handleActionSubmit}
+                  loading={isRunningAction}
+                  disabled={
+                    isRunningAction ||
+                    (actionDialog.kind === 'cleanup' && actionTargets.length === 0)
+                  }
+                >
+                  {actionDialog.kind === 'cleanup' ? '清理所選證據' : '刪除紀錄'}
+                </Button>
+              )}
+            </div>
+          }
+        >
+          {actionDialog.kind === 'delete' ? (
+            <div className="history-action-dialog-copy">
+              <p>
+                刪除後將不再顯示這 {actionDialog.records.length} 筆紀錄，也會停止追蹤官方處分結果。
+              </p>
+              <div className="history-action-dialog-summary">
+                待處理 {actionPendingCount} 筆・已完成 {actionSubmittedCount} 筆
+              </div>
+            </div>
+          ) : (
+            <div className="history-action-dialog-copy">
+              <p>選擇要清理的證據。清理證據不會刪除回報紀錄。</p>
+            </div>
+          )}
+
+          {actionAvailableTargets.length > 0 && (
+            <div className="history-evidence-targets" role="group" aria-label="證據清理目標">
+              {actionAvailableTargets.includes('local') && (
+                <label className="history-evidence-target">
+                  <input
+                    type="checkbox"
+                    checked={actionTargets.includes('local')}
+                    onChange={() =>
+                      setActionTargets((current) =>
+                        current.includes('local')
+                          ? current.filter((target) => target !== 'local')
+                          : [...current, 'local']
+                      )
+                    }
+                    disabled={isRunningAction}
+                  />
+                  <span>一併刪除本機證據</span>
+                </label>
+              )}
+              {actionAvailableTargets.includes('google_drive') && (
+                <label className="history-evidence-target">
+                  <input
+                    type="checkbox"
+                    checked={actionTargets.includes('google_drive')}
+                    onChange={() =>
+                      setActionTargets((current) =>
+                        current.includes('google_drive')
+                          ? current.filter((target) => target !== 'google_drive')
+                          : [...current, 'google_drive']
+                      )
+                    }
+                    disabled={isRunningAction}
+                  />
+                  <span>將 Google Drive 檔案移至垃圾桶</span>
+                </label>
+              )}
+            </div>
+          )}
+
+          {actionDialog.records.some((record) => record.evidence_provider === 'discord') && (
+            <p className="history-evidence-note">Discord 證據不會由本工具刪除，請在 Discord 中手動處理。</p>
+          )}
+          {actionError && (
+            <div ref={actionErrorRef} className="history-action-error" role="alert" tabIndex={-1}>
+              {actionError}
+            </div>
+          )}
+        </Dialog>
       )}
 
       {clearConfirmOpen && (

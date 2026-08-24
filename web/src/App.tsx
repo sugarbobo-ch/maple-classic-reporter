@@ -18,6 +18,11 @@ import {
   SubmissionStatusData,
   SanctionSyncStatus,
   UpdateStatus,
+  EvidenceCleanupResult,
+  EvidenceCleanupTarget,
+  HistoryDeleteResult,
+  DisconnectDriveResponse,
+  ResetUserDataResponse,
 } from './types';
 import { normalizeSafeHttpsUrl } from './utils';
 import './styles/app.css';
@@ -47,6 +52,7 @@ export default function App() {
   } = useAppConfig();
   const [gdriveAuthenticated, setGdriveAuthenticated] = useState<boolean | null>(null);
   const [isAuthenticatingDrive, setIsAuthenticatingDrive] = useState(false);
+  const [isResettingUserData, setIsResettingUserData] = useState(false);
 
   const [windows, setWindows] = useState<WindowItem[]>([
     { title: '新楓之谷：經典版', width: 1920, height: 1080 },
@@ -915,6 +921,44 @@ export default function App() {
     await window.pywebview.api.check_for_updates(force);
   };
 
+  const reloadHistory = async () => {
+    if (!window.pywebview?.api?.get_history) return;
+    const records = await window.pywebview.api.get_history();
+    if (Array.isArray(records)) setHistory(records);
+  };
+
+  const handleCleanupHistoryEvidence = async (
+    recordIds: string[],
+    targets: EvidenceCleanupTarget[]
+  ): Promise<EvidenceCleanupResult> => {
+    if (!window.pywebview?.api?.cleanup_history_evidence) {
+      return { success: false, message: '目前無法清理證據，請使用桌面版程式操作。' };
+    }
+    try {
+      const result = await window.pywebview.api.cleanup_history_evidence(recordIds, targets);
+      await reloadHistory();
+      return result;
+    } catch (error: unknown) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  };
+
+  const handleDeleteHistoryEntries = async (
+    recordIds: string[],
+    cleanupTargets: EvidenceCleanupTarget[] = []
+  ): Promise<HistoryDeleteResult> => {
+    if (!window.pywebview?.api?.delete_history_entries) {
+      return { success: false, message: '目前無法刪除紀錄，請使用桌面版程式操作。' };
+    }
+    try {
+      const result = await window.pywebview.api.delete_history_entries(recordIds, cleanupTargets);
+      await reloadHistory();
+      return result;
+    } catch (error: unknown) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  };
+
   const handleStartUpdateDownload = async () => {
     if (!window.pywebview?.api?.start_update_download) return;
     await window.pywebview.api.start_update_download();
@@ -1337,6 +1381,34 @@ export default function App() {
     window.pywebview?.api?.drag_window?.('proportional');
   };
 
+  const handleDisconnectDrive = async (): Promise<DisconnectDriveResponse> => {
+    if (!window.pywebview?.api?.disconnect_gdrive) {
+      return {
+        success: false,
+        message: '目前無法連接桌面程式，請重新啟動後再試。',
+        is_authenticated: Boolean(gdriveAuthenticated),
+        remote_revoked: false,
+        requires_manual_revoke: false,
+      };
+    }
+    const result = await window.pywebview.api.disconnect_gdrive();
+    if (result.success) setGdriveAuthenticated(false);
+    return result;
+  };
+
+  const handleResetAllUserData = async (): Promise<ResetUserDataResponse> => {
+    if (!window.pywebview?.api?.reset_all_user_data) {
+      return {
+        success: false,
+        accepted: false,
+        message: '目前無法連接桌面程式，請重新啟動後再試。',
+      };
+    }
+    const result = await window.pywebview.api.reset_all_user_data();
+    if (result.accepted) setIsResettingUserData(true);
+    return result;
+  };
+
   const handleOnboardingHeaderDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     if (target.closest('.window-controls, button, a, input, select')) return;
@@ -1507,6 +1579,8 @@ export default function App() {
               onBack={() => setCurrentView('home')}
               onOpenDriveFolder={handleOpenDriveFolder}
               onAuthenticateDrive={handleAuthenticateDrive}
+              onDisconnectDrive={handleDisconnectDrive}
+              onResetAllUserData={handleResetAllUserData}
               onRefreshWindows={handleRefreshWindows}
               onRefreshAudio={handleRefreshAudio}
               onClearRecordings={handleClearRecordings}
@@ -1515,7 +1589,14 @@ export default function App() {
               onStartUpdateDownload={handleStartUpdateDownload}
               onCancelUpdateDownload={handleCancelUpdateDownload}
               onRestartAndApplyUpdate={handleRestartAndApplyUpdate}
-              updateBusy={statusState !== 'idle' || isSubmittingReport || modalOpen}
+              updateBusy={
+                statusState !== 'idle' ||
+                isSubmittingReport ||
+                modalOpen ||
+                ['checking', 'downloading', 'waiting_for_idle', 'applying'].includes(
+                  updateStatus?.state || ''
+                )
+              }
               onReplayOnboarding={() => setOnboardingReplay(true)}
             />
           </Suspense>
@@ -1544,6 +1625,8 @@ export default function App() {
               onUpdatePageSize={(size) => updateConfig('history_page_size', size)}
               onBack={() => setCurrentView('home')}
               onClearHistory={handleClearHistory}
+              onCleanupEvidence={handleCleanupHistoryEvidence}
+              onDeleteHistoryEntries={handleDeleteHistoryEntries}
               onOpenUrl={handleOpenUrl}
               onCheckSanctions={handleCheckSanctions}
               onContinueDraft={handleContinueDraft}
@@ -1639,6 +1722,16 @@ export default function App() {
             }}
           />
         </Suspense>
+      )}
+
+      {isResettingUserData && (
+        <div className="user-data-reset-overlay" role="status" aria-live="assertive">
+          <div className="user-data-reset-status">
+            <span className="user-data-reset-spinner" aria-hidden="true" />
+            <strong>正在關閉並刪除所有本機資料…</strong>
+            <span>請不要重新開啟程式。</span>
+          </div>
+        </div>
       )}
     </div>
   );

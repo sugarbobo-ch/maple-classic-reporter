@@ -68,4 +68,36 @@ describe('Dropdown layout', () => {
 
     expect(screen.getByRole('listbox')).toHaveClass('compact');
   });
+
+  it('keeps numeric page-size labels readable just above the baseline width', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 120,
+      height: 36,
+      top: 20,
+      right: 140,
+      bottom: 56,
+      left: 20,
+      x: 20,
+      y: 20,
+      toJSON: () => ({}),
+    });
+
+    render(
+      <Dropdown
+        value={100}
+        options={[
+          { value: 30, label: '30 筆 / 頁' },
+          { value: 50, label: '50 筆 / 頁' },
+          { value: 100, label: '100 筆 / 頁' },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '100 筆 / 頁' }));
+
+    expect(screen.getByRole('listbox')).toHaveClass('compact');
+    expect(screen.getByRole('option', { name: '100 筆 / 頁' })).toBeInTheDocument();
+
+    vi.restoreAllMocks();
+  });
 });

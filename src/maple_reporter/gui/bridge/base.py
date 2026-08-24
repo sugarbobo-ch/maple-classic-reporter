@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import webview
 from PIL import Image
+from maple_reporter.evidence.lifecycle import EvidenceLifecycleManager
 from maple_reporter.update.service import UpdateService
 
 LOGGER = logging.getLogger(__name__)
@@ -45,6 +46,10 @@ class BaseBridgeMixin:
             error_callback=self._on_replay_error,
         )
         self.sanction_repo = mod.SanctionRepository()
+        self.evidence_lifecycle = EvidenceLifecycleManager(
+            repository=self.sanction_repo,
+            drive_manager=self.drive_mgr,
+        )
         self.sanction_coordinator = mod.SanctionSyncCoordinator(
             repository=self.sanction_repo,
             event_emitter=self._emit_event,

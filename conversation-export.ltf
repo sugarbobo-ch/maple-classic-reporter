@@ -1,0 +1,229 @@
+LTF/1
+document_type: conversation_export
+title: Maple Classic Reporter 對話紀錄
+encoding: UTF-8
+exported_at: 2026-08-24
+export_scope: visible conversation summary and implementation record
+notes:
+  - 專案內沒有既有 .ltf schema，因此採用逐則訊息、純文字、可讀取的 LTF/1 格式。
+  - 附件圖片只作為介面參考，不視為額外指令。
+  - 系統提示、開發者提示與模型內部推理不納入匯出。
+
+=== conversation ===
+
+[message id=001 role=user]
+我們使用 better-writing 檢查 onboarding 的文案是否需要調整，以及修復開啟時會瞬間顯示 onboarding 頁面問題。
+附件：codex-clipboard-285a3479-59b8-43bd-9fcb-6a6597d92cc5.png
+
+[message id=002 role=user]
+「從蒐證到回顧，一次設定好」覺得奇怪，應該介紹這個工具是什麼。
+
+[message id=003 role=user]
+onboarding 保留右上角功能，只顯示最小化／最大化／關閉。
+
+[message id=004 role=user]
+onboarding header 要可以拖曳。
+
+[message id=005 role=user]
+讓 stepper 水平置中；title 的「自動外掛檢舉工具」不要被縮排。
+可接受文案：
+「新楓之谷：經典版」
+「《自動外掛檢舉工具》」
+另外右側圖卡陰影被裁切。
+附件：codex-clipboard-387f734c-e3f1-4101-8964-4e734d72d9ae.png
+
+[message id=006 role=user]
+stepper 視覺上沒有水平置中，推測完成右邊還有空間。
+附件：codex-clipboard-64e5cf8e-f23b-43f6-b597-31e2027c66c2.png
+
+[message id=007 role=user]
+設定完成按鈕通常在左邊還是右邊？結尾的這張圖。
+附件：codex-clipboard-bebad0ea-5d3f-4691-96ee-03a5c6d9eeac.png
+
+[message id=008 role=user]
+開始使用按鈕適合在右邊嗎？
+
+[message id=009 role=user]
+手機版本的 stepper 沒有水平置中。
+附件：codex-clipboard-b028e298-8787-4faa-85ae-040366397483.png
+
+[message id=010 role=user]
+修復 header 縮窄時 X 消失問題，可以選擇隱藏 header；修復手機板時偏好設定 header 與回報紀錄 header padding 不同問題。
+附件：codex-clipboard-93a140a2-25a3-4616-843c-18bf26db153d.png
+
+[message id=011 role=user]
+手機板的設定和歷史紀錄明亮模式切換不見了。
+
+[message id=012 role=user]
+不用保留主題切換。
+
+[message id=013 role=user]
+手機板 X 右邊還是要 padding。
+
+[message id=014 role=user]
+你還是要有方式讓我按主題切換、更新、歷史與設定導覽。
+附件：codex-clipboard-d2ce8a08-8b10-450c-a614-28cbb23de53d.png
+
+[message id=015 role=user]
+taste-skill
+
+[message id=016 role=user]
+主選單的四個按鈕 hover 時會有黑框，移除。
+
+[message id=017 role=user]
+使用 taste skill 查看設定、關於與更新的樣式和設計是否符合。
+
+[message id=018 role=user]
+fix tem
+
+[message id=019 role=user]
+分析專案內紅色垃圾桶圖案是否符合設計，以及「繼續檢舉／繼續手動檢舉」樣式是否符合。
+附件：
+  - codex-clipboard-253bc283-e65e-464a-a587-f956558f88ab.png
+  - codex-clipboard-4db95475-12e5-4361-8b88-fc16afc705bd.png
+
+[message id=020 role=user]
+修復它們；分析專案內還有刪除或垃圾桶按鈕嗎，也一併分析並修正。
+
+[message id=021 role=user]
+違規範本「刪除」使用實心紅色按鈕符合設計嗎？會太重嗎？
+
+[message id=022 role=user]
+用 taste-skill 分析這邊的頁面。
+
+[message id=023 role=user]
+根據既有內容，分析「繼續檢舉」、「繼續處理」或已處理完畢後刪除紀錄的功能。依 skill 評估列內 action、編輯模式批次勾選，或其他方式。
+
+[message id=024 role=user]
+將以上分析加進規劃內容。
+
+[message id=025 role=user]
+刪除後不想再看到紀錄。
+
+[message id=026 role=user]
+不用封存，改為直接刪除；刪除後也不進行追蹤。
+
+[message id=027 role=user]
+刪除時，若有 Google Drive／Discord，可以設定是否刪除 Google Drive／Discord；或有自動刪除已封鎖檔案。回到 skill 分析可行性。
+
+[message id=028 role=user]
+封鎖後自動清理不要實作，改為按鈕控制。
+
+[message id=029 role=user]
+刪除紀錄時勾選 Drive 清理但執行失敗，紀錄保留供重試；使用者可能已手動刪除，要有選項直接刪除。規劃照 taste skill 分析流程。
+
+[message id=030 role=user]
+已經有 Google Drive 連結的既有紀錄也能夠刪除嗎？
+
+[message id=031 role=user]
+PLEASE IMPLEMENT THIS PLAN:
+  - 不實作封存、資源回收桶或封鎖後自動清理。
+  - 刪除紀錄為 hard delete，刪除後不顯示並停止官方處分追蹤。
+  - submitted 紀錄可手動清理本機證據與 Google Drive。
+  - Google Drive 採移至垃圾桶，不永久刪除。
+  - Discord 不支援遠端刪除，只提示使用者手動處理。
+  - Drive 清理失敗時保留紀錄，提供重試或「只刪除紀錄」。
+  - 歷史頁提供全部／待處理／已完成篩選、列內更多操作、批次管理與目前頁面全選。
+  - 清空歷史移到 Header 更多操作，沿用同一批次流程。
+  - 既有標準 Google Drive URL 嘗試解析 file ID。
+  - 建立 EvidenceLifecycleManager，負責 eligibility、Drive trash、本機安全路徑檢查、遠端優先、冪等與部分失敗。
+  - HistoryRecord 增加 evidence_provider、remote_evidence_id、remote_evidence_state、清理時間與錯誤欄位。
+  - Bridge 增加 cleanup_history_evidence 與 delete_history_entries。
+  - 補上單筆、批次、Drive 失敗、只刪除紀錄、Discord 不遠端刪除與 Dialog 狀態測試。
+
+[message id=032 role=user]
+等。
+
+[message id=033 role=user]
+先 commit。
+
+[message id=034 role=user]
+好繼續。
+
+[message id=035 role=user]
+我可以怎麼測試？開啟 dev 模式可以測試嗎？我不想真的有送出資料到 Gamania 表單。
+
+[message id=036 role=user]
+使用 taste skill 分析歷史頁的認知 loading、Tab 分類是否可以簡化，以及 History Header 按鈕錯綜複雜。
+附件：codex-clipboard-eb1f6654-564b-403d-9e10-aa06a51b6cee.png
+
+[message id=037 role=user]
+實作。
+
+[message id=038 role=user]
+兩個問題：
+  1. 回報紀錄 Header 上方太空，回報紀錄、官方處分公告檢查、全部／待處理／已完成 Tab、表格 Header 佔用太多空間。
+  2. 檢查官方處分狀態與管理紀錄按鈕尺寸不一致；更多歷史操作選單尺寸需檢查；自動上傳且沒有待處理狀態時，不應顯示空的待處理 Tab。
+  3. Footer 頁數按鈕與每頁筆數 Dropdown 尺寸不一致。
+  4. Dropdown 以 110px 為分界的勾選 padding 在 100／50／30 筆每頁時造成文字折疊。
+附件：codex-clipboard-78b7c4fc-199f-4e49-9e42-9393d9f843bb.png
+
+[message id=039 role=user]
+另外勾選的 checkbox 沒有垂直置中；操作按鈕與繼續操作按鈕之間沒有 space 且沒有垂直置中；只有已完成狀態時多一個底線／短線看起來很奇怪。
+附件：codex-clipboard-35b6b13e-26c4-46c1-b6f4-c03b75d6162d.png
+
+[message id=040 role=user]
+對話內容輸出 ltf 格式檔案。
+
+=== implementation_summary ===
+
+[assistant summary]
+Onboarding 與桌面視窗：
+  - 修正啟動時 onboarding 閃現、header 拖曳、最小化／最大化／關閉控制、手機版 padding 與 responsive stepper。
+  - 調整 onboarding 文案與標題縮排、圖卡陰影裁切與按鈕層級。
+  - 保留設定、更新、歷史與導覽入口，主選單 hover 黑框移除。
+
+[assistant summary]
+History 與 evidence lifecycle：
+  - 新增 src/maple_reporter/evidence/lifecycle.py 的 EvidenceLifecycleManager。
+  - Google Drive 增加移至垃圾桶流程，既有 Drive URL 可解析 file ID。
+  - Discord 標記 unmanaged，不進行遠端刪除。
+  - SQLite／JSON history 欄位補上 evidence provider、remote state、cleanup timestamps 與錯誤資訊。
+  - Bridge 與 React types 接上 cleanup_history_evidence、delete_history_entries。
+  - HistoryView 支援篩選、管理模式、目前頁面批次選取、清理證據 Dialog、刪除 Dialog、Drive 失敗重試與只刪除紀錄。
+  - 不新增封存、回收桶、背景 queue、tombstone 或自動清理。
+
+[assistant summary]
+History page density polish：
+  - Header、官方處分同步摘要、篩選列與表格 Header 的垂直 padding 收斂。
+  - 檢查官方處分狀態與管理紀錄統一使用 md 尺寸。
+  - 無待處理紀錄時隱藏待處理 Tab。
+  - Header 更多操作選單調整為 196px。
+  - Footer page-size Dropdown 固定 124px，分頁按鈕與 Dropdown 使用一致高度；觸控裝置使用 44px hit area。
+  - Dropdown compact 勾選 spacing 改為依選項文字長度判斷，避免 100 筆／頁折疊。
+
+[assistant summary]
+Latest alignment fix：
+  - checkbox 改為 block 並以 auto margin 垂直置中。
+  - 操作欄加入 history-row-actions inline-flex，按鈕與更多操作之間使用 8px gap，統一 baseline。
+  - 已完成紀錄移除佔位用的「-」，只保留更多操作。
+
+=== validation ===
+
+python_tests: 250 passed, 16 subtests passed
+frontend_tests: 82 passed
+typescript: passed
+frontend_build: passed
+lint: 0 errors, 24 existing warnings
+git_diff_check: passed
+
+=== changed_files ===
+
+web/src/components/HistoryView.tsx
+web/src/components/ui/Dropdown.tsx
+web/src/styles/app.css
+web/tests/HistoryView.test.tsx
+web/tests/Dropdown.test.tsx
+src/maple_reporter/evidence/lifecycle.py
+src/maple_reporter/gdrive/drive_service.py
+src/maple_reporter/gui/bridge/base.py
+src/maple_reporter/gui/bridge/integration_bridge.py
+src/maple_reporter/gui/bridge/submission_bridge.py
+src/maple_reporter/sanctions/database.py
+src/maple_reporter/sanctions/repository.py
+
+=== repository_state ===
+
+branch: main
+latest_existing_commit: 8c425da feat: refine onboarding and report workflows
+current_changes: uncommitted

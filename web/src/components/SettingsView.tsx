@@ -15,6 +15,8 @@ import {
   QuickLinksTab,
   AboutTab,
   ClearRecordingsModal,
+  DisconnectGoogleModal,
+  ResetUserDataModal,
 } from './settings';
 import {
   AppConfig,
@@ -25,6 +27,8 @@ import {
   UploadDestination,
   ViolationTemplateItem,
   ClearRecordingsResponse,
+  DisconnectDriveResponse,
+  ResetUserDataResponse,
   UpdateStatus,
 } from '../types';
 import { isValidDiscordWebhookUrl } from '../utils';
@@ -42,6 +46,8 @@ export interface SettingsViewProps {
   onBack: () => void;
   onOpenDriveFolder: () => void;
   onAuthenticateDrive: () => void;
+  onDisconnectDrive?: () => Promise<DisconnectDriveResponse>;
+  onResetAllUserData?: () => Promise<ResetUserDataResponse>;
   onRefreshWindows?: () => void;
   onRefreshAudio?: () => void;
   onClearRecordings?: () => void;
@@ -80,6 +86,8 @@ export default function SettingsView({
   onBack,
   onOpenDriveFolder,
   onAuthenticateDrive,
+  onDisconnectDrive,
+  onResetAllUserData,
   onRefreshWindows,
   onRefreshAudio,
   updateStatus = null,
@@ -132,6 +140,13 @@ export default function SettingsView({
   };
 
   const { toast } = useToast();
+  const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
+  const [disconnectingDrive, setDisconnectingDrive] = useState(false);
+  const [disconnectResult, setDisconnectResult] = useState<DisconnectDriveResponse | null>(null);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetAcknowledged, setResetAcknowledged] = useState(false);
+  const [resettingUserData, setResettingUserData] = useState(false);
+  const [resetErrorMessage, setResetErrorMessage] = useState('');
 
   // Quick Links state
   const defaultInitialLinks: QuickLinkItem[] = [
@@ -523,6 +538,57 @@ export default function SettingsView({
     handleOpenExternalUrl('https://github.com/sugarbobo-ch/maple-classic-reporter');
   };
 
+  const handleOpenDisconnectModal = () => {
+    setDisconnectResult(null);
+    setDisconnectModalOpen(true);
+  };
+
+  const handleDisconnectDrive = async () => {
+    if (!onDisconnectDrive || disconnectingDrive) return;
+    setDisconnectingDrive(true);
+    try {
+      const result = await onDisconnectDrive();
+      setDisconnectResult(result);
+      if (!result.success) {
+        toast.error('Google 帳號登出失敗', result.message);
+      } else if (result.requires_manual_revoke) {
+        toast.warning('這台電腦已登出', '請到 Google 帳號確認並移除此應用程式的權限。');
+      } else {
+        toast.success('Google 帳號已登出');
+        setDisconnectModalOpen(false);
+      }
+    } catch (error: unknown) {
+      toast.error(
+        'Google 帳號登出失敗',
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setDisconnectingDrive(false);
+    }
+  };
+
+  const handleOpenResetModal = () => {
+    setResetAcknowledged(false);
+    setResetErrorMessage('');
+    setResetModalOpen(true);
+  };
+
+  const handleResetAllUserData = async () => {
+    if (!onResetAllUserData || !resetAcknowledged || resettingUserData) return;
+    setResettingUserData(true);
+    setResetErrorMessage('');
+    try {
+      const result = await onResetAllUserData();
+      if (!result.accepted) {
+        setResetErrorMessage(result.message);
+        setResettingUserData(false);
+      }
+    } catch (error: unknown) {
+      setResetErrorMessage(error instanceof Error ? error.message : String(error));
+      setResettingUserData(false);
+    }
+  };
+
   const handleOpenLogFile = async () => {
     if (window.pywebview?.api?.open_log_file) {
       const ok = await window.pywebview.api.open_log_file();
@@ -743,6 +809,7 @@ export default function SettingsView({
                 handleImmediateTextChange('discord_webhook_url', val);
               }}
               onAuthenticateDrive={onAuthenticateDrive}
+              onDisconnectDrive={handleOpenDisconnectModal}
               onOpenDriveFolder={onOpenDriveFolder}
               onTestDiscord={handleTestDiscord}
             />
@@ -834,6 +901,7 @@ export default function SettingsView({
               onRestartAndApplyUpdate={onRestartAndApplyUpdate}
               updateBusy={updateBusy}
               onReplayOnboarding={onReplayOnboarding}
+              onResetAllUserData={handleOpenResetModal}
             />
           )}
         </div>
@@ -873,6 +941,34 @@ export default function SettingsView({
         clearingProgress={clearingProgress}
         onClose={() => setClearModalOpen(false)}
         onExecuteClear={handleExecuteClearRecordings}
+      />
+
+      <DisconnectGoogleModal
+        isOpen={disconnectModalOpen}
+        isDisconnecting={disconnectingDrive}
+        result={disconnectResult}
+        onClose={() => {
+          setDisconnectModalOpen(false);
+          setDisconnectResult(null);
+        }}
+        onConfirm={handleDisconnectDrive}
+        onOpenPermissions={() =>
+          handleOpenExternalUrl('https://myaccount.google.com/connections')
+        }
+      />
+
+      <ResetUserDataModal
+        isOpen={resetModalOpen}
+        acknowledged={resetAcknowledged}
+        isResetting={resettingUserData}
+        errorMessage={resetErrorMessage}
+        onAcknowledgedChange={setResetAcknowledged}
+        onClose={() => {
+          setResetModalOpen(false);
+          setResetAcknowledged(false);
+          setResetErrorMessage('');
+        }}
+        onConfirm={handleResetAllUserData}
       />
     </div>
   );

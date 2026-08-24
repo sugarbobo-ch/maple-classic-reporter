@@ -116,6 +116,13 @@ export interface HistoryRecord {
   media_path?: string;
   media_type?: 'video' | 'image' | string;
   media_available?: boolean;
+  evidence_provider?: 'gdrive' | 'discord' | 'external' | 'none' | string;
+  remote_evidence_id?: string;
+  remote_evidence_state?: 'available' | 'trashed' | 'unmanaged' | 'unavailable' | 'error' | string;
+  remote_evidence_cleaned_at?: string;
+  remote_cleanup_error?: string;
+  local_evidence_cleaned_at?: string;
+  media_cleanup_eligible?: boolean;
   ban_status?: 'pending' | 'banned' | 'unbanned' | string;
   ban_date?: string;
   ban_announcement_url?: string;
@@ -123,6 +130,40 @@ export interface HistoryRecord {
   ban_result?: string;
   ban_masked_name?: string;
   ban_checked_at?: string;
+}
+
+export type EvidenceCleanupTarget = 'local' | 'google_drive';
+
+export interface EvidenceCleanupTargetResult {
+  success: boolean;
+  message?: string;
+  status?: string;
+}
+
+export interface EvidenceCleanupResult {
+  success: boolean;
+  cleaned_record_ids?: string[];
+  failed_record_ids?: string[];
+  results?: Array<{
+    record_id: string;
+    success: boolean;
+    record?: HistoryRecord;
+    results?: Record<string, EvidenceCleanupTargetResult>;
+    message?: string;
+  }>;
+  message?: string;
+}
+
+export interface HistoryDeleteResult {
+  success: boolean;
+  deleted_record_ids?: string[];
+  failed_record_ids?: string[];
+  failed?: Array<{
+    record_id: string;
+    message?: string;
+    cleanup?: EvidenceCleanupResult;
+  }>;
+  message?: string;
 }
 
 export type SanctionSyncPhase = 'listing' | 'fetching' | 'matching';
@@ -219,6 +260,17 @@ export interface AuthResponse {
   is_authenticated: boolean;
 }
 
+export interface DisconnectDriveResponse extends AuthResponse {
+  remote_revoked: boolean | null;
+  requires_manual_revoke: boolean;
+}
+
+export interface ResetUserDataResponse {
+  success: boolean;
+  accepted: boolean;
+  message: string;
+}
+
 export interface ClearRecordingsResponse {
   success: boolean;
   count: number;
@@ -300,6 +352,7 @@ declare global {
         save_report_draft: (formData: Record<string, unknown>) => Promise<DraftSaveResponse>;
         check_gdrive_auth: () => Promise<boolean>;
         authenticate_gdrive: () => Promise<AuthResponse>;
+        disconnect_gdrive: () => Promise<DisconnectDriveResponse>;
         get_gdrive_folder_url: (folderName?: string) => Promise<string>;
         test_discord_webhook: (
           webhookUrl: string
@@ -340,6 +393,7 @@ declare global {
         open_app_data_folder: () => void;
         open_log_file: () => Promise<boolean>;
         open_log_folder: () => void;
+        reset_all_user_data: () => Promise<ResetUserDataResponse>;
         start_sanction_sync: (trigger?: 'startup' | 'manual') => Promise<{
           started: boolean;
           reason?: 'already_running' | 'disabled' | 'fresh' | 'no_history';
@@ -347,6 +401,14 @@ declare global {
         }>;
         get_sanction_sync_status: () => Promise<SanctionSyncStatus>;
         get_history: () => Promise<HistoryRecord[]>;
+        cleanup_history_evidence: (
+          recordIds: string[],
+          targets: Array<'local' | 'google_drive'>
+        ) => Promise<EvidenceCleanupResult>;
+        delete_history_entries: (
+          recordIds: string[],
+          cleanupTargets?: Array<'local' | 'google_drive'>
+        ) => Promise<HistoryDeleteResult>;
         rebuild_sanction_cache_for_development: () => Promise<boolean>;
         get_update_status: () => Promise<UpdateStatus>;
         check_for_updates: (force?: boolean) => Promise<boolean>;

@@ -2,13 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import SettingsView from '../src/components/SettingsView';
+import type { SettingsViewProps } from '../src/components/SettingsView';
 import { ToastProvider } from '../src/components/ui';
 import { TEST_CONFIG } from './mockPyWebViewApi';
 
 function renderSettings(
   initialTab: string,
   gdriveAuthenticated: boolean,
-  onUpdateConfig = vi.fn()
+  onUpdateConfig = vi.fn(),
+  overrides: Partial<SettingsViewProps> = {}
 ) {
   return render(
     <ToastProvider>
@@ -22,6 +24,7 @@ function renderSettings(
         onAuthenticateDrive={vi.fn()}
         windows={[]}
         audioDevices={[]}
+        {...overrides}
       />
     </ToastProvider>
   );
@@ -78,6 +81,70 @@ describe('SettingsView backend state', () => {
 
     expect(onUpdateConfig).toHaveBeenNthCalledWith(1, 'ocr_autofill_id', false);
     expect(onUpdateConfig).toHaveBeenNthCalledWith(2, 'ocr_autofill_map', false);
+  });
+
+  it('confirms Google logout before disconnecting the account', async () => {
+    const onDisconnectDrive = vi.fn().mockResolvedValue({
+      success: true,
+      message: 'Google 帳號已登出。',
+      is_authenticated: false,
+      remote_revoked: true,
+      requires_manual_revoke: false,
+    });
+    renderSettings('upload', true, vi.fn(), { onDisconnectDrive });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: '登出' }));
+    expect(screen.getByRole('dialog', { name: '登出 Google 帳號？' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '登出 Google 帳號' }));
+
+    await waitFor(() => expect(onDisconnectDrive).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '登出 Google 帳號？' })).not.toBeInTheDocument()
+    );
+  });
+
+  it('offers manual Google permission cleanup when remote revocation fails', async () => {
+    const onDisconnectDrive = vi.fn().mockResolvedValue({
+      success: true,
+      message: '這台電腦已登出，但無法連線撤銷 Google 授權。',
+      is_authenticated: false,
+      remote_revoked: false,
+      requires_manual_revoke: true,
+    });
+    renderSettings('upload', true, vi.fn(), { onDisconnectDrive });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: '登出' }));
+    await user.click(screen.getByRole('button', { name: '登出 Google 帳號' }));
+
+    expect((await screen.findAllByText('這台電腦已登出')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '前往 Google 帳號權限' })).toBeEnabled();
+  });
+
+  it('requires explicit acknowledgement before deleting all local data', async () => {
+    const onResetAllUserData = vi.fn().mockResolvedValue({
+      success: true,
+      accepted: true,
+      message: '程式即將關閉並刪除所有本機資料。',
+    });
+    renderSettings('about', false, vi.fn(), { onResetAllUserData });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: '刪除所有本機資料' }));
+    const dialog = screen.getByRole('dialog', { name: '刪除所有本機資料？' });
+    const resetButtons = screen.getAllByRole('button', { name: '刪除所有本機資料' });
+    const confirmButton = resetButtons[resetButtons.length - 1];
+    expect(confirmButton).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('checkbox', { name: '我了解錄影、截圖與歷史紀錄將永久刪除' })
+    );
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    expect(dialog).toBeInTheDocument();
+    await waitFor(() => expect(onResetAllUserData).toHaveBeenCalledTimes(1));
   });
 
   it('creates a quick link with the same HTTPS normalization as the legacy controller', async () => {

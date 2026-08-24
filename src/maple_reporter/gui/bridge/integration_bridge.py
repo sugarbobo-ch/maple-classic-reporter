@@ -5,8 +5,11 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import threading
 from typing import Any
 import webbrowser
+
+from maple_reporter.reset import build_reset_helper_command
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,11 +40,35 @@ class IntegrationBridgeMixin:
         records = self.sanction_repo.load_history()
         enriched: list[dict[str, Any]] = []
         for item in records:
-            record = dict(item)
+            record = self.evidence_lifecycle.enrich_record(dict(item))
             media_path = str(record.get("media_path", "") or "")
             record["media_available"] = bool(media_path and os.path.isfile(media_path))
             enriched.append(record)
         return enriched
+
+    def cleanup_history_evidence(
+        self,
+        record_ids: list[str],
+        targets: list[str],
+    ) -> dict[str, Any]:
+        """Clean selected evidence while retaining the history records."""
+        return self.evidence_lifecycle.cleanup_records(
+            record_ids,
+            targets,
+            intent="manual_cleanup",
+        )
+
+    def delete_history_entries(
+        self,
+        record_ids: list[str],
+        cleanup_targets: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Delete selected history records after optional evidence cleanup."""
+        return self.evidence_lifecycle.delete_records(
+            record_ids,
+            cleanup_targets or [],
+            intent="record_deletion",
+        )
 
     def rebuild_sanction_cache_for_development(self) -> bool:
         """Reset sanction cache if developer mode is enabled."""
@@ -69,6 +96,11 @@ class IntegrationBridgeMixin:
         ok, msg = self.drive_mgr.authenticate_interactive()
         is_auth = self.drive_mgr.is_authenticated()
         return {"success": ok, "message": msg, "is_authenticated": is_auth}
+
+    def disconnect_gdrive(self) -> dict[str, Any]:
+        """Revoke Google authorization and remove credentials from this device."""
+
+        return self.drive_mgr.disconnect(revoke=True)
 
     def get_gdrive_folder_url(self, folder_name: str | None = None) -> str:
         """Return URL to the user's GDrive reports folder."""
@@ -154,3 +186,64 @@ class IntegrationBridgeMixin:
             os.startfile(str(folder))
         else:
             subprocess.Popen(["explorer", str(folder)])
+
+    def reset_all_user_data(self) -> dict[str, Any]:
+        """Schedule a safe out-of-process reset after this application exits."""
+
+        if getattr(self, "_recording_active", False):
+            return {
+                "success": False,
+                "accepted": False,
+                "message": "錄影仍在進行，請先停止錄影再刪除資料。",
+            }
+        if getattr(self, "_replay_state", "idle") not in {"idle", "stopped"}:
+            return {
+                "success": False,
+                "accepted": False,
+                "message": "循環錄影仍在進行，請先停止後再刪除資料。",
+            }
+        submission_lock = getattr(self, "_submission_lock", None)
+        if submission_lock is not None and submission_lock.locked():
+            return {
+                "success": False,
+                "accepted": False,
+                "message": "檢舉資料仍在處理，請完成後再刪除資料。",
+            }
+
+        update_service = getattr(self, "update_service", None)
+        update_state = update_service.status().get("state") if update_service else "idle"
+        if update_state in {"checking", "downloading", "waiting_for_idle", "applying"}:
+            return {
+                "success": False,
+                "accepted": False,
+                "message": "應用程式更新仍在進行，請完成或取消更新後再刪除資料。",
+            }
+
+        try:
+            command = build_reset_helper_command(os.getpid())
+            subprocess.Popen(
+                command,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                close_fds=True,
+            )
+        except (OSError, ValueError) as error:
+            LOGGER.warning("Failed to start user-data reset helper (%s)", type(error).__name__)
+            return {
+                "success": False,
+                "accepted": False,
+                "message": "無法啟動資料清除程序，請關閉程式後再試。",
+            }
+
+        def close_window() -> None:
+            try:
+                if getattr(self, "_window", None):
+                    self._window.destroy()
+            except Exception as error:
+                LOGGER.warning("Failed to close app for user-data reset (%s)", type(error).__name__)
+
+        threading.Timer(0.5, close_window).start()
+        return {
+            "success": True,
+            "accepted": True,
+            "message": "程式即將關閉並刪除所有本機資料。",
+        }

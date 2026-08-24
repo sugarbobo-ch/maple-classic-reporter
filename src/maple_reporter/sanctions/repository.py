@@ -234,6 +234,21 @@ class SanctionRepository:
             target_path = self._history_path if self._history_path else HISTORY_FILE
             _write_json_atomic(target_path, [])
 
+    def delete_history_entries(self, record_ids: list[str]) -> list[dict[str, Any]]:
+        """Permanently remove selected history entries and return removed records."""
+
+        ids = {str(record_id or "").strip() for record_id in record_ids if str(record_id or "").strip()}
+        if not ids:
+            return []
+        with self._lock:
+            records = self.load_history()
+            removed = [record for record in records if str(record.get("record_id", "")) in ids]
+            if removed:
+                self.save_history(
+                    [record for record in records if str(record.get("record_id", "")) not in ids]
+                )
+            return removed
+
     # --- Cache Update Logic ---
 
     def update_date_and_bulletins(
@@ -384,6 +399,16 @@ class SanctionRepository:
         )
         normalized["media_path"] = str(normalized.get("media_path") or "")
         normalized["media_type"] = str(normalized.get("media_type") or "")
+        normalized["evidence_provider"] = str(normalized.get("evidence_provider") or "")
+        normalized["remote_evidence_id"] = str(normalized.get("remote_evidence_id") or "")
+        normalized["remote_evidence_state"] = str(normalized.get("remote_evidence_state") or "")
+        normalized["remote_evidence_cleaned_at"] = str(
+            normalized.get("remote_evidence_cleaned_at") or ""
+        )
+        normalized["remote_cleanup_error"] = str(normalized.get("remote_cleanup_error") or "")
+        normalized["local_evidence_cleaned_at"] = str(
+            normalized.get("local_evidence_cleaned_at") or ""
+        )
         return normalized
 
     def _evaluate_single_record(

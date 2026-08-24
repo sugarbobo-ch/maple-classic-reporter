@@ -18,6 +18,7 @@ import wsgiref.util
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Optional, Tuple
 
+import requests
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -39,6 +40,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+GOOGLE_OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GOOGLE_OAUTH_CONFIG_ENV_VAR = "MAPLE_REPORTER_GOOGLE_OAUTH_CONFIG"
 BUNDLED_OAUTH_CONFIG_FILENAME = "google_oauth_client.json"
 RELEASE_OAUTH_CONFIG_RELATIVE_PATH = Path("build_secrets") / BUNDLED_OAUTH_CONFIG_FILENAME
@@ -520,6 +522,77 @@ class GoogleDriveManager:
             LOGGER.warning("Google OAuth 登入失敗 (%s)", type(error).__name__)
             return False, "Google 帳號登入失敗，請稍後重新登入。"
 
+    def disconnect(self, *, revoke: bool = True) -> dict[str, object]:
+        """Revoke Google access when possible and always clear local credentials."""
+
+        token = None
+        if self.creds is not None:
+            token = self.creds.refresh_token or self.creds.token
+
+        remote_revoked: bool | None = None
+        requires_manual_revoke = False
+        if revoke and token:
+            try:
+                response = requests.post(
+                    GOOGLE_OAUTH_REVOKE_URL,
+                    data={"token": token},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=10,
+                )
+                remote_revoked = response.status_code == 200
+                requires_manual_revoke = not remote_revoked
+                if not remote_revoked:
+                    LOGGER.warning(
+                        "Google OAuth revoke failed (status=%s)",
+                        response.status_code,
+                    )
+            except Exception as error:
+                remote_revoked = False
+                requires_manual_revoke = True
+                LOGGER.warning(
+                    "Google OAuth revoke request failed (%s)",
+                    type(error).__name__,
+                )
+
+        local_error: Exception | None = None
+        try:
+            self.token_store.delete()
+            self._delete_legacy_token()
+        except OSError as error:
+            local_error = error
+            LOGGER.warning(
+                "Google OAuth local credential cleanup failed (%s)",
+                type(error).__name__,
+            )
+        finally:
+            self.creds = None
+            self.service = None
+            self._loaded_from_legacy_token = False
+
+        if local_error is not None:
+            return {
+                "success": False,
+                "is_authenticated": False,
+                "remote_revoked": remote_revoked,
+                "requires_manual_revoke": requires_manual_revoke,
+                "message": "無法完整移除這台電腦的 Google 登入資料，請關閉程式後再試。",
+            }
+        if requires_manual_revoke:
+            return {
+                "success": True,
+                "is_authenticated": False,
+                "remote_revoked": False,
+                "requires_manual_revoke": True,
+                "message": "這台電腦已登出，但無法連線撤銷 Google 授權。",
+            }
+        return {
+            "success": True,
+            "is_authenticated": False,
+            "remote_revoked": remote_revoked,
+            "requires_manual_revoke": False,
+            "message": "Google 帳號已登出。",
+        }
+
     def get_or_create_folder(self, folder_name: str = "MapleClassic_Reports") -> str:
         """Get or create the dedicated report folder in Google Drive."""
 
@@ -597,3 +670,28 @@ class GoogleDriveManager:
         except Exception as error:
             LOGGER.warning("Google Drive 上傳失敗 (%s)", type(error).__name__)
             return False, "上傳檔案失敗，請檢查 Google Drive 權限與網路後再試。"
+
+    def trash_file(self, file_id: str) -> tuple[bool, str]:
+        """Move an app-managed Drive file to the user's Drive trash."""
+
+        normalized_id = str(file_id or "").strip()
+        if not normalized_id:
+            return False, "找不到 Google Drive file ID。"
+        if not self.is_authenticated() or self.service is None:
+            return False, "Google 帳號尚未完成登入驗證，請先登入 Google 帳號。"
+        try:
+            existing = self.service.files().get(
+                fileId=normalized_id,
+                fields="id,trashed",
+            ).execute()
+            if existing.get("trashed"):
+                return True, "Google Drive 檔案已在垃圾桶。"
+            self.service.files().update(
+                fileId=normalized_id,
+                body={"trashed": True},
+                fields="id,trashed",
+            ).execute()
+            return True, "Google Drive 檔案已移至垃圾桶。"
+        except Exception as error:
+            LOGGER.warning("Google Drive 清理失敗 (%s)", type(error).__name__)
+            return False, "無法將 Google Drive 檔案移至垃圾桶，請確認帳號權限後重試。"

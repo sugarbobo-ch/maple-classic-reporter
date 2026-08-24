@@ -62,6 +62,17 @@ export default function Dropdown<T extends string | number = string>({
     0,
     normalizedOptions.findIndex((opt) => opt.value === value)
   );
+  // Compact checkmark spacing is content-aware. A 110px trigger is the
+  // baseline, but short numeric labels still need the compact treatment when
+  // their checkmark would otherwise consume the last few characters.
+  const maxOptionLabelLength = normalizedOptions.reduce(
+    (maxLength, option) => Math.max(maxLength, option.label.length),
+    0
+  );
+  const compactMenuBreakpoint = Math.min(
+    180,
+    Math.max(110, maxOptionLabelLength * 12 + 34)
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -147,7 +158,7 @@ export default function Dropdown<T extends string | number = string>({
         ReactDOM.createPortal(
           <div
             ref={menuRef}
-            className={`ui-dropdown-menu ${menuPosition.width <= 110 ? 'compact' : ''}`.trim()}
+            className={`ui-dropdown-menu ${menuPosition.width <= compactMenuBreakpoint ? 'compact' : ''}`.trim()}
             style={{
               top: `${menuPosition.top}px`,
               left: `${menuPosition.left}px`,

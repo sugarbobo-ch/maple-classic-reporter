@@ -215,6 +215,67 @@ class TestGoogleDriveOAuth(unittest.TestCase):
                 (token_path.parent / drive_service.BUNDLED_OAUTH_CONFIG_FILENAME).exists()
             )
 
+    def test_disconnect_revokes_refresh_token_and_clears_local_credentials(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            token_path = Path(temp_dir) / "oauth_token.dpapi"
+            token_path.write_bytes(b"test-only")
+            manager = drive_service.GoogleDriveManager(token_path)
+            manager.creds = MagicMock(refresh_token="refresh-secret", token="access-secret")
+            manager.service = object()
+            response = MagicMock(status_code=200)
+
+            with patch.object(drive_service.requests, "post", return_value=response) as post:
+                result = manager.disconnect()
+
+            self.assertTrue(result["success"])
+            self.assertTrue(result["remote_revoked"])
+            self.assertFalse(result["requires_manual_revoke"])
+            self.assertFalse(token_path.exists())
+            self.assertIsNone(manager.creds)
+            self.assertIsNone(manager.service)
+            post.assert_called_once_with(
+                drive_service.GOOGLE_OAUTH_REVOKE_URL,
+                data={"token": "refresh-secret"},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=10,
+            )
+
+    def test_disconnect_clears_local_credentials_when_revocation_is_offline(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            token_path = Path(temp_dir) / "oauth_token.dpapi"
+            token_path.write_bytes(b"test-only")
+            manager = drive_service.GoogleDriveManager(token_path)
+            manager.creds = MagicMock(refresh_token="refresh-secret", token="access-secret")
+            manager.service = object()
+
+            with patch.object(
+                drive_service.requests,
+                "post",
+                side_effect=drive_service.requests.ConnectionError("offline"),
+            ), self.assertLogs(drive_service.LOGGER, level="WARNING") as captured:
+                result = manager.disconnect()
+
+            self.assertTrue(result["success"])
+            self.assertFalse(result["remote_revoked"])
+            self.assertTrue(result["requires_manual_revoke"])
+            self.assertFalse(token_path.exists())
+            self.assertIsNone(manager.creds)
+            self.assertIsNone(manager.service)
+            self.assertNotIn("refresh-secret", "\n".join(captured.output))
+            self.assertNotIn("access-secret", "\n".join(captured.output))
+
+    def test_disconnect_is_idempotent_when_already_signed_out(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = drive_service.GoogleDriveManager(
+                Path(temp_dir) / "oauth_token.dpapi"
+            )
+            with patch.object(drive_service.requests, "post") as post:
+                result = manager.disconnect()
+
+            self.assertTrue(result["success"])
+            self.assertIsNone(result["remote_revoked"])
+            post.assert_not_called()
+
     def test_spec_embeds_oauth_client_but_not_token(self):
         spec_path = Path(__file__).resolve().parents[1] / "MapleClassicReporter.spec"
         spec_text = spec_path.read_text(encoding="utf-8")

@@ -73,7 +73,13 @@ class SanctionDatabase:
                     ban_bulletin_id INTEGER,
                     ban_result TEXT,
                     ban_masked_name TEXT,
-                    ban_checked_at TEXT
+                    ban_checked_at TEXT,
+                    evidence_provider TEXT,
+                    remote_evidence_id TEXT,
+                    remote_evidence_state TEXT,
+                    remote_evidence_cleaned_at TEXT,
+                    remote_cleanup_error TEXT,
+                    local_evidence_cleaned_at TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS bulletins (
@@ -116,6 +122,12 @@ class SanctionDatabase:
                 ("submission_mode", "TEXT NOT NULL DEFAULT 'automatic'"),
                 ("media_path", "TEXT"),
                 ("media_type", "TEXT"),
+                ("evidence_provider", "TEXT"),
+                ("remote_evidence_id", "TEXT"),
+                ("remote_evidence_state", "TEXT"),
+                ("remote_evidence_cleaned_at", "TEXT"),
+                ("remote_cleanup_error", "TEXT"),
+                ("local_evidence_cleaned_at", "TEXT"),
             ):
                 if column not in report_columns:
                     conn.execute(f"ALTER TABLE reports ADD COLUMN {column} {definition};")
@@ -165,12 +177,16 @@ class SanctionDatabase:
                     record_id, time, suspect_id, server, map, url, status, note,
                     submission_state, submission_mode, media_path, media_type,
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
-                    ban_result, ban_masked_name, ban_checked_at
+                    ban_result, ban_masked_name, ban_checked_at,
+                    evidence_provider, remote_evidence_id, remote_evidence_state,
+                    remote_evidence_cleaned_at, remote_cleanup_error, local_evidence_cleaned_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
                     :submission_state, :submission_mode, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
-                    :ban_result, :ban_masked_name, :ban_checked_at
+                    :ban_result, :ban_masked_name, :ban_checked_at,
+                    :evidence_provider, :remote_evidence_id, :remote_evidence_state,
+                    :remote_evidence_cleaned_at, :remote_cleanup_error, :local_evidence_cleaned_at
                 );
             """
             for r in reports:
@@ -194,6 +210,12 @@ class SanctionDatabase:
                     "ban_result": r.get("ban_result"),
                     "ban_masked_name": r.get("ban_masked_name"),
                     "ban_checked_at": r.get("ban_checked_at"),
+                    "evidence_provider": r.get("evidence_provider", ""),
+                    "remote_evidence_id": r.get("remote_evidence_id", ""),
+                    "remote_evidence_state": r.get("remote_evidence_state", ""),
+                    "remote_evidence_cleaned_at": r.get("remote_evidence_cleaned_at", ""),
+                    "remote_cleanup_error": r.get("remote_cleanup_error", ""),
+                    "local_evidence_cleaned_at": r.get("local_evidence_cleaned_at", ""),
                 }
                 conn.execute(insert_sql, params)
 
@@ -221,18 +243,28 @@ class SanctionDatabase:
                 "ban_result": r.get("ban_result"),
                 "ban_masked_name": r.get("ban_masked_name"),
                 "ban_checked_at": r.get("ban_checked_at"),
+                "evidence_provider": r.get("evidence_provider", ""),
+                "remote_evidence_id": r.get("remote_evidence_id", ""),
+                "remote_evidence_state": r.get("remote_evidence_state", ""),
+                "remote_evidence_cleaned_at": r.get("remote_evidence_cleaned_at", ""),
+                "remote_cleanup_error": r.get("remote_cleanup_error", ""),
+                "local_evidence_cleaned_at": r.get("local_evidence_cleaned_at", ""),
             }
             conn.execute("""
                 INSERT INTO reports (
                     record_id, time, suspect_id, server, map, url, status, note,
                     submission_state, submission_mode, media_path, media_type,
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
-                    ban_result, ban_masked_name, ban_checked_at
+                    ban_result, ban_masked_name, ban_checked_at,
+                    evidence_provider, remote_evidence_id, remote_evidence_state,
+                    remote_evidence_cleaned_at, remote_cleanup_error, local_evidence_cleaned_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
                     :submission_state, :submission_mode, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
-                    :ban_result, :ban_masked_name, :ban_checked_at
+                    :ban_result, :ban_masked_name, :ban_checked_at,
+                    :evidence_provider, :remote_evidence_id, :remote_evidence_state,
+                    :remote_evidence_cleaned_at, :remote_cleanup_error, :local_evidence_cleaned_at
                 )
                 ON CONFLICT(record_id) DO UPDATE SET
                     time=excluded.time,
@@ -252,7 +284,13 @@ class SanctionDatabase:
                     ban_bulletin_id=excluded.ban_bulletin_id,
                     ban_result=excluded.ban_result,
                     ban_masked_name=excluded.ban_masked_name,
-                    ban_checked_at=excluded.ban_checked_at;
+                    ban_checked_at=excluded.ban_checked_at,
+                    evidence_provider=excluded.evidence_provider,
+                    remote_evidence_id=excluded.remote_evidence_id,
+                    remote_evidence_state=excluded.remote_evidence_state,
+                    remote_evidence_cleaned_at=excluded.remote_evidence_cleaned_at,
+                    remote_cleanup_error=excluded.remote_cleanup_error,
+                    local_evidence_cleaned_at=excluded.local_evidence_cleaned_at;
             """, params)
 
         self._execute(_upsert)

@@ -79,6 +79,18 @@ export function createMockPyWebViewApi(
     close_window: vi.fn().mockResolvedValue(true),
     drag_window: vi.fn().mockResolvedValue(true),
     resize_window: vi.fn().mockResolvedValue(true),
+    disconnect_gdrive: vi.fn().mockResolvedValue({
+      success: true,
+      message: 'Google 帳號已登出。',
+      is_authenticated: false,
+      remote_revoked: true,
+      requires_manual_revoke: false,
+    }),
+    reset_all_user_data: vi.fn().mockResolvedValue({
+      success: true,
+      accepted: true,
+      message: '程式即將關閉並刪除所有本機資料。',
+    }),
     save_config_key: vi.fn().mockResolvedValue(true),
     save_config_all: vi.fn().mockResolvedValue(true),
     get_windows: vi.fn().mockResolvedValue(TEST_WINDOWS),
@@ -152,6 +164,8 @@ export function createMockPyWebViewApi(
     }),
     get_sanction_sync_status: vi.fn().mockResolvedValue({ running: false }),
     get_history: vi.fn().mockResolvedValue(TEST_HISTORY),
+    cleanup_history_evidence: vi.fn().mockResolvedValue({ success: true, cleaned_record_ids: [] }),
+    delete_history_entries: vi.fn().mockResolvedValue({ success: true, deleted_record_ids: [] }),
     rebuild_sanction_cache_for_development: vi.fn().mockResolvedValue(true),
   };
 

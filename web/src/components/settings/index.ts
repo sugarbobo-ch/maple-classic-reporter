@@ -7,5 +7,6 @@ export { default as ReplayTab } from './ReplayTab';
 export { default as HotkeysTab } from './HotkeysTab';
 export { default as QuickLinksTab } from './QuickLinksTab';
 export { default as AboutTab } from './AboutTab';
+export { DisconnectGoogleModal, ResetUserDataModal } from './AccountDataModals';
 export { default as ClearRecordingsModal } from './ClearRecordingsModal';
 export { default as SettingRow } from './SettingRow';

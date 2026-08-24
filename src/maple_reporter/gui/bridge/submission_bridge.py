@@ -12,6 +12,7 @@ from typing import Any
 import uuid
 
 from maple_reporter.automation.playwright_runtime import PlaywrightBrowserError
+from maple_reporter.evidence.lifecycle import parse_drive_file_id
 
 LOGGER = logging.getLogger(__name__)
 
@@ -116,6 +117,13 @@ class SubmissionBridgeMixin:
         if submission_state not in {"draft", "awaiting_manual", "submitted"}:
             raise ValueError(f"Unsupported submission state: {submission_state}")
         submitted = submission_state == "submitted"
+        provider = str(form_data.get("evidence_provider") or "").strip().lower()
+        if not provider:
+            destination = str(form_data.get("upload_destination") or "").strip().lower()
+            provider = destination if destination in {"gdrive", "discord"} else "none"
+        remote_id = str(form_data.get("remote_evidence_id") or "").strip()
+        if provider == "gdrive" and not remote_id:
+            remote_id = parse_drive_file_id(evidence_url)
         payload = {
             "suspect_id": form_data.get("suspect_id", ""),
             "server": form_data.get("server_name") or form_data.get("server", "雪吉拉"),
@@ -128,6 +136,9 @@ class SubmissionBridgeMixin:
             "submission_mode": form_data.get("submission_mode", "automatic"),
             "media_path": file_path,
             "media_type": form_data.get("media_type", ""),
+            "evidence_provider": provider,
+            "remote_evidence_id": remote_id,
+            "remote_evidence_state": "available" if provider == "gdrive" and remote_id else "",
         }
         record_id = str(form_data.get("record_id", "") or "").strip()
         repo = getattr(self, "sanction_repo", None)
@@ -193,6 +204,8 @@ class SubmissionBridgeMixin:
                     self._emit_submission_status("uploading", message, "error")
                     return {"status": "error", "message": message}
                 evidence_url = res_url
+                form_data["evidence_provider"] = "gdrive"
+                form_data["remote_evidence_id"] = parse_drive_file_id(evidence_url)
             else:
                 webhook_url = self.config.get("discord_webhook_url", "")
                 if not webhook_url:
@@ -210,6 +223,8 @@ class SubmissionBridgeMixin:
                     self._emit_submission_status("uploading", message, "error")
                     return {"status": "error", "message": message}
                 evidence_url = res_msg
+                form_data["evidence_provider"] = "discord"
+                form_data["remote_evidence_id"] = ""
 
         submission_mode = str(
             form_data.get("submission_mode")

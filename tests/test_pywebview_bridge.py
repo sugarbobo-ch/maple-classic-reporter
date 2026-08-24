@@ -432,6 +432,57 @@ class TestPyWebViewBridge(unittest.TestCase):
         self.assertTrue(self.bridge.close_window())
         window.destroy.assert_called_once_with()
 
+    def test_disconnect_gdrive_delegates_to_manager(self):
+        expected = {
+            "success": True,
+            "is_authenticated": False,
+            "remote_revoked": True,
+            "requires_manual_revoke": False,
+            "message": "Google 帳號已登出。",
+        }
+        self.bridge.drive_mgr.disconnect.return_value = expected
+
+        self.assertEqual(self.bridge.disconnect_gdrive(), expected)
+        self.bridge.drive_mgr.disconnect.assert_called_once_with(revoke=True)
+
+    def test_reset_all_user_data_rejects_busy_recording(self):
+        self.bridge._recording_active = True
+
+        result = self.bridge.reset_all_user_data()
+
+        self.assertFalse(result["accepted"])
+        self.assertIn("錄影", result["message"])
+
+    def test_reset_all_user_data_rejects_active_update(self):
+        self.bridge.update_service.status = MagicMock(return_value={"state": "downloading"})
+
+        result = self.bridge.reset_all_user_data()
+
+        self.assertFalse(result["accepted"])
+        self.assertIn("更新", result["message"])
+
+    def test_reset_all_user_data_starts_helper_and_schedules_close(self):
+        self.bridge._window = MagicMock()
+        with patch(
+            "maple_reporter.gui.bridge.integration_bridge.build_reset_helper_command",
+            return_value=["reset-helper", "1234"],
+        ) as build_command, patch(
+            "maple_reporter.gui.bridge.integration_bridge.subprocess.Popen"
+        ) as popen, patch(
+            "maple_reporter.gui.bridge.integration_bridge.threading.Timer"
+        ) as timer:
+            result = self.bridge.reset_all_user_data()
+
+        self.assertTrue(result["accepted"])
+        build_command.assert_called_once()
+        popen.assert_called_once_with(
+            ["reset-helper", "1234"],
+            creationflags=ANY,
+            close_fds=True,
+        )
+        timer.assert_called_once()
+        timer.return_value.start.assert_called_once_with()
+
     @patch("maple_reporter.gui.pywebview_bridge.begin_native_resize", return_value=True)
     @patch("maple_reporter.gui.pywebview_bridge._window_handle", return_value=5678)
     def test_resize_window_uses_the_native_resize_helper(

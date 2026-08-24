@@ -1,4 +1,4 @@
-import { FolderOpen, Send, CheckCircle, AlertCircle } from 'lucide-react';
+import { FolderOpen, Send, CheckCircle, AlertCircle, LogOut } from 'lucide-react';
 import { Dropdown, Input, Button, Badge } from '../ui';
 import { AppConfig, DropdownOption, UploadDestination } from '../../types';
 
@@ -14,6 +14,7 @@ export interface UploadTabProps {
   onGdriveFolderChange: (val: string) => void;
   onDiscordWebhookChange: (val: string) => void;
   onAuthenticateDrive: () => void;
+  onDisconnectDrive: () => void;
   onOpenDriveFolder: () => void;
   onTestDiscord: () => void;
 }
@@ -30,6 +31,7 @@ export default function UploadTab({
   onGdriveFolderChange,
   onDiscordWebhookChange,
   onAuthenticateDrive,
+  onDisconnectDrive,
   onOpenDriveFolder,
   onTestDiscord,
 }: UploadTabProps) {
@@ -62,6 +64,17 @@ export default function UploadTab({
                 ? '重新登入 Google 帳號'
                 : '登入 Google 帳號'}
           </Button>
+          {gdriveAuthenticated && (
+            <Button
+              variant="outline"
+              size="md"
+              icon={LogOut}
+              onClick={onDisconnectDrive}
+              disabled={gdriveAuthLoading}
+            >
+              登出
+            </Button>
+          )}
         </div>
       </div>
 

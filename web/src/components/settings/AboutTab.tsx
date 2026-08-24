@@ -8,6 +8,7 @@ import {
   FileText,
   FolderOpen,
   RefreshCw,
+  Trash2,
   Wrench,
 } from 'lucide-react';
 import { Button, Badge, CircularProgress, Dropdown, MarkdownContent, Switch } from '../ui';
@@ -28,6 +29,7 @@ export interface AboutTabProps {
   onRestartAndApplyUpdate?: () => void;
   updateBusy?: boolean;
   onReplayOnboarding?: () => void;
+  onResetAllUserData?: () => void;
 }
 
 export default function AboutTab({
@@ -44,6 +46,7 @@ export default function AboutTab({
   onRestartAndApplyUpdate,
   updateBusy = false,
   onReplayOnboarding,
+  onResetAllUserData,
 }: AboutTabProps) {
   const [isApplying, setIsApplying] = useState(false);
 
@@ -290,6 +293,26 @@ export default function AboutTab({
       </section>
 
       {/* 進階 / 開發者專用設定區塊 */}
+      <section className="about-local-data" aria-labelledby="about-local-data-title">
+        <div>
+          <h3 id="about-local-data-title">本機資料</h3>
+          <p>
+            永久刪除這台電腦上的帳號、設定、歷史、log、更新暫存，以及所有錄影和截圖。
+            已上傳的雲端檔案與程式本身不受影響。
+          </p>
+        </div>
+        <Button
+          variant="danger"
+          size="md"
+          icon={Trash2}
+          onClick={onResetAllUserData}
+          disabled={updateBusy}
+          title={updateBusy ? '請先停止錄影、送件或更新作業' : undefined}
+        >
+          刪除所有本機資料
+        </Button>
+      </section>
+
       <div className="about-developer-panel">
         <div>
           <div className="about-developer-label">

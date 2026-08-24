@@ -17,6 +17,7 @@ from maple_reporter.gui.playwright_error_dialog import show_playwright_error_dia
 from maple_reporter.update.updater import recover_interrupted_update
 from maple_reporter.update.runtime import mark_post_update_success
 from maple_reporter.utils.config import get_user_app_data_dir
+from maple_reporter.reset import RESET_ARGUMENT, run_reset_helper
 
 
 def get_application_icon_path() -> Path:
@@ -231,6 +232,14 @@ def _try_apply_pending_update() -> bool:
 
 
 def main():
+    if RESET_ARGUMENT in sys.argv:
+        try:
+            reset_index = sys.argv.index(RESET_ARGUMENT)
+            parent_pid = int(sys.argv[reset_index + 1])
+        except (ValueError, IndexError):
+            sys.exit(2)
+        sys.exit(run_reset_helper(parent_pid))
+
     if "--post-update" in sys.argv:
         mark_post_update_success()
     else:
