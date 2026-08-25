@@ -31,6 +31,9 @@ export type { CardProps } from './Card';
 export { default as Radio, RadioGroup } from './Radio';
 export type { RadioProps, RadioGroupProps, RadioOption } from './Radio';
 
+export { default as Checkbox } from './Checkbox';
+export type { CheckboxProps, CheckboxVariant } from './Checkbox';
+
 export { default as Badge } from './Badge';
 export type { BadgeProps } from './Badge';
 

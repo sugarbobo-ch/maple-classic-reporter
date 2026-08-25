@@ -592,6 +592,20 @@ export default function App() {
       : config.upload_destination === 'gdrive'
       ? '尚未登入 Google 帳號，檢舉證據目前無法上傳。'
       : '尚未設定 Discord 頻道連結，檢舉證據目前無法上傳。';
+  const configurationActionLabel =
+    config.upload_destination === 'gdrive'
+      ? '登入 Google 帳號'
+      : config.upload_destination === 'discord'
+        ? '設定 Discord 頻道'
+        : '選擇上傳方式';
+
+  const handleStartConfiguration = () => {
+    setSettingsTab('upload');
+    setCurrentView('settings');
+    if (config.upload_destination === 'gdrive' && gdriveAuthenticated === false) {
+      void handleAuthenticateDrive();
+    }
+  };
 
   const handleOnboardingWindowDrag = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -705,7 +719,11 @@ export default function App() {
         {alertUnconfigured && (
           <AlertBanner
             message={configurationWarning}
-            onStartSettings={() => setCurrentView('settings')}
+            actionLabel={configurationActionLabel}
+            actionLoading={
+              config.upload_destination === 'gdrive' && isAuthenticatingDrive
+            }
+            onStartSettings={handleStartConfiguration}
           />
         )}
 

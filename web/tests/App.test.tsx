@@ -6,6 +6,61 @@ import { ToastProvider } from '../src/components/ui';
 import { TEST_CONFIG, installMockPyWebView } from './mockPyWebViewApi';
 
 describe('App submission workflow', () => {
+  it('starts Google authentication from the unconfigured upload banner', async () => {
+    const authenticateGdrive = vi.fn().mockResolvedValue({
+      success: true,
+      message: 'Authenticated',
+      is_authenticated: true,
+    });
+    const checkGdriveAuth = vi.fn().mockResolvedValue(true);
+    const api = installMockPyWebView({
+      authenticate_gdrive: authenticateGdrive,
+      check_gdrive_auth: checkGdriveAuth,
+    });
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '登入 Google 帳號' }));
+
+    await waitFor(() => expect(authenticateGdrive).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('tab', { name: '上傳與帳號' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  it('recovers the Google login action after authentication times out', async () => {
+    const timeoutMessage = 'Google 帳號登入已逾時（5 分鐘未完成），請重新登入。';
+    const authenticateGdrive = vi.fn().mockResolvedValue({
+      success: false,
+      message: timeoutMessage,
+      is_authenticated: false,
+    });
+    const api = installMockPyWebView({
+      authenticate_gdrive: authenticateGdrive,
+      check_gdrive_auth: vi.fn().mockResolvedValue(false),
+    });
+
+    render(
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(api.get_initial_data).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '登入 Google 帳號' }));
+
+    expect(await screen.findByText(timeoutMessage)).toBeInTheDocument();
+    for (const loginButton of screen.getAllByRole('button', { name: '登入 Google 帳號' })) {
+      expect(loginButton).toBeEnabled();
+    }
+  });
+
   it('re-runs draft recognition using the current OCR settings before opening the form', async () => {
     const draft = {
       record_id: 'draft-1',

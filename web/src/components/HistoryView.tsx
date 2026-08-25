@@ -21,7 +21,7 @@ import {
   X,
   ListChecks,
 } from 'lucide-react';
-import { Button, IconButton, Badge, Tooltip, Dialog, Dropdown } from './ui';
+import { Button, Checkbox, IconButton, Badge, Tooltip, Dialog, Dropdown } from './ui';
 import { useHistoryManagement } from '../hooks';
 import {
   EvidenceCleanupResult,
@@ -591,8 +591,7 @@ export default function HistoryView({
               <tr>
                 {managementOpen && (
                   <th className="history-select-column">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label="全選本頁紀錄"
                       checked={
                         paginatedHistory.length > 0 &&
@@ -600,8 +599,8 @@ export default function HistoryView({
                           selectedRecordIds.includes(getHistoryRecordId(record, startIndex + index))
                         )
                       }
-                      onChange={(event) => {
-                        if (event.target.checked) handleSelectCurrentPage();
+                      onChange={(checked) => {
+                        if (checked) handleSelectCurrentPage();
                         else {
                           const pageIds = paginatedHistory.map((record, index) =>
                             getHistoryRecordId(record, startIndex + index)
@@ -636,8 +635,7 @@ export default function HistoryView({
                   <tr key={key}>
                     {managementOpen && (
                       <td className="history-select-column">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           aria-label={`選取紀錄 ${row.suspect_id || recordId}`}
                           checked={selectedRecordIds.includes(recordId)}
                           onChange={() => toggleSelected(recordId)}
@@ -919,38 +917,34 @@ export default function HistoryView({
           {actionAvailableTargets.length > 0 && (
             <div className="history-evidence-targets" role="group" aria-label="證據清理目標">
               {actionAvailableTargets.includes('local') && (
-                <label className="history-evidence-target">
-                  <input
-                    type="checkbox"
-                    checked={actionTargets.includes('local')}
-                    onChange={() =>
-                      setActionTargets((current) =>
-                        current.includes('local')
-                          ? current.filter((target) => target !== 'local')
-                          : [...current, 'local']
-                      )
-                    }
-                    disabled={isRunningAction}
-                  />
-                  <span>一併刪除本機證據</span>
-                </label>
+                <Checkbox
+                  className="history-evidence-target"
+                  checked={actionTargets.includes('local')}
+                  onChange={() =>
+                    setActionTargets((current) =>
+                      current.includes('local')
+                        ? current.filter((target) => target !== 'local')
+                        : [...current, 'local']
+                    )
+                  }
+                  disabled={isRunningAction}
+                  label="一併刪除本機證據"
+                />
               )}
               {actionAvailableTargets.includes('google_drive') && (
-                <label className="history-evidence-target">
-                  <input
-                    type="checkbox"
-                    checked={actionTargets.includes('google_drive')}
-                    onChange={() =>
-                      setActionTargets((current) =>
-                        current.includes('google_drive')
-                          ? current.filter((target) => target !== 'google_drive')
-                          : [...current, 'google_drive']
-                      )
-                    }
-                    disabled={isRunningAction}
-                  />
-                  <span>將 Google Drive 檔案移至垃圾桶</span>
-                </label>
+                <Checkbox
+                  className="history-evidence-target"
+                  checked={actionTargets.includes('google_drive')}
+                  onChange={() =>
+                    setActionTargets((current) =>
+                      current.includes('google_drive')
+                        ? current.filter((target) => target !== 'google_drive')
+                        : [...current, 'google_drive']
+                    )
+                  }
+                  disabled={isRunningAction}
+                  label="將 Google Drive 檔案移至垃圾桶"
+                />
               )}
             </div>
           )}

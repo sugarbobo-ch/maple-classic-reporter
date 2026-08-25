@@ -1,5 +1,5 @@
 import { AlertTriangle, ExternalLink, LogOut, Trash2 } from 'lucide-react';
-import { Button, Dialog } from '../ui';
+import { Button, Checkbox, Dialog } from '../ui';
 import { DisconnectDriveResponse } from '../../types';
 
 interface DisconnectGoogleModalProps {
@@ -129,15 +129,14 @@ export function ResetUserDataModal({
           <li>所有本機錄影和截圖</li>
         </ul>
         <p>已上傳的 Google Drive 檔案、Discord 訊息及程式本身不會被刪除。</p>
-        <label className="reset-data-acknowledgement">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(event) => onAcknowledgedChange(event.target.checked)}
-            disabled={isResetting}
-          />
-          <span>我了解錄影、截圖與歷史紀錄將永久刪除</span>
-        </label>
+        <Checkbox
+          className="reset-data-acknowledgement"
+          variant="danger"
+          checked={acknowledged}
+          onChange={onAcknowledgedChange}
+          disabled={isResetting}
+          label="我了解錄影、截圖與歷史紀錄將永久刪除"
+        />
         {errorMessage && (
           <div className="reset-data-error" role="alert">
             <AlertTriangle size={18} aria-hidden="true" />

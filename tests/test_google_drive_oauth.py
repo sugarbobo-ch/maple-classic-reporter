@@ -41,6 +41,12 @@ class TestGoogleDriveOAuth(unittest.TestCase):
         self.assertIn("localhost", body)
         self.assertIn('<svg class="result-icon"', body)
         self.assertIn('stroke-linejoin="round"', body)
+        self.assertIn('--color-muted: #70675f', body)
+        self.assertIn('--color-muted: #9b9086', body)
+        self.assertIn('@media (max-width: 360px)', body)
+        self.assertIn('grid-template-columns: minmax(0, 1fr)', body)
+        self.assertIn('word-break: keep-all', body)
+        self.assertIn('.brand span { text-wrap: balance; }', body)
         self.assertNotIn("✓", body)
 
     def test_oauth_failure_page_is_chinese_and_recommends_retry(self):
@@ -114,6 +120,24 @@ class TestGoogleDriveOAuth(unittest.TestCase):
         fake_flow.fetch_token.assert_called_once_with(
             authorization_response="https://localhost:65110/?code=test&state=state"
         )
+        fake_server.server_close.assert_called_once_with()
+
+    def test_local_oauth_server_stops_waiting_after_five_minutes(self):
+        fake_flow = MagicMock()
+        fake_flow.authorization_url.return_value = ("https://accounts.example/auth", "state")
+        fake_server = MagicMock()
+        fake_server.server_port = 65110
+
+        with patch.object(
+            drive_service.wsgiref.simple_server,
+            "make_server",
+            return_value=fake_server,
+        ), patch.object(drive_service.webbrowser, "open"):
+            with self.assertRaisesRegex(RuntimeError, "5 分鐘"):
+                drive_service.run_local_oauth_server(fake_flow)
+
+        self.assertEqual(fake_server.timeout, 5 * 60)
+        fake_server.handle_request.assert_called_once_with()
         fake_server.server_close.assert_called_once_with()
 
     def test_scope_is_limited_to_drive_file(self):
@@ -214,6 +238,26 @@ class TestGoogleDriveOAuth(unittest.TestCase):
             self.assertFalse(
                 (token_path.parent / drive_service.BUNDLED_OAUTH_CONFIG_FILENAME).exists()
             )
+
+    def test_authentication_timeout_returns_retryable_message(self):
+        fake_flow = MagicMock()
+        with patch.object(
+            drive_service.InstalledAppFlow,
+            "from_client_config",
+            return_value=fake_flow,
+        ), patch.object(
+            drive_service,
+            "run_local_oauth_server",
+            side_effect=drive_service.OAuthLoginTimeoutError,
+        ):
+            manager = drive_service.GoogleDriveManager()
+            ok, message = manager.authenticate_interactive({"installed": {}})
+
+        self.assertFalse(ok)
+        self.assertEqual(
+            message,
+            "Google 帳號登入已逾時（5 分鐘未完成），請重新登入。",
+        )
 
     def test_disconnect_revokes_refresh_token_and_clears_local_credentials(self):
         with tempfile.TemporaryDirectory() as temp_dir:

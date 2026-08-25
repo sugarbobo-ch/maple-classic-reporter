@@ -3,11 +3,15 @@ import { Button } from './ui';
 
 export interface AlertBannerProps {
   message?: string;
+  actionLabel?: string;
+  actionLoading?: boolean;
   onStartSettings: () => void;
 }
 
 export default function AlertBanner({
   message = '尚未設定檢舉證據上傳目的地',
+  actionLabel = '開始設定',
+  actionLoading = false,
   onStartSettings,
 }: AlertBannerProps) {
   return (
@@ -20,10 +24,11 @@ export default function AlertBanner({
         variant="danger"
         size="sm"
         onClick={onStartSettings}
+        loading={actionLoading}
         icon={ArrowRight}
         iconPosition="right"
       >
-        開始設定
+        {actionLabel}
       </Button>
     </div>
   );

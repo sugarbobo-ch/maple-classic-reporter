@@ -57,77 +57,187 @@ OAUTH_RESULT_HTML = """<!doctype html>
   <style>
     :root {
       color-scheme: light dark;
-      font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
-      background: #f3f6fb;
-      color: #172033;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      --color-primary: #a95517;
+      --color-primary-subtle: #f8eee3;
+      --color-bg: #faf8f5;
+      --color-surface: #f4efea;
+      --color-surface-card: #ffffff;
+      --color-text: #292524;
+      --color-heading: #633719;
+      --color-secondary: #665e57;
+      --color-muted: #70675f;
+      --color-border: #d8cec1;
+      --color-success: #4b7a24;
+      --color-success-bg: #edf6e8;
+      --color-danger: #a32820;
+      --color-danger-bg: #fbeceb;
+      background: var(--color-bg);
+      color: var(--color-text);
     }
     * { box-sizing: border-box; }
+    ::selection {
+      background: var(--color-primary-subtle);
+      color: var(--color-heading);
+    }
     body {
       min-height: 100vh;
+      min-height: 100dvh;
       margin: 0;
       display: grid;
       place-items: center;
-      padding: 24px;
-      background: radial-gradient(circle at top, #e8f1ff 0, #f3f6fb 48%);
+      padding: clamp(20px, 5vw, 56px);
+      background: var(--color-bg);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
     }
     main {
-      width: min(100%, 500px);
-      padding: 40px;
-      border-radius: 20px;
-      background: #ffffff;
-      box-shadow: 0 0 0 1px rgb(23 32 51 / 8%), 0 18px 48px rgb(23 32 51 / 12%);
-      text-align: center;
+      width: min(100%, 560px);
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      background: var(--color-surface-card);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 60px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-heading);
+      font-size: 0.875rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      color: var(--color-primary);
+    }
+    .brand span { text-wrap: balance; }
+    .result {
+      display: grid;
+      grid-template-columns: 56px minmax(0, 1fr);
+      gap: 18px;
+      padding: clamp(28px, 7vw, 42px) clamp(22px, 7vw, 40px) 30px;
     }
     .result-icon {
-      width: 72px;
-      height: 72px;
-      margin: 0 auto 24px;
+      width: 56px;
+      height: 56px;
       display: block;
     }
-    h1 { margin: 0 0 12px; font-size: clamp(1.6rem, 6vw, 2rem); line-height: 1.25; }
-    p { margin: 0; color: #526078; line-height: 1.7; }
-    .status {
-      margin: 24px 0 16px;
-      padding: 12px 16px;
-      border-radius: 12px;
-      font-weight: 700;
+    .result-copy { min-width: 0; }
+    h1 {
+      max-width: 18ch;
+      margin: 1px 0 10px;
+      color: var(--color-heading);
+      font-size: clamp(1.45rem, 5vw, 1.85rem);
+      font-weight: 750;
+      line-height: 1.25;
+      letter-spacing: -0.025em;
+      text-wrap: balance;
     }
-    .success .status { background: #e7f6ec; color: #0d652d; }
-    .failure .status { background: #fde8e7; color: #a3261d; }
-    .note { font-size: 0.875rem; }
-    @media (prefers-color-scheme: dark) {
-      :root { background: #10131a; color: #f4f7ff; }
-      body { background: radial-gradient(circle at top, #17243a 0, #10131a 48%); }
-      main {
-        background: #191e29;
-        box-shadow: 0 0 0 1px rgb(255 255 255 / 10%), 0 18px 48px rgb(0 0 0 / 28%);
+    p {
+      max-width: 42ch;
+      margin: 0;
+      color: var(--color-secondary);
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+    .status {
+      margin: 18px 0 0;
+      font-size: 0.84rem;
+      font-weight: 650;
+      line-height: 1.5;
+    }
+    .success .status { color: var(--color-success); }
+    .failure .status { color: var(--color-danger); }
+    .note {
+      max-width: none;
+      padding: 15px clamp(22px, 7vw, 40px);
+      border-top: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-muted);
+      font-size: 0.78rem;
+      line-height: 1.55;
+    }
+    @media (max-width: 420px) {
+      body { padding: 12px; }
+      .brand { padding-inline: 16px; }
+      .result {
+        grid-template-columns: 44px minmax(0, 1fr);
+        gap: 14px;
+        padding: 24px 18px 26px;
       }
-      p { color: #b8c1d5; }
-      .success .status { background: #153d24; color: #8ce5a8; }
-      .failure .status { background: #49201f; color: #ffaaa3; }
+      .result-icon { width: 44px; height: 44px; }
+      h1 { margin-top: 0; }
+      .note { padding-inline: 18px; }
+    }
+    @media (max-width: 360px) {
+      .result {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+      }
+      h1 { word-break: keep-all; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-primary: #d69a5e;
+        --color-primary-subtle: rgb(214 154 94 / 20%);
+        --color-bg: #1c1917;
+        --color-surface: #26221f;
+        --color-surface-card: #201c19;
+        --color-text: #eae4dc;
+        --color-heading: #e2cbb0;
+        --color-secondary: #b1a59a;
+        --color-muted: #9b9086;
+        --color-border: #3d352e;
+        --color-success: #86c85a;
+        --color-success-bg: rgb(75 122 36 / 24%);
+        --color-danger: #f08078;
+        --color-danger-bg: rgb(163 40 32 / 24%);
+      }
+    }
+    @media (forced-colors: active) {
+      main, .brand, .note { border-color: CanvasText; }
     }
   </style>
 </head>
 <body>
   <main class="__RESULT_CLASS__" aria-labelledby="page-title">
-    __RESULT_ICON__
-    <h1 id="page-title">__HEADING__</h1>
-    <p>__DESCRIPTION__</p>
-    <div class="status" role="status">__STATUS__</div>
+    <header class="brand">
+      <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true">
+        <rect x="2" y="6" width="24" height="17" rx="4" fill="currentColor" opacity=".16"/>
+        <path d="M7 10.5h3l1.5-2h5l1.5 2h3v8H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <circle cx="14" cy="14.5" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      </svg>
+      <span>新楓之谷：經典版《自動外掛檢舉工具》</span>
+    </header>
+    <section class="result">
+      __RESULT_ICON__
+      <div class="result-copy">
+        <h1 id="page-title">__HEADING__</h1>
+        <p>__DESCRIPTION__</p>
+        <p class="status" role="status" aria-live="polite">__STATUS__</p>
+      </div>
+    </section>
     <p class="note">__NOTE__</p>
   </main>
 </body>
 </html>
 """
 
-SUCCESS_ICON = """<svg class="result-icon" viewBox="0 0 72 72" aria-hidden="true">
-  <circle cx="36" cy="36" r="34" fill="#1f8f4e"/>
-  <path d="M21 37.5 31.5 48 52 26" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+SUCCESS_ICON = """<svg class="result-icon" viewBox="0 0 56 56" aria-hidden="true">
+  <rect x="1" y="1" width="54" height="54" rx="12" fill="var(--color-success-bg)"/>
+  <path d="M17 28.5 24.5 36 39.5 20.5" fill="none" stroke="var(--color-success)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"""
 
-FAILURE_ICON = """<svg class="result-icon" viewBox="0 0 72 72" aria-hidden="true">
-  <circle cx="36" cy="36" r="34" fill="#c43c35"/>
-  <path d="m25 25 22 22M47 25 25 47" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+FAILURE_ICON = """<svg class="result-icon" viewBox="0 0 56 56" aria-hidden="true">
+  <rect x="1" y="1" width="54" height="54" rx="12" fill="var(--color-danger-bg)"/>
+  <path d="m19 19 18 18M37 19 19 37" fill="none" stroke="var(--color-danger)" stroke-width="4" stroke-linecap="round"/>
 </svg>"""
 
 
@@ -163,6 +273,11 @@ def make_oauth_result_html(*, success: bool) -> str:
 
 OAUTH_SUCCESS_HTML = make_oauth_result_html(success=True)
 OAUTH_FAILURE_HTML = make_oauth_result_html(success=False)
+OAUTH_LOGIN_TIMEOUT_SECONDS = 5 * 60
+
+
+class OAuthLoginTimeoutError(RuntimeError):
+    """Raised when the browser does not complete OAuth within the wait limit."""
 
 
 class OAuthSuccessPage:
@@ -222,13 +337,14 @@ def run_local_oauth_server(
         callback_page,
         server_class=OAuthCallbackServer,
     )
+    local_server.timeout = OAUTH_LOGIN_TIMEOUT_SECONDS
     try:
         flow.redirect_uri = f"http://{host}:{local_server.server_port}/"
         authorization_url, _ = flow.authorization_url()
         webbrowser.open(authorization_url, new=1, autoraise=True)
         local_server.handle_request()
         if callback_page.last_request_uri is None:
-            raise RuntimeError("等待 Google 授權回應時發生逾時。")
+            raise OAuthLoginTimeoutError("5 分鐘內未完成 Google 帳號登入。")
         if callback_page.error is not None:
             raise callback_page.error
         return flow.credentials
@@ -516,6 +632,8 @@ class GoogleDriveManager:
             self._delete_legacy_token()
             self.service = build("drive", "v3", credentials=self.creds)
             return True, "Google 帳號已登入，之後可直接使用 Google Drive。"
+        except OAuthLoginTimeoutError:
+            return False, "Google 帳號登入已逾時（5 分鐘未完成），請重新登入。"
         except OAuthConfigError as error:
             return False, str(error)
         except Exception as error:
