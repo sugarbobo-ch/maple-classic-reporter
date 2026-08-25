@@ -22,6 +22,8 @@ from maple_reporter.sanctions.models import (
     DateCacheEntry,
     SanctionCache,
     SanctionSyncSummary,
+    is_submitted_record,
+    normalize_submission_state,
 )
 from maple_reporter.utils.config import (
     CONFIG_DIR,
@@ -199,7 +201,7 @@ class SanctionRepository:
             record = self._normalize_history_record(record)
             evaluated = (
                 self._evaluate_single_record(record, cache)
-                if record["submission_state"] == "submitted"
+                if is_submitted_record(record)
                 else record
             )
             records.insert(0, evaluated)
@@ -220,7 +222,7 @@ class SanctionRepository:
                 if item.get("record_id") != record_id:
                     continue
                 updated = self._normalize_history_record({**item, **updates, "record_id": record_id})
-                if evaluate and updated["submission_state"] == "submitted":
+                if evaluate and is_submitted_record(updated):
                     updated = self._evaluate_single_record(updated, self.load_cache())
                 records[index] = updated
                 self.save_history(records)
@@ -322,7 +324,7 @@ class SanctionRepository:
             updated_records: list[dict[str, Any]] = []
 
             for record in records:
-                if record.get("submission_state", "submitted") != "submitted":
+                if not is_submitted_record(record):
                     updated_records.append(record)
                     continue
                 checked_count += 1
@@ -393,9 +395,8 @@ class SanctionRepository:
     @staticmethod
     def _normalize_history_record(record: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(record)
-        raw_state = normalized.get("submission_state")
-        normalized["submission_state"] = (
-            raw_state if raw_state in {"draft", "awaiting_manual", "submitted"} else "submitted"
+        normalized["submission_state"] = normalize_submission_state(
+            normalized.get("submission_state")
         )
         normalized["media_path"] = str(normalized.get("media_path") or "")
         normalized["media_type"] = str(normalized.get("media_type") or "")
@@ -417,7 +418,7 @@ class SanctionRepository:
         cache: SanctionCache,
     ) -> dict[str, Any]:
         """Evaluate a single history record against the cache."""
-        if record.get("submission_state", "submitted") != "submitted":
+        if not is_submitted_record(record):
             return record
         suspect_id = str(record.get("suspect_id") or record.get("id") or "").strip()
         raw_time = str(record.get("timestamp") or record.get("time") or "")

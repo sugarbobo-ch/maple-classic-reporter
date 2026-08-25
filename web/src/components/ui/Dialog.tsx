@@ -2,6 +2,7 @@ import { X, LucideIcon } from 'lucide-react';
 import { useId } from 'react';
 import Overlay from './Overlay';
 import IconButton from './IconButton';
+import { getReporterBridge } from '../../bridge/reporterBridge';
 
 export interface DialogProps {
   isOpen?: boolean;
@@ -33,7 +34,7 @@ export default function Dialog({
       e.button === 0 &&
       !(e.target as HTMLElement).closest('button, input, select, a, [role="button"]')
     ) {
-      window.pywebview?.api?.drag_window?.('proportional');
+      void getReporterBridge()?.window.drag('proportional');
     }
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { IconButton } from './ui';
 import { useDisclosure, useToast } from '../hooks';
@@ -32,6 +32,7 @@ import {
   UpdateStatus,
 } from '../types';
 import { isValidDiscordWebhookUrl } from '../utils';
+import { getReporterBridge } from '../bridge/reporterBridge';
 import { RECORDING_PRESETS, detectPresetKey, PresetKey } from '../constants/presets';
 
 export interface SettingsViewProps {
@@ -221,7 +222,7 @@ export default function SettingsView({
     'save_replay' | 'record_video' | null
   >(null);
 
-  const handleHotkeyChange = (
+  const handleHotkeyChange = useCallback((
     key: 'save_replay_hotkey' | 'record_video_hotkey',
     newShortcut: string
   ) => {
@@ -239,7 +240,7 @@ export default function SettingsView({
     onUpdateConfig(key, newShortcut);
     toast.success(`快捷鍵已設定為：${newShortcut}`);
     return true;
-  };
+  }, [config, onUpdateConfig, toast]);
 
   useEffect(() => {
     if (!listeningForHotkey) return;
@@ -304,7 +305,7 @@ export default function SettingsView({
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [listeningForHotkey, config, onUpdateConfig, toast]);
+  }, [listeningForHotkey, handleHotkeyChange, toast]);
 
   useEffect(() => {
     if (config.violation_templates && config.violation_templates.length > 0) {
@@ -456,16 +457,20 @@ export default function SettingsView({
       return;
     }
     setTestingDiscord(true);
-    if (window.pywebview && window.pywebview.api) {
+    const bridge = getReporterBridge();
+    if (bridge) {
       try {
-        const ok = await window.pywebview.api.test_discord_webhook(discordWebhook);
-        if (ok) {
+        const result = await bridge.integrations.testDiscordWebhook(discordWebhook);
+        if (result.success) {
           toast.success('Discord 頻道連結測試成功！');
         } else {
-          toast.error('Discord 頻道連結測試失敗', '請確認連結網址是否正確有效');
+          toast.error(
+            'Discord 頻道連結測試失敗',
+            result.message || '請確認連結網址是否正確有效'
+          );
         }
-      } catch (e: any) {
-        toast.error('發送失敗', e?.message || String(e));
+      } catch (error: unknown) {
+        toast.error('發送失敗', error instanceof Error ? error.message : String(error));
       }
     } else {
       try {
@@ -488,16 +493,17 @@ export default function SettingsView({
         } else {
           toast.error('連線測試失敗', `狀態碼: ${res.status}`);
         }
-      } catch (e: any) {
-        toast.error('連線發送失敗', e?.message || String(e));
+      } catch (error: unknown) {
+        toast.error('連線發送失敗', error instanceof Error ? error.message : String(error));
       }
     }
     setTestingDiscord(false);
   };
 
   const handleOpenAppData = () => {
-    if (window.pywebview && window.pywebview.api) {
-      window.pywebview.api.open_app_data_folder();
+    const bridge = getReporterBridge();
+    if (bridge) {
+      bridge.window.openAppDataFolder();
     } else {
       toast.info(
         '開啟本機資料夾 (%LOCALAPPDATA%\\MapleClassicReporter)',
@@ -508,12 +514,13 @@ export default function SettingsView({
 
   const handleExecuteClearRecordings = async () => {
     setClearingProgress(true);
-    if (window.pywebview && window.pywebview.api) {
+    const bridge = getReporterBridge();
+    if (bridge) {
       try {
-        const res = await window.pywebview.api.clear_all_recordings();
+        const res = await bridge.media.clearRecordings();
         setClearResult(res);
-      } catch (e: any) {
-        toast.error('清理暫存失敗', e?.message || String(e));
+      } catch (error: unknown) {
+        toast.error('清理暫存失敗', error instanceof Error ? error.message : String(error));
       }
     } else {
       setClearResult({ success: true, count: 3, size_str: '24.8 MB' });
@@ -527,8 +534,9 @@ export default function SettingsView({
   };
 
   const handleOpenExternalUrl = (url: string) => {
-    if (window.pywebview && window.pywebview.api) {
-      window.pywebview.api.open_external_url(url);
+    const bridge = getReporterBridge();
+    if (bridge) {
+      void bridge.window.openExternalUrl(url);
     } else {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
@@ -590,8 +598,9 @@ export default function SettingsView({
   };
 
   const handleOpenLogFile = async () => {
-    if (window.pywebview?.api?.open_log_file) {
-      const ok = await window.pywebview.api.open_log_file();
+    const bridge = getReporterBridge();
+    if (bridge) {
+      const ok = await bridge.window.openLogFile();
       if (!ok) {
         toast.info('日誌檔案已建立', '尚未有任何日誌內容。');
       }
@@ -601,10 +610,9 @@ export default function SettingsView({
   };
 
   const handleOpenLogFolder = () => {
-    if (window.pywebview?.api?.open_log_folder) {
-      window.pywebview.api.open_log_folder();
-    } else if (window.pywebview?.api?.open_app_data_folder) {
-      window.pywebview.api.open_app_data_folder();
+    const bridge = getReporterBridge();
+    if (bridge) {
+      bridge.window.openLogFolder();
     } else {
       toast.info('開啟日誌資料夾（測試）');
     }

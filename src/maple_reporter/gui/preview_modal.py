@@ -8,6 +8,17 @@ from maple_reporter.discord.webhook_service import upload_evidence_to_discord
 from maple_reporter.gui.widgets import WheelSafeComboBox
 
 
+def start_ocr_when_ready(dialog, ocr_thread) -> bool:
+    """Start OCR only after the preview dialog has built its editable fields."""
+
+    if getattr(dialog, "map_input", None) is None:
+        return False
+    if ocr_thread and not ocr_thread.isRunning():
+        ocr_thread.start()
+        return True
+    return False
+
+
 class EvidenceUploadThread(QThread):
     finished_signal = Signal(bool, str)
 
@@ -224,8 +235,7 @@ class ReportPreviewModal(QDialog):
         # Start OCR only after every field, including map_input, exists. A
         # fast OCR result can otherwise arrive while __init__ is still
         # constructing the dialog and be lost before it can be displayed.
-        if self.ocr_thread and not self.ocr_thread.isRunning():
-            self.ocr_thread.start()
+        start_ocr_when_ready(self, self.ocr_thread)
 
     def on_ocr_status_changed(self, status_text: str):
         self.lbl_ocr_status.setText(status_text)

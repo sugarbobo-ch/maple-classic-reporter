@@ -55,7 +55,6 @@ class IntegrationBridgeMixin:
         return self.evidence_lifecycle.cleanup_records(
             record_ids,
             targets,
-            intent="manual_cleanup",
         )
 
     def delete_history_entries(
@@ -67,7 +66,6 @@ class IntegrationBridgeMixin:
         return self.evidence_lifecycle.delete_records(
             record_ids,
             cleanup_targets or [],
-            intent="record_deletion",
         )
 
     def rebuild_sanction_cache_for_development(self) -> bool:

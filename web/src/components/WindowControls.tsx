@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Minus, Square, X } from 'lucide-react';
 import { usePyWebViewEvents } from '../hooks';
+import { getReporterBridge } from '../bridge/reporterBridge';
 
 function RestoreWindowIcon() {
   return (
@@ -31,7 +32,7 @@ export default function WindowControls() {
 
   const handleMinimizeWindow = async () => {
     try {
-      await window.pywebview?.api?.minimize_window?.();
+      await getReporterBridge()?.window.minimize();
     } catch (error) {
       console.warn('Failed to minimize window:', error);
     }
@@ -39,7 +40,7 @@ export default function WindowControls() {
 
   const handleToggleWindowMaximized = async () => {
     try {
-      const maximized = await window.pywebview?.api?.toggle_window_maximized?.();
+      const maximized = await getReporterBridge()?.window.toggleMaximized();
       if (typeof maximized === 'boolean') setIsWindowMaximized(maximized);
     } catch (error) {
       console.warn('Failed to toggle window state:', error);
@@ -48,7 +49,7 @@ export default function WindowControls() {
 
   const handleCloseWindow = async () => {
     try {
-      await window.pywebview?.api?.close_window?.();
+      await getReporterBridge()?.window.close();
     } catch (error) {
       console.warn('Failed to close window:', error);
     }

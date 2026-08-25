@@ -14,6 +14,7 @@ _DRIVE_FILE_PATTERNS = (
     re.compile(r"/file/d/([A-Za-z0-9_-]+)"),
     re.compile(r"[?&]id=([A-Za-z0-9_-]+)"),
 )
+_VALID_CLEANUP_TARGETS = frozenset({'local', 'google_drive'})
 
 
 def parse_drive_file_id(url: str | None) -> str:
@@ -42,6 +43,30 @@ class EvidenceLifecycleManager:
     def __init__(self, repository: Any, drive_manager: Any) -> None:
         self.repository = repository
         self.drive_manager = drive_manager
+
+    @staticmethod
+    def _normalize_ids(values: Iterable[object]) -> list[str]:
+        return list(
+            dict.fromkeys(
+                normalized
+                for value in values
+                if (normalized := str(value or '').strip())
+            )
+        )
+
+    @staticmethod
+    def _normalize_targets(values: Iterable[object]) -> set[str]:
+        return {
+            normalized
+            for value in values
+            if (normalized := str(value or '').strip())
+        }
+
+    def _load_records_by_id(self) -> dict[str, Mapping[str, Any]]:
+        return {
+            str(item.get('record_id', '')): item
+            for item in self.repository.load_history()
+        }
 
     def enrich_record(self, record: Mapping[str, Any]) -> dict[str, Any]:
         enriched = dict(record)
@@ -88,7 +113,7 @@ class EvidenceLifecycleManager:
     def cleanup_record(self, record: Mapping[str, Any], targets: Iterable[str]) -> dict[str, Any]:
         """Clean one record in remote-first order and return an updated record/result."""
 
-        target_set = {str(target).strip() for target in targets if str(target).strip()}
+        target_set = self._normalize_targets(targets)
         current = self.enrich_record(record)
         results: dict[str, dict[str, Any]] = {}
 
@@ -114,24 +139,15 @@ class EvidenceLifecycleManager:
         self,
         record_ids: Iterable[str],
         targets: Iterable[str],
-        *,
-        intent: str = "manual_cleanup",
     ) -> dict[str, Any]:
         """Clean selected records while retaining their history entries."""
 
-        del intent  # The lifecycle seam keeps the trigger explicit for future policies.
-        ids = list(
-            dict.fromkeys(
-                str(record_id or "").strip()
-                for record_id in record_ids
-                if str(record_id or "").strip()
-            )
-        )
-        target_set = {str(target or "").strip() for target in targets if str(target or "").strip()}
-        if not ids or not target_set or not target_set.issubset({self.TARGET_LOCAL, self.TARGET_GOOGLE_DRIVE}):
+        ids = self._normalize_ids(record_ids)
+        target_set = self._normalize_targets(targets)
+        if not ids or not target_set or not target_set.issubset(_VALID_CLEANUP_TARGETS):
             return {"success": False, "message": "請選擇有效的紀錄與清理目標。", "results": []}
 
-        records = {str(item.get("record_id", "")): item for item in self.repository.load_history()}
+        records = self._load_records_by_id()
         results: list[dict[str, Any]] = []
         for record_id in ids:
             record = records.get(record_id)
@@ -156,28 +172,15 @@ class EvidenceLifecycleManager:
         self,
         record_ids: Iterable[str],
         cleanup_targets: Iterable[str] = (),
-        *,
-        intent: str = "record_deletion",
     ) -> dict[str, Any]:
         """Clean selected targets, then hard-delete records only after success."""
 
-        del intent
-        ids = list(
-            dict.fromkeys(
-                str(record_id or "").strip()
-                for record_id in record_ids
-                if str(record_id or "").strip()
-            )
-        )
-        target_set = {
-            str(target or "").strip()
-            for target in cleanup_targets
-            if str(target or "").strip()
-        }
-        if not ids or not target_set.issubset({self.TARGET_LOCAL, self.TARGET_GOOGLE_DRIVE}):
+        ids = self._normalize_ids(record_ids)
+        target_set = self._normalize_targets(cleanup_targets)
+        if not ids or not target_set.issubset(_VALID_CLEANUP_TARGETS):
             return {"success": False, "message": "請選擇有效的紀錄。", "deleted_record_ids": [], "failed_record_ids": []}
 
-        records = {str(item.get("record_id", "")): item for item in self.repository.load_history()}
+        records = self._load_records_by_id()
         deleted_ids: list[str] = []
         failed: list[dict[str, Any]] = []
         for record_id in ids:

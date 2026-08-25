@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { getReporterBridge } from '../bridge/reporterBridge';
 
 export function useClipboard(timeout = 2000) {
   const [copied, setCopied] = useState(false);
@@ -9,8 +10,9 @@ export function useClipboard(timeout = 2000) {
       try {
         // Desktop builds write through the native bridge first so copying does
         // not depend on WebView clipboard permissions.
-        if (window.pywebview?.api?.set_clipboard_text) {
-          const copiedByNative = await window.pywebview.api.set_clipboard_text(text);
+        const bridge = getReporterBridge();
+        if (bridge) {
+          const copiedByNative = await bridge.config.setClipboardText(text);
           if (copiedByNative) {
             setCopied(true);
             setError(null);
@@ -40,8 +42,9 @@ export function useClipboard(timeout = 2000) {
     try {
       // Desktop builds read through the native bridge so WebView does not ask
       // for permission to inspect the browser clipboard.
-      if (window.pywebview?.api?.get_clipboard_text) {
-        const text = await window.pywebview.api.get_clipboard_text();
+      const bridge = getReporterBridge();
+      if (bridge) {
+        const text = await bridge.config.getClipboardText();
         setError(null);
         return text;
       }

@@ -49,6 +49,12 @@ from maple_reporter.platform.global_hotkeys import (
 )
 
 
+def local_evidence_picker_directory() -> str:
+    """Return the user-owned directory used as the local evidence picker start."""
+
+    return str(get_recordings_dir())
+
+
 LOGGER = logging.getLogger(__name__)
 
 VIDEO_TRIGGER_DEFAULT_STYLE = """
@@ -1542,7 +1548,7 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "選擇本地影片或圖片檔案進行辨識與檢舉",
-            str(get_recordings_dir()),
+            local_evidence_picker_directory(),
             "媒體檔案 (*.mp4 *.mkv *.avi *.mov *.png *.jpg *.jpeg);;所有檔案 (*.*)"
         )
         if not file_path or not os.path.exists(file_path):

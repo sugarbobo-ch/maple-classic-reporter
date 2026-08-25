@@ -7,3 +7,5 @@ export * from './useTheme';
 export * from './useToast';
 export * from './usePyWebViewEvents';
 export * from './useAppConfig';
+export * from './useHistoryManagement';
+export * from './useReportWorkflow';

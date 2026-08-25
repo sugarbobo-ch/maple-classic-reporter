@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePyWebViewEvents } from '../hooks';
+import { getReporterBridge } from '../bridge/reporterBridge';
 
 const HANDLES = [
   { dir: 'top', className: 'resize-handle-top' },
@@ -27,12 +28,12 @@ export default function WindowResizeHandles() {
   const handlePointerDown = (dir: string) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || !e.isPrimary) return;
 
-    const resizeWindow = window.pywebview?.api?.resize_window;
-    if (!resizeWindow) return;
+    const bridge = getReporterBridge();
+    if (!bridge) return;
 
     e.preventDefault();
     e.stopPropagation();
-    void resizeWindow(dir).catch((error: unknown) => {
+    void bridge.window.resize(dir).catch((error: unknown) => {
       console.debug('Native window resize failed:', error);
     });
   };

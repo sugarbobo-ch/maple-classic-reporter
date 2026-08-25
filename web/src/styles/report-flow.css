@@ -1,0 +1,131 @@
+/* Report mode and manual report helper */
+.report-mode-description {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.report-mode-selector .ui-radio,
+.settings-choice-list .ui-radio {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-card);
+}
+
+.report-mode-choice-list,
+.settings-choice-list-2.ui-radio-group.vertical {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-mode-choice-list .ui-radio,
+.settings-choice-list-2 .ui-radio {
+  min-width: 0;
+}
+
+.report-mode-selector .ui-radio.checked,
+.settings-choice-list .ui-radio.checked {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
+.onboarding-shell .ui-radio:focus-visible,
+.report-mode-selector .ui-radio:focus-visible,
+.settings-choice-list .ui-radio:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-bg),
+    0 0 0 4px var(--color-focus-ring);
+}
+
+.report-mode-selector .ui-radio-label,
+.settings-choice-list .ui-radio-label {
+  flex: 1;
+}
+
+.manual-report-assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.manual-report-intro h2 {
+  margin: 0 0 6px;
+  color: var(--color-text-heading);
+  font-size: 1.15rem;
+}
+
+.manual-report-intro p,
+.manual-report-confirm p {
+  margin: 0 0 14px;
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.manual-report-open-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.manual-report-fields {
+  border-top: 1px solid var(--color-border);
+}
+
+.manual-report-field {
+  padding: 13px 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.manual-report-field-order {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.manual-report-field-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.manual-report-field-content span {
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+}
+
+.manual-report-field-content strong {
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+}
+
+.manual-report-actions,
+.manual-report-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.manual-report-confirm {
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-warning-bg);
+}
+
+.manual-report-confirm p {
+  margin-bottom: 12px;
+}

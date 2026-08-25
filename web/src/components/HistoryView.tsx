@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ExternalLink,
@@ -23,7 +22,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { Button, IconButton, Badge, Tooltip, Dialog, Dropdown } from './ui';
-import { useClipboard, useToast } from '../hooks';
+import { useHistoryManagement } from '../hooks';
 import {
   EvidenceCleanupResult,
   EvidenceCleanupTarget,
@@ -31,6 +30,15 @@ import {
   HistoryRecord,
   SanctionSyncStatus,
 } from '../types';
+import {
+  getCleanupTargets,
+  getHistoryRecordId,
+  getSubmissionState,
+  isPendingRecord,
+  isSubmittedRecord,
+  SUBMISSION_AWAITING_MANUAL,
+  SUBMISSION_DRAFT,
+} from '../domain/history';
 
 export interface HistoryViewProps {
   history?: HistoryRecord[];
@@ -114,322 +122,69 @@ export default function HistoryView({
   ocrAutofillId = true,
   ocrAutofillMap = true,
 }: HistoryViewProps) {
-  const { copy } = useClipboard();
-  const { toast } = useToast();
-  const [copiedUrl, setCopiedUrl] = useState('');
-  const [isClearingHistory, setIsClearingHistory] = useState(false);
-  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
-  const [draftToContinue, setDraftToContinue] = useState<HistoryRecord | null>(null);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'pending' | 'submitted'>('all');
-  const [managementOpen, setManagementOpen] = useState(false);
-  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
-  const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
-  const [actionDialog, setActionDialog] = useState<{
-    kind: 'cleanup' | 'delete';
-    records: HistoryRecord[];
-  } | null>(null);
-  const [actionTargets, setActionTargets] = useState<EvidenceCleanupTarget[]>([]);
-  const [actionError, setActionError] = useState('');
-  const [isRunningAction, setIsRunningAction] = useState(false);
-  const [deleteFailureIds, setDeleteFailureIds] = useState<string[]>([]);
-  const actionErrorRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (actionError) actionErrorRef.current?.focus();
-  }, [actionError]);
-
-  const [isCompact, setIsCompact] = useState<boolean>(() => {
-    if (typeof compactLayout === 'boolean') return compactLayout;
-    try {
-      const saved = localStorage.getItem('maple_history_compact');
-      if (saved !== null) return saved === 'true';
-    } catch {
-      // Local storage can be unavailable; retain the provided layout default.
-    }
-    return false;
+  const {
+    copiedUrl,
+    isClearingHistory,
+    clearConfirmOpen,
+    draftToContinue,
+    historyFilter,
+    managementOpen,
+    selectedRecordIds,
+    openRowMenuId,
+    headerMenuOpen,
+    actionDialog,
+    actionTargets,
+    actionError,
+    isRunningAction,
+    deleteFailureIds,
+    actionErrorRef,
+    isCompact,
+    pageSize,
+    totalRecords,
+    totalPages,
+    safeCurrentPage,
+    startIndex,
+    endIndex,
+    paginatedHistory,
+    submittedHistory,
+    pendingHistory,
+    selectedRecords,
+    actionAvailableTargets,
+    actionPendingCount,
+    actionSubmittedCount,
+    setClearConfirmOpen,
+    setCurrentPage,
+    setDraftToContinue,
+    setHistoryFilter,
+    setManagementOpen,
+    setSelectedRecordIds,
+    setOpenRowMenuId,
+    setHeaderMenuOpen,
+    setActionTargets,
+    handleToggleCompact,
+    handlePageSizeChange,
+    openActionDialog,
+    closeActionDialog,
+    toggleSelected,
+    handleSelectCurrentPage,
+    handleActionSubmit,
+    handleDeleteFailuresOnly,
+    handleOpenClearConfirm,
+    handleConfirmClear,
+    handleCopyUrl,
+  } = useHistoryManagement({
+    history,
+    compactLayout,
+    onUpdateCompactLayout,
+    pageSize: propPageSize,
+    onUpdatePageSize,
+    onClearHistory,
+    onCleanupEvidence,
+    onDeleteHistoryEntries,
   });
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(() => {
-    if (typeof propPageSize === 'number' && propPageSize > 0) return propPageSize;
-    try {
-      const saved = localStorage.getItem('maple_history_page_size');
-      if (saved) {
-        const num = Number(saved);
-        if ([10, 15, 30, 50, 100].includes(num)) return num;
-      }
-    } catch {
-      // Local storage can be unavailable; retain the provided page size.
-    }
-    return 15;
-  });
-
-  const handleToggleCompact = () => {
-    const next = !isCompact;
-    setIsCompact(next);
-    try {
-      localStorage.setItem('maple_history_compact', String(next));
-    } catch {
-      // Persisting this preference is optional.
-    }
-    onUpdateCompactLayout?.(next);
-  };
-
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setCurrentPage(1);
-    try {
-      localStorage.setItem('maple_history_page_size', String(newSize));
-    } catch {
-      // Persisting this preference is optional.
-    }
-    onUpdatePageSize?.(newSize);
-  };
-
-  const filteredHistory = useMemo(
-    () =>
-      history.filter((record) => {
-        if (historyFilter === 'pending') {
-          return record.submission_state === 'draft' || record.submission_state === 'awaiting_manual';
-        }
-        if (historyFilter === 'submitted') {
-          return !record.submission_state || record.submission_state === 'submitted';
-        }
-        return true;
-      }),
-    [history, historyFilter]
-  );
-  const totalRecords = filteredHistory.length;
-  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
-  const startIndex = (safeCurrentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalRecords);
-  const paginatedHistory = filteredHistory.slice(startIndex, endIndex);
-  const submittedHistory = history.filter(
-    (record) => !record.submission_state || record.submission_state === 'submitted'
-  );
-  const pendingHistory = history.filter(
-    (record) => record.submission_state === 'draft' || record.submission_state === 'awaiting_manual'
-  );
-
-  useEffect(() => {
-    setCurrentPage(1);
-    setSelectedRecordIds([]);
-    setOpenRowMenuId(null);
-  }, [historyFilter]);
-
-  useEffect(() => {
-    if (historyFilter === 'pending' && pendingHistory.length === 0) {
-      setHistoryFilter('all');
-    }
-  }, [historyFilter, pendingHistory.length]);
-
-  useEffect(() => {
-    setSelectedRecordIds((current) =>
-      current.filter((recordId) => filteredHistory.some((record) => record.record_id === recordId))
-    );
-  }, [filteredHistory]);
-
-  useEffect(() => {
-    if (!openRowMenuId && !headerMenuOpen) return;
-    const handleOutsidePointer = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest('.history-row-menu-wrap, .history-header-more-wrap')) return;
-      setOpenRowMenuId(null);
-      setHeaderMenuOpen(false);
-    };
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpenRowMenuId(null);
-        setHeaderMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsidePointer);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleOutsidePointer);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [headerMenuOpen, openRowMenuId]);
-
-  const getRecordId = (record: HistoryRecord, index: number) =>
-    record.record_id || `history-${record.timestamp || record.time || 'item'}-${index}`;
-
-  const getCleanupTargets = (record: HistoryRecord): EvidenceCleanupTarget[] => {
-    const targets: EvidenceCleanupTarget[] = [];
-    if (record.media_cleanup_eligible) targets.push('local');
-    if (
-      record.evidence_provider === 'gdrive' &&
-      record.remote_evidence_state !== 'trashed' &&
-      Boolean(record.remote_evidence_id)
-    ) {
-      targets.push('google_drive');
-    }
-    return targets;
-  };
-
-  const openActionDialog = (kind: 'cleanup' | 'delete', records: HistoryRecord[]) => {
-    setActionDialog({ kind, records });
-    setActionTargets([]);
-    setActionError('');
-    setDeleteFailureIds([]);
-    setOpenRowMenuId(null);
-    setHeaderMenuOpen(false);
-  };
-
-  const closeActionDialog = () => {
-    setActionDialog(null);
-    setActionTargets([]);
-    setActionError('');
-    setDeleteFailureIds([]);
-  };
-
-  const toggleSelected = (recordId: string) => {
-    setSelectedRecordIds((current) =>
-      current.includes(recordId)
-        ? current.filter((id) => id !== recordId)
-        : [...current, recordId]
-    );
-  };
-
-  const selectedRecords = filteredHistory.filter((record, index) =>
-    selectedRecordIds.includes(getRecordId(record, index))
-  );
-
-  const actionAvailableTargets = actionDialog
-    ? Array.from(new Set(actionDialog.records.flatMap((record) => getCleanupTargets(record))))
-    : [];
-  const actionPendingCount = actionDialog
-    ? actionDialog.records.filter(
-        (record) => record.submission_state === 'draft' || record.submission_state === 'awaiting_manual'
-      ).length
-    : 0;
-  const actionSubmittedCount = actionDialog
-    ? actionDialog.records.filter(
-        (record) => !record.submission_state || record.submission_state === 'submitted'
-      ).length
-    : 0;
-
-  const handleSelectCurrentPage = () => {
-    const pageIds = paginatedHistory.map((record, index) => getRecordId(record, startIndex + index));
-    setSelectedRecordIds((current) => Array.from(new Set([...current, ...pageIds])));
-  };
-
-  const handleActionSubmit = async () => {
-    if (!actionDialog || isRunningAction) return;
-    const recordIds = (deleteFailureIds.length && actionDialog.kind === 'delete'
-      ? deleteFailureIds
-      : actionDialog.records.map((record, index) => getRecordId(record, index)))
-      .filter((recordId) => !recordId.startsWith('history-'));
-    if (!recordIds.length) {
-      setActionError('找不到可操作的紀錄 ID。');
-      return;
-    }
-    if (actionDialog.kind === 'cleanup' && !actionTargets.length) {
-      setActionError('請至少選擇一個清理目標。');
-      return;
-    }
-    if (!onCleanupEvidence && actionDialog.kind === 'cleanup') {
-      setActionError('目前無法清理證據，請使用桌面版程式操作。');
-      return;
-    }
-    if (!onDeleteHistoryEntries && actionDialog.kind === 'delete') {
-      setActionError('目前無法刪除紀錄，請使用桌面版程式操作。');
-      return;
-    }
-
-    setIsRunningAction(true);
-    setActionError('');
-    try {
-      if (actionDialog.kind === 'cleanup') {
-        const result = await onCleanupEvidence?.(recordIds, actionTargets);
-        if (!result?.success) {
-          setActionError(
-            result?.message ||
-              result?.results?.find((item) => !item.success)?.message ||
-              '清理證據失敗，請確認權限後重試。'
-          );
-          return;
-        }
-        toast.success('證據清理完成');
-        closeActionDialog();
-        return;
-      }
-
-      const result = await onDeleteHistoryEntries?.(recordIds, actionTargets);
-      if (!result?.success) {
-        const failedIds = result?.failed_record_ids || [];
-        setDeleteFailureIds(failedIds);
-        setActionError(
-          result?.failed?.[0]?.message || result?.message || '部分紀錄無法刪除，請重試或只刪除紀錄。'
-        );
-        return;
-      }
-      toast.success(`已刪除 ${result.deleted_record_ids?.length || recordIds.length} 筆紀錄`);
-      setSelectedRecordIds([]);
-      closeActionDialog();
-    } finally {
-      setIsRunningAction(false);
-    }
-  };
-
-  const handleDeleteFailuresOnly = async () => {
-    if (!deleteFailureIds.length || !onDeleteHistoryEntries || isRunningAction) return;
-    setIsRunningAction(true);
-    setActionError('');
-    try {
-      const result = await onDeleteHistoryEntries(deleteFailureIds, []);
-      if (!result.success) {
-        setActionError(result.failed?.[0]?.message || result.message || '仍有紀錄無法刪除。');
-        return;
-      }
-      toast.success(`已刪除 ${result.deleted_record_ids?.length || deleteFailureIds.length} 筆紀錄`);
-      setSelectedRecordIds((current) => current.filter((id) => !deleteFailureIds.includes(id)));
-      closeActionDialog();
-    } finally {
-      setIsRunningAction(false);
-    }
-  };
-
-  const handleOpenClearConfirm = () => {
-    if (onDeleteHistoryEntries) {
-      openActionDialog('delete', history);
-    } else {
-      setClearConfirmOpen(true);
-    }
-  };
-
-  const handleConfirmClear = async () => {
-    if (!onClearHistory || isClearingHistory) return;
-    setIsClearingHistory(true);
-    try {
-      const ok = await onClearHistory();
-      if (ok) {
-        setClearConfirmOpen(false);
-        setCurrentPage(1);
-      }
-    } finally {
-      setIsClearingHistory(false);
-    }
-  };
-
-  const handleCopyUrl = async (url: string) => {
-    const copied = await copy(url);
-    if (!copied) {
-      toast.error('複製連結失敗', '請確認剪貼簿權限後重試。');
-      return;
-    }
-
-    setCopiedUrl(url);
-    toast.success('連結已複製');
-    window.setTimeout(() => {
-      setCopiedUrl((current) => (current === url ? '' : current));
-    }, 2000);
-  };
 
   const renderBanStatus = (row: HistoryRecord) => {
-    if (row.submission_state === 'draft' || row.submission_state === 'awaiting_manual') {
+    if (isPendingRecord(row)) {
       return <span style={{ color: 'var(--color-text-secondary)' }}>-</span>;
     }
     const s = (row.ban_status || '').trim().toLowerCase();
@@ -495,15 +250,19 @@ export default function HistoryView({
   };
 
   const renderReportStatus = (row: HistoryRecord) => {
-    if (row.submission_state === 'draft') {
+    if (getSubmissionState(row) === SUBMISSION_DRAFT) {
       return (
         <Badge variant={row.media_available === false ? 'danger' : 'warning'} size="sm">
           {row.media_available === false ? '檔案遺失' : '尚未送出'}
         </Badge>
       );
     }
-    if (row.submission_state === 'awaiting_manual') {
-      return <Badge variant="warning" size="sm">待手動檢舉</Badge>;
+    if (getSubmissionState(row) === SUBMISSION_AWAITING_MANUAL) {
+      return (
+        <Badge variant="warning" size="sm">
+          待手動檢舉
+        </Badge>
+      );
     }
     return renderUploadStatus(row.upload_status || row.status);
   };
@@ -567,7 +326,7 @@ export default function HistoryView({
           <Badge variant="default" size="sm" icon={Cloud}>
             Drive 已移至垃圾桶
           </Badge>
-        ) : row.submission_state === 'draft' ? (
+        ) : getSubmissionState(row) === SUBMISSION_DRAFT ? (
           <span className="history-evidence-muted">尚未上傳</span>
         ) : (
           <span className="history-evidence-muted">無雲端連結</span>
@@ -686,7 +445,11 @@ export default function HistoryView({
                         setHeaderMenuOpen(false);
                       }}
                     >
-                      {isCompact ? <Rows size={16} aria-hidden="true" /> : <LayoutList size={16} aria-hidden="true" />}
+                      {isCompact ? (
+                        <Rows size={16} aria-hidden="true" />
+                      ) : (
+                        <LayoutList size={16} aria-hidden="true" />
+                      )}
                       <span>{isCompact ? '切換為標準排列' : '切換為緊湊排列'}</span>
                     </button>
                     <button
@@ -713,7 +476,10 @@ export default function HistoryView({
 
       {/* Sanction Sync Diagnostics Banner */}
       <div className={`history-sync-banner ${isCheckingSanctions ? 'is-checking' : ''}`.trim()}>
-        <div className="history-sync-content" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div
+          className="history-sync-content"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}
+        >
           <span
             style={{
               fontWeight: 600,
@@ -755,7 +521,10 @@ export default function HistoryView({
           上次完整檢查：
           {formatLastSyncTime(lastCompleteSyncAt || sanctionSyncStatus?.last_complete_sync_at)}
         </span>
-        <div className="history-sync-link" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div
+          className="history-sync-link"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
+        >
           <a
             href="https://maplestoryclassic.beanfun.com/main?section=mBulletin&kind=758"
             target="_blank"
@@ -773,11 +542,13 @@ export default function HistoryView({
       </div>
 
       <div className="history-filter-bar" role="toolbar" aria-label="歷史紀錄篩選">
-        {([
-          ['all', `全部 ${history.length}`],
-          ['pending', `待處理 ${pendingHistory.length}`],
-          ['submitted', `已完成 ${submittedHistory.length}`],
-        ] as const)
+        {(
+          [
+            ['all', `全部 ${history.length}`],
+            ['pending', `待處理 ${pendingHistory.length}`],
+            ['submitted', `已完成 ${submittedHistory.length}`],
+          ] as const
+        )
           .filter(([value]) => value !== 'pending' || pendingHistory.length > 0)
           .map(([value, label]) => (
             <button
@@ -826,14 +597,14 @@ export default function HistoryView({
                       checked={
                         paginatedHistory.length > 0 &&
                         paginatedHistory.every((record, index) =>
-                          selectedRecordIds.includes(getRecordId(record, startIndex + index))
+                          selectedRecordIds.includes(getHistoryRecordId(record, startIndex + index))
                         )
                       }
                       onChange={(event) => {
                         if (event.target.checked) handleSelectCurrentPage();
                         else {
                           const pageIds = paginatedHistory.map((record, index) =>
-                            getRecordId(record, startIndex + index)
+                            getHistoryRecordId(record, startIndex + index)
                           );
                           setSelectedRecordIds((current) =>
                             current.filter((recordId) => !pageIds.includes(recordId))
@@ -856,7 +627,7 @@ export default function HistoryView({
             </thead>
             <tbody>
               {paginatedHistory.map((row, idx) => {
-                const recordId = getRecordId(row, startIndex + idx);
+                const recordId = getHistoryRecordId(row, startIndex + idx);
                 const cleanupTargets = getCleanupTargets(row);
                 const key = recordId;
                 const evidenceUrl = (row.evidence_url || row.url || '').trim();
@@ -877,9 +648,7 @@ export default function HistoryView({
                     <td className="cell-suspect">{row.suspect_id || row.id || '-'}</td>
                     <td className="cell-nowrap">{row.server || '-'}</td>
                     <td>{row.map_name || row.map || '-'}</td>
-                    <td className="cell-nowrap">
-                      {renderReportStatus(row)}
-                    </td>
+                    <td className="cell-nowrap">{renderReportStatus(row)}</td>
                     <td className="cell-nowrap">{renderBanStatus(row)}</td>
                     <td className="cell-date">{formatBanDate(row.ban_date)}</td>
                     <td className="cell-nowrap" style={{ textAlign: 'center' }}>
@@ -887,81 +656,84 @@ export default function HistoryView({
                     </td>
                     <td className="cell-nowrap history-operation-cell">
                       <div className="history-row-actions">
-                      {!managementOpen && row.submission_state === 'draft' ? (
-                        <Tooltip
-                          content={
-                            row.media_available === false
-                              ? '找不到本機證據檔案，無法繼續處理'
-                              : '選擇如何繼續處理這份檢舉'
-                          }
-                        >
-                          <span style={{ display: 'inline-flex' }}>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDraftToContinue(row)}
-                              disabled={row.media_available === false || !onContinueDraft}
-                              data-testid={`continue-draft-${row.record_id || idx}`}
-                            >
-                              繼續處理
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : !managementOpen && row.submission_state === 'awaiting_manual' ? (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => onContinueManual?.(row)}
-                          disabled={!onContinueManual}
-                          data-testid={`continue-manual-${row.record_id || idx}`}
-                        >
-                          繼續手動檢舉
-                        </Button>
-                      ) : null}
-                      {!managementOpen && (
-                        <div className="history-row-menu-wrap">
-                          <IconButton
-                            icon={MoreHorizontal}
-                            size="sm"
-                            variant="ghost"
-                            tooltip="更多操作"
-                            aria-expanded={openRowMenuId === recordId}
-                            onClick={() =>
-                              setOpenRowMenuId((current) => (current === recordId ? null : recordId))
+                        {!managementOpen && getSubmissionState(row) === SUBMISSION_DRAFT ? (
+                          <Tooltip
+                            content={
+                              row.media_available === false
+                                ? '找不到本機證據檔案，無法繼續處理'
+                                : '選擇如何繼續處理這份檢舉'
                             }
-                          />
-                          {openRowMenuId === recordId && (
-                            <div className="history-row-menu" role="menu" aria-label="紀錄操作">
-                              {row.submission_state === 'submitted' && cleanupTargets.length > 0 && (
+                          >
+                            <span style={{ display: 'inline-flex' }}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDraftToContinue(row)}
+                                disabled={row.media_available === false || !onContinueDraft}
+                                data-testid={`continue-draft-${row.record_id || idx}`}
+                              >
+                                繼續處理
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        ) : !managementOpen &&
+                          getSubmissionState(row) === SUBMISSION_AWAITING_MANUAL ? (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => onContinueManual?.(row)}
+                            disabled={!onContinueManual}
+                            data-testid={`continue-manual-${row.record_id || idx}`}
+                          >
+                            繼續手動檢舉
+                          </Button>
+                        ) : null}
+                        {!managementOpen && (
+                          <div className="history-row-menu-wrap">
+                            <IconButton
+                              icon={MoreHorizontal}
+                              size="sm"
+                              variant="ghost"
+                              tooltip="更多操作"
+                              aria-expanded={openRowMenuId === recordId}
+                              onClick={() =>
+                                setOpenRowMenuId((current) =>
+                                  current === recordId ? null : recordId
+                                )
+                              }
+                            />
+                            {openRowMenuId === recordId && (
+                              <div className="history-row-menu" role="menu" aria-label="紀錄操作">
+                                {isSubmittedRecord(row) && cleanupTargets.length > 0 && (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="history-menu-item"
+                                    onClick={() => openActionDialog('cleanup', [row])}
+                                  >
+                                    <Cloud size={16} aria-hidden="true" />
+                                    <span>清理證據</span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   role="menuitem"
-                                  className="history-menu-item"
-                                  onClick={() => openActionDialog('cleanup', [row])}
+                                  className="history-menu-item history-menu-item-danger"
+                                  onClick={() => openActionDialog('delete', [row])}
                                 >
-                                  <Cloud size={16} aria-hidden="true" />
-                                  <span>清理證據</span>
+                                  <Trash2 size={16} aria-hidden="true" />
+                                  <span>
+                                    {getSubmissionState(row) === SUBMISSION_DRAFT
+                                      ? '刪除草稿'
+                                      : getSubmissionState(row) === SUBMISSION_AWAITING_MANUAL
+                                        ? '放棄這筆檢舉'
+                                        : '刪除紀錄'}
+                                  </span>
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="history-menu-item history-menu-item-danger"
-                                onClick={() => openActionDialog('delete', [row])}
-                              >
-                                <Trash2 size={16} aria-hidden="true" />
-                                <span>
-                                  {row.submission_state === 'draft'
-                                    ? '刪除草稿'
-                                    : row.submission_state === 'awaiting_manual'
-                                      ? '放棄這筆檢舉'
-                                      : '刪除紀錄'}
-                                </span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1083,7 +855,12 @@ export default function HistoryView({
           maxWidth="480px"
           footer={
             <div className="history-action-dialog-footer">
-              <Button variant="outline" size="md" onClick={closeActionDialog} disabled={isRunningAction}>
+              <Button
+                variant="outline"
+                size="md"
+                onClick={closeActionDialog}
+                disabled={isRunningAction}
+              >
                 取消
               </Button>
               {deleteFailureIds.length > 0 && actionDialog.kind === 'delete' ? (
@@ -1179,7 +956,9 @@ export default function HistoryView({
           )}
 
           {actionDialog.records.some((record) => record.evidence_provider === 'discord') && (
-            <p className="history-evidence-note">Discord 證據不會由本工具刪除，請在 Discord 中手動處理。</p>
+            <p className="history-evidence-note">
+              Discord 證據不會由本工具刪除，請在 Discord 中手動處理。
+            </p>
           )}
           {actionError && (
             <div ref={actionErrorRef} className="history-action-error" role="alert" tabIndex={-1}>

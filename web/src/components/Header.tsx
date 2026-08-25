@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Download, History, MoreHorizontal, RefreshCw, Settings, Sun, Moon } from 'lucide-react';
 import { IconButton, Badge, Button, CircularProgress } from './ui';
 import { useTheme } from '../hooks';
+import { getReporterBridge } from '../bridge/reporterBridge';
 import { UpdateStatus, ViewType } from '../types';
 import appLogo from '../assets/icon.png';
 import { APP_VERSION } from '../constants/version';
@@ -94,13 +95,13 @@ export default function Header({
         anchorMode = 'right';
       }
 
-      window.pywebview?.api?.drag_window?.(anchorMode);
+      void getReporterBridge()?.window.drag(anchorMode);
     }
   };
 
   const handleToggleWindowMaximized = async () => {
     try {
-      await window.pywebview?.api?.toggle_window_maximized?.();
+      await getReporterBridge()?.window.toggleMaximized();
     } catch (error) {
       console.warn('Failed to toggle window state:', error);
     }

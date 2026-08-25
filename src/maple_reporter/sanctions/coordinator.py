@@ -20,6 +20,7 @@ from maple_reporter.sanctions.models import (
     SanctionTrigger,
     StartSyncReason,
     StartSyncResult,
+    is_submitted_record,
 )
 from maple_reporter.sanctions.official_api import (
     OfficialSanctionApiClient,
@@ -97,7 +98,7 @@ class SanctionSyncCoordinator:
                 history = [
                     record
                     for record in self.repository.load_history()
-                    if record.get("submission_state", "submitted") == "submitted"
+                    if is_submitted_record(record)
                 ]
                 if not history:
                     return StartSyncResult(
@@ -162,7 +163,7 @@ class SanctionSyncCoordinator:
         history = [
             record
             for record in self.repository.load_history()
-            if record.get("submission_state", "submitted") == "submitted"
+            if is_submitted_record(record)
         ]
         earliest_report_dt = None
         for h in history:

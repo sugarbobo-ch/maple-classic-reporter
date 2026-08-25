@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppConfig } from '../types';
+import { getReporterBridge } from '../bridge/reporterBridge';
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
   default_server: '雪吉拉',
@@ -59,9 +60,10 @@ export function useAppConfig() {
 
   // Load configuration from PyWebView backend bridge
   const reloadConfig = useCallback(async () => {
-    if (window.pywebview && window.pywebview.api) {
+    const bridge = getReporterBridge();
+    if (bridge) {
       try {
-        const initData = await window.pywebview.api.get_initial_data();
+        const initData = await bridge.app.initialData();
         if (initData && initData.config) {
           const nextConfig = {
             ...DEFAULT_APP_CONFIG,
@@ -83,7 +85,7 @@ export function useAppConfig() {
   }, []);
 
   useEffect(() => {
-    if (window.pywebview && window.pywebview.api) {
+    if (getReporterBridge()) {
       reloadConfig();
     } else {
       const handleReady = () => {
@@ -103,10 +105,11 @@ export function useAppConfig() {
         [key]: value,
       }));
 
-      if (window.pywebview && window.pywebview.api) {
+      const bridge = getReporterBridge();
+      if (bridge) {
         try {
           setSaveError(null);
-          const saved = await window.pywebview.api.save_config_key(String(key), value);
+          const saved = await bridge.config.saveKey(String(key), value);
           if (!saved) throw new Error('後端拒絕儲存設定');
         } catch (err) {
           console.error(`Failed to save config key "${String(key)}":`, err);
@@ -126,10 +129,12 @@ export function useAppConfig() {
       const nextConfig = { ...config, ...updates };
       setConfig(nextConfig);
 
-      if (window.pywebview && window.pywebview.api) {
+      const bridge = getReporterBridge();
+      if (bridge) {
         try {
           setSaveError(null);
-          const saved = await window.pywebview.api.save_config_all(nextConfig as any);
+          const payload: Record<string, unknown> = Object.fromEntries(Object.entries(nextConfig));
+          const saved = await bridge.config.saveAll(payload);
           if (!saved) throw new Error('後端拒絕儲存設定');
         } catch (err) {
           console.error('Failed to save config batch:', err);
@@ -148,10 +153,12 @@ export function useAppConfig() {
       const previousConfig = config;
       setConfig(newConfig);
 
-      if (window.pywebview && window.pywebview.api) {
+      const bridge = getReporterBridge();
+      if (bridge) {
         try {
           setSaveError(null);
-          const saved = await window.pywebview.api.save_config_all(newConfig as any);
+          const payload: Record<string, unknown> = Object.fromEntries(Object.entries(newConfig));
+          const saved = await bridge.config.saveAll(payload);
           if (!saved) throw new Error('後端拒絕儲存設定');
         } catch (err) {
           console.error('Failed to batch save config:', err);

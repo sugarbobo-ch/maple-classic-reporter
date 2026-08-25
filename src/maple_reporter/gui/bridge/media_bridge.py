@@ -15,6 +15,7 @@ import webview
 
 from maple_reporter.recorder.video_editor import cut_video_segment, get_video_duration
 from maple_reporter.utils.config import get_recordings_dir
+from maple_reporter.sanctions.models import is_pending_record
 
 LOGGER = logging.getLogger(__name__)
 
@@ -231,7 +232,7 @@ class MediaBridgeMixin:
         protected_paths = {
             Path(str(record.get("media_path", ""))).resolve(strict=False)
             for record in self.sanction_repo.load_history()
-            if record.get("submission_state") in {"draft", "awaiting_manual"}
+            if is_pending_record(record)
             and record.get("media_path")
         }
         deleted = 0

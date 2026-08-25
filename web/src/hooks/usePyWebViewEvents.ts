@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
-import { PyWebViewEvent, PyWebViewEventType } from '../types';
+import { PyWebViewEvent, PyWebViewEventData, PyWebViewEventType } from '../types';
 
-type EventHandler = (data: any) => void;
+type EventHandler = (data: unknown) => void;
+export type PyWebViewEventHandlers = Partial<{
+  [K in PyWebViewEventType]: (data: PyWebViewEventData[K]) => void;
+}>;
 
 const listeners: Map<PyWebViewEventType, Set<EventHandler>> = new Map();
 
@@ -24,7 +27,7 @@ if (typeof window !== 'undefined') {
   window.__MAPLE_REPORTER_EVENT__ = dispatchPyWebViewEvent;
 }
 
-export function usePyWebViewEvents(handlers: Partial<Record<PyWebViewEventType, EventHandler>>) {
+export function usePyWebViewEvents(handlers: PyWebViewEventHandlers) {
   useEffect(() => {
     const entries = Object.entries(handlers) as [PyWebViewEventType, EventHandler][];
     entries.forEach(([type, fn]) => {

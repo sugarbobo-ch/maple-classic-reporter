@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ArrowRight, FileCheck, Save } from 'lucide-react';
 import { Dialog, Button, Badge, RadioGroup, Switch } from './ui';
 import { useClipboard } from '../hooks';
+import { getReporterBridge } from '../bridge/reporterBridge';
 import { AppConfig, HistoryRecord, OcrResultData, SubmissionStatusData } from '../types';
 import {
   ProgressStage,
@@ -91,7 +92,10 @@ export default function ReportFlowModal({
   onOpenReportPage,
   onConfirmManual,
 }: ReportFlowModalProps) {
-  const existingWhitelist = Array.isArray(config.whitelist) ? config.whitelist : [];
+  const existingWhitelist = useMemo(
+    () => (Array.isArray(config.whitelist) ? config.whitelist : []),
+    [config.whitelist]
+  );
 
   // Form State - auto-populate suspect ID from OCR candidate if enabled
   const initialSuspectId = initialRecord
@@ -210,52 +214,57 @@ export default function ReportFlowModal({
   };
 
   useEffect(() => {
-    if (ocrResults) {
-      if (ocrResults.map_name) {
-        setMapName(ocrResults.map_name);
-      }
-      if (
-        config.ocr_autofill_id !== false &&
-        Array.isArray(ocrResults.suspect_ids) &&
-        ocrResults.suspect_ids.length > 0
-      ) {
-        const topCandidate =
-          ocrResults.suspect_ids.find((id) => !existingWhitelist.includes(id)) ||
-          ocrResults.suspect_ids[0];
-        if (topCandidate) {
-          setSuspectId((prev) => prev || topCandidate);
-        }
-      }
-      const activePath = ocrResults.media_path;
-      if (activePath) {
-        setCurrentMediaPath(activePath);
+    if (ocrResults?.map_name) {
+      setMapName(ocrResults.map_name);
+    }
+  }, [ocrResults?.map_name]);
 
-        // Fetch streaming URL for video
-        if (window.pywebview && window.pywebview.api && window.pywebview.api.get_media_stream_url) {
-          window.pywebview.api
-            .get_media_stream_url(activePath)
-            .then((streamUrl) => {
-              if (streamUrl) setMediaStreamUrl(streamUrl);
-            })
-            .catch((e) => {
-              console.debug('Failed to get media stream url:', e);
-            });
-        }
-
-        // Fetch fallback thumbnail
-        if (window.pywebview && window.pywebview.api && window.pywebview.api.get_media_preview) {
-          window.pywebview.api
-            .get_media_preview(activePath)
-            .then((dataUrl) => {
-              if (dataUrl) setPreviewUrl(dataUrl);
-            })
-            .catch((e) => {
-              console.debug('Failed to get media preview:', e);
-            });
-        }
+  useEffect(() => {
+    if (
+      config.ocr_autofill_id !== false &&
+      Array.isArray(ocrResults?.suspect_ids) &&
+      ocrResults.suspect_ids.length > 0
+    ) {
+      const topCandidate =
+        ocrResults.suspect_ids.find((id) => !existingWhitelist.includes(id)) ||
+        ocrResults.suspect_ids[0];
+      if (topCandidate) {
+        setSuspectId((prev) => prev || topCandidate);
       }
     }
-  }, [ocrResults]);
+  }, [config.ocr_autofill_id, existingWhitelist, ocrResults?.suspect_ids]);
+
+  useEffect(() => {
+    const activePath = ocrResults?.media_path;
+    if (!activePath) return;
+
+    setCurrentMediaPath(activePath);
+
+    // Fetch streaming URL for video
+    const bridge = getReporterBridge();
+    if (bridge) {
+      bridge.media
+        .streamUrl(activePath)
+        .then((streamUrl) => {
+          if (streamUrl) setMediaStreamUrl(streamUrl);
+        })
+        .catch((e) => {
+          console.debug('Failed to get media stream url:', e);
+        });
+    }
+
+    // Fetch fallback thumbnail
+    if (bridge) {
+      bridge.media
+        .preview(activePath)
+        .then((dataUrl) => {
+          if (dataUrl) setPreviewUrl(dataUrl);
+        })
+        .catch((e) => {
+          console.debug('Failed to get media preview:', e);
+        });
+    }
+  }, [ocrResults?.media_path]);
 
   // Video metadata & time update
   const handleLoadedMetadata = () => {
@@ -347,8 +356,9 @@ export default function ReportFlowModal({
     setIsTrimming(true);
     setTrimFeedback(null);
     try {
-      if (window.pywebview && window.pywebview.api && window.pywebview.api.trim_video_segment) {
-        const res = await window.pywebview.api.trim_video_segment(
+      const bridge = getReporterBridge();
+      if (bridge) {
+        const res = await bridge.media.trim(
           currentMediaPath,
           cutStart,
           cutEnd,
@@ -388,8 +398,11 @@ export default function ReportFlowModal({
         }, 600);
         return;
       }
-    } catch (err: any) {
-      setTrimFeedback({ type: 'error', message: err?.message || String(err) });
+    } catch (error: unknown) {
+      setTrimFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
     setIsTrimming(false);
   };
@@ -400,8 +413,9 @@ export default function ReportFlowModal({
     setIsTrimming(true);
     setTrimFeedback(null);
     try {
-      if (window.pywebview && window.pywebview.api && window.pywebview.api.restore_original_video) {
-        const res = await window.pywebview.api.restore_original_video(
+      const bridge = getReporterBridge();
+      if (bridge) {
+        const res = await bridge.media.restore(
           currentMediaPath,
           originalBackupPath
         );
@@ -424,8 +438,11 @@ export default function ReportFlowModal({
         setOriginalBackupPath(null);
         setTrimFeedback({ type: 'success', message: '（模擬）已成功還原為原始錄影影片！' });
       }
-    } catch (err: any) {
-      setTrimFeedback({ type: 'error', message: err?.message || String(err) });
+    } catch (error: unknown) {
+      setTrimFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
     setIsTrimming(false);
   };

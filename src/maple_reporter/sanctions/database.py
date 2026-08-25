@@ -14,6 +14,7 @@ from maple_reporter.sanctions.models import (
     DateCacheEntry,
     SanctionCache,
     SanctionEntry,
+    normalize_submission_state,
 )
 from maple_reporter.utils.config import CONFIG_DIR, ensure_config_dir
 
@@ -199,7 +200,7 @@ class SanctionDatabase:
                     "url": r.get("url") or r.get("evidence_url", ""),
                     "status": r.get("status") or r.get("upload_status", ""),
                     "note": r.get("note", ""),
-                    "submission_state": r.get("submission_state", "submitted"),
+                    "submission_state": normalize_submission_state(r.get("submission_state")),
                     "submission_mode": r.get("submission_mode", "automatic"),
                     "media_path": r.get("media_path", ""),
                     "media_type": r.get("media_type", ""),
@@ -232,7 +233,7 @@ class SanctionDatabase:
                 "url": r.get("url") or r.get("evidence_url", ""),
                 "status": r.get("status") or r.get("upload_status", ""),
                 "note": r.get("note", ""),
-                "submission_state": r.get("submission_state", "submitted"),
+                "submission_state": normalize_submission_state(r.get("submission_state")),
                 "submission_mode": r.get("submission_mode", "automatic"),
                 "media_path": r.get("media_path", ""),
                 "media_type": r.get("media_type", ""),

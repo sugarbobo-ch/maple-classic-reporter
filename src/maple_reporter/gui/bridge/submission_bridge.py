@@ -13,6 +13,14 @@ import uuid
 
 from maple_reporter.automation.playwright_runtime import PlaywrightBrowserError
 from maple_reporter.evidence.lifecycle import parse_drive_file_id
+from maple_reporter.sanctions.models import (
+    SUBMISSION_AWAITING_MANUAL,
+    SUBMISSION_DRAFT,
+    SUBMISSION_SUBMITTED,
+    SUBMISSION_STATES,
+    get_submission_state,
+    normalize_submission_state,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -84,7 +92,7 @@ class SubmissionBridgeMixin:
             "url": "",
             "status": "尚未送出",
             "note": str(form_data.get("note", "") or "").strip(),
-            "submission_state": "draft",
+            "submission_state": SUBMISSION_DRAFT,
             "media_path": str(stored_path),
             "media_type": media_type,
             "ban_status": "pending",
@@ -114,9 +122,10 @@ class SubmissionBridgeMixin:
         note: str | None = None,
         submission_state: str,
     ) -> dict[str, Any] | None:
-        if submission_state not in {"draft", "awaiting_manual", "submitted"}:
+        normalized_state = normalize_submission_state(submission_state)
+        if submission_state not in SUBMISSION_STATES:
             raise ValueError(f"Unsupported submission state: {submission_state}")
-        submitted = submission_state == "submitted"
+        submitted = normalized_state == SUBMISSION_SUBMITTED
         provider = str(form_data.get("evidence_provider") or "").strip().lower()
         if not provider:
             destination = str(form_data.get("upload_destination") or "").strip().lower()
@@ -132,7 +141,7 @@ class SubmissionBridgeMixin:
             "url": evidence_url,
             "status": status,
             "note": form_data.get("note", "") if note is None else note,
-            "submission_state": submission_state,
+            "submission_state": normalized_state,
             "submission_mode": form_data.get("submission_mode", "automatic"),
             "media_path": file_path,
             "media_type": form_data.get("media_type", ""),
@@ -148,7 +157,7 @@ class SubmissionBridgeMixin:
             return repo.update_history_entry(
                 record_id, payload, evaluate=submitted
             )
-        if submission_state == "draft":
+        if normalized_state == SUBMISSION_DRAFT:
             return None
         entry = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), **payload}
         if repo is not None:
@@ -181,7 +190,7 @@ class SubmissionBridgeMixin:
                 file_path=file_path,
                 evidence_url=evidence_url,
                 status="尚未送出",
-                submission_state="draft",
+                submission_state=SUBMISSION_DRAFT,
             )
 
         # 1. Upload evidence if URL not yet provided
@@ -240,7 +249,7 @@ class SubmissionBridgeMixin:
                 file_path=file_path,
                 evidence_url=evidence_url,
                 status="待手動檢舉",
-                submission_state="awaiting_manual",
+                submission_state=SUBMISSION_AWAITING_MANUAL,
             )
             if record is None:
                 message = "無法建立待手動檢舉紀錄，請稍後再試。"
@@ -273,7 +282,7 @@ class SubmissionBridgeMixin:
                 evidence_url=evidence_url,
                 status="模擬成功",
                 note=f"[開發者模式] {form_data.get('note', '')}".strip(),
-                submission_state="submitted",
+                submission_state=SUBMISSION_SUBMITTED,
             )
 
             success_message = "開發者模式：已模擬檢舉成功（未實際送出），已在系統瀏覽器開啟檢舉頁面"
@@ -318,7 +327,7 @@ class SubmissionBridgeMixin:
             file_path=file_path,
             evidence_url=evidence_url,
             status="成功" if ok else "尚未送出",
-            submission_state="submitted" if ok else "draft",
+            submission_state=SUBMISSION_SUBMITTED if ok else SUBMISSION_DRAFT,
         )
 
         # 4. Auto-delete local recording if enabled
@@ -355,13 +364,13 @@ class SubmissionBridgeMixin:
             ),
             None,
         )
-        if record is None or record.get("submission_state") != "awaiting_manual":
+        if record is None or get_submission_state(record) != SUBMISSION_AWAITING_MANUAL:
             return {"status": "error", "message": "這筆紀錄已完成或無法繼續確認。"}
 
         updated = self.sanction_repo.update_history_entry(
             normalized_id,
             {
-                "submission_state": "submitted",
+                "submission_state": SUBMISSION_SUBMITTED,
                 "submission_mode": "manual",
                 "status": "成功",
             },

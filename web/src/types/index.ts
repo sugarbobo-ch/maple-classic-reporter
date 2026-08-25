@@ -278,32 +278,36 @@ export interface ClearRecordingsResponse {
   size_str?: string;
 }
 
-export type PyWebViewEventType =
-  | 'RECORDING_COUNTDOWN'
-  | 'RECORDING_PROGRESS'
-  | 'RECORDING_FINISHED'
-  | 'RECORDING_CANCELED'
-  | 'RECORDING_ERROR'
-  | 'REPLAY_STATE_CHANGED'
-  | 'REPLAY_SAVED'
-  | 'REPLAY_ERROR'
-  | 'OCR_STATUS'
-  | 'OCR_RESULT'
-  | 'EVIDENCE_READY'
-  | 'SUBMISSION_STATUS'
-  | 'GLOBAL_HOTKEY_TRIGGERED'
-  | 'WINDOW_MAXIMIZED'
-  | 'WINDOW_RESTORED'
-  | 'SANCTION_SYNC_STARTED'
-  | 'SANCTION_SYNC_PROGRESS'
-  | 'SANCTION_SYNC_COMPLETED'
-  | 'SANCTION_SYNC_FAILED'
-  | 'UPDATE_STATUS';
-
-export interface PyWebViewEvent {
-  type: PyWebViewEventType;
-  data: any;
+export interface PyWebViewEventData {
+  RECORDING_COUNTDOWN: { remaining: number; percent: number; total: number };
+  RECORDING_PROGRESS: { elapsed: number; total: number; percent: number; fraction?: number };
+  RECORDING_FINISHED: { file_path?: string } | undefined;
+  RECORDING_CANCELED: undefined;
+  RECORDING_ERROR: { message: string };
+  REPLAY_STATE_CHANGED: { state: string; duration: number; total: number };
+  REPLAY_SAVED: { file_path?: string } | undefined;
+  REPLAY_ERROR: { message: string };
+  OCR_STATUS: { status: string; percent: number; step?: string };
+  OCR_RESULT: OcrResultData;
+  EVIDENCE_READY: { file_path?: string; media_type?: 'video' | 'image' };
+  SUBMISSION_STATUS: SubmissionStatusData;
+  GLOBAL_HOTKEY_TRIGGERED: { action: string };
+  WINDOW_MAXIMIZED: undefined;
+  WINDOW_RESTORED: undefined;
+  SANCTION_SYNC_STARTED: SanctionSyncStatus;
+  SANCTION_SYNC_PROGRESS: SanctionSyncStatus;
+  SANCTION_SYNC_COMPLETED: SanctionSyncStatus & {
+    summary?: SanctionSyncSummary;
+    history?: HistoryRecord[];
+  };
+  SANCTION_SYNC_FAILED: { history?: HistoryRecord[]; message?: string };
+  UPDATE_STATUS: UpdateStatus;
 }
+
+export type PyWebViewEventType = keyof PyWebViewEventData;
+export type PyWebViewEvent = {
+  [K in PyWebViewEventType]: { type: K; data: PyWebViewEventData[K] };
+}[PyWebViewEventType];
 
 declare global {
   interface Window {

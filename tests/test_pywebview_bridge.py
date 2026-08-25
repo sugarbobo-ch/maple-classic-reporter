@@ -841,6 +841,7 @@ class TestPyWebViewBridge(unittest.TestCase):
         evidence = Path(self.temp_dir.name) / "manual-confirm.mp4"
         evidence.write_bytes(b"manual evidence")
         self.bridge.config["auto_delete_after_upload"] = True
+        self.bridge.sanction_coordinator.start = MagicMock()
         prepared = self.bridge.submit_report(
             {
                 "file_path": str(evidence),
@@ -864,6 +865,7 @@ class TestPyWebViewBridge(unittest.TestCase):
         self.assertFalse(evidence.exists())
         history = self.bridge.sanction_repo.load_history()
         self.assertEqual(history[0]["submission_state"], "submitted")
+        self.bridge.sanction_coordinator.start.assert_not_called()
 
 
     def test_no_upload_trial_mode_never_calls_cloud_uploaders(self):

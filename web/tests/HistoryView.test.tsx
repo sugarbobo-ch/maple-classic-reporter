@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import HistoryView from '../src/components/HistoryView';
+import HistoryView, { HistoryViewProps } from '../src/components/HistoryView';
 import { ToastProvider } from '../src/components/ui';
 import { TEST_HISTORY, installMockPyWebView } from './mockPyWebViewApi';
 import { HistoryRecord } from '../src/types';
@@ -9,7 +9,7 @@ function renderHistory(
   onOpenUrl = vi.fn(),
   onClearHistory = vi.fn().mockResolvedValue(true),
   onCheckSanctions = vi.fn().mockResolvedValue(undefined),
-  extraProps: Record<string, any> = {}
+  extraProps: Partial<HistoryViewProps> = {}
 ) {
   return render(
     <ToastProvider>

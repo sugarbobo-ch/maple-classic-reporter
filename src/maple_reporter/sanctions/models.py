@@ -3,12 +3,43 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from collections.abc import Mapping
+from typing import Any, Literal, cast
 
 DateState = Literal["mutable", "finalized"]
 SanctionSyncPhase = Literal["listing", "fetching", "matching"]
 SanctionTrigger = Literal["startup", "manual"]
 StartSyncReason = Literal["already_running", "disabled", "fresh", "no_history"]
+SubmissionState = Literal["draft", "awaiting_manual", "submitted"]
+
+SUBMISSION_DRAFT: SubmissionState = "draft"
+SUBMISSION_AWAITING_MANUAL: SubmissionState = "awaiting_manual"
+SUBMISSION_SUBMITTED: SubmissionState = "submitted"
+SUBMISSION_STATES = frozenset(
+    {SUBMISSION_DRAFT, SUBMISSION_AWAITING_MANUAL, SUBMISSION_SUBMITTED}
+)
+
+
+def normalize_submission_state(value: object) -> SubmissionState:
+    normalized = str(value or "").strip().lower()
+    if normalized in SUBMISSION_STATES:
+        return cast(SubmissionState, normalized)
+    return SUBMISSION_SUBMITTED
+
+
+def get_submission_state(record: Mapping[str, Any]) -> SubmissionState:
+    return normalize_submission_state(record.get("submission_state"))
+
+
+def is_submitted_record(record: Mapping[str, Any]) -> bool:
+    return get_submission_state(record) == SUBMISSION_SUBMITTED
+
+
+def is_pending_record(record: Mapping[str, Any]) -> bool:
+    return get_submission_state(record) in {
+        SUBMISSION_DRAFT,
+        SUBMISSION_AWAITING_MANUAL,
+    }
 
 
 @dataclass(frozen=True)

@@ -32,7 +32,7 @@
 - **Evidence Media (檢舉證據)**: 用來證明疑似外掛行為的圖片（PNG/JPG）或影片。
 - **Evidence Destination (優先上傳目的地)**: Google Drive、Discord 或只試用模式。Google Drive 適合長期保存供官方審查；Discord 限制為 10 MiB 內的短片；只試用模式不連接雲端，也不會上傳任何證據。
 - **Evidence URL (雲端證據連結)**: 上傳成功後由目的地回傳的公開連結。自動檢舉時由程式帶入 SurveyCake；手動檢舉時會依官方欄位順序顯示並提供複製按鈕。
-- **Manual Report (手動檢舉)**: 證據仍由程式上傳，但不啟動 Playwright。歷史紀錄會先標記為 `awaiting_manual`，直到使用者確認官方表單已成功送出才轉為 `submitted` 並開始處分追蹤。
+- **Manual Report (手動檢舉)**: 證據仍由程式上傳，但不啟動 Playwright。歷史紀錄會先標記為 `awaiting_manual`；使用者確認官方表單已成功送出後，紀錄轉為 `submitted` 並納入處分追蹤。確認動作不會立即同步官方處分公告；系統會在下次啟動或使用者手動執行「檢查處分狀態」時同步並重新比對。
 - **First-run Setup (首次啟動設定助理)**: 未完成 `onboarding_completed` 的使用者會先看到蒐證、辨識、上傳、檢舉與回顧流程，再設定錄影、OCR、上傳目的地與預設檢舉方式。
 - **Google OAuth Client (Google OAuth 用戶端)**: 正式 onedir bundle 的 `_internal` 資源內嵌 `google_oauth_client.json` 作為應用程式識別設定；原始碼開發可用 `MAPLE_REPORTER_GOOGLE_OAUTH_CONFIG` 覆寫，`build_secrets/google_oauth_client.json` 僅供 release build 使用，均不可提交到 Git。
 - **Google OAuth Token (Google OAuth 權杖)**: `%LOCALAPPDATA%\MapleClassicReporter\oauth_token.dpapi` 使用 Windows DPAPI 保護單一使用者授權完成後的 refresh token；舊版 `data/config/token.json` 會自動遷移後刪除，絕不打包或與其他使用者共用。

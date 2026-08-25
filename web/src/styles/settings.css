@@ -1,0 +1,173 @@
+/* Report settings */
+.settings-section-intro,
+.settings-choice-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.settings-choice-copy {
+  flex-direction: column;
+  gap: 3px;
+}
+
+.report-settings-intro {
+  display: block;
+}
+
+.settings-section-intro {
+  margin-bottom: 18px;
+}
+
+.settings-section-intro svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.settings-section-intro h2,
+.about-tutorial-panel h2 {
+  margin: 0 0 3px;
+  font-size: 0.95rem;
+  color: var(--color-text-heading);
+}
+
+.settings-section-intro p,
+.about-tutorial-panel p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.report-background-setting {
+  margin-top: 14px;
+  scroll-margin-block-end: 16px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.report-background-setting > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.report-background-setting span {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.report-settings-background-setting {
+  margin-top: 22px;
+  padding-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.report-settings-background-setting .setting-info {
+  min-width: 0;
+}
+
+.about-tutorial-panel {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-card);
+}
+
+@media (max-width: 760px) {
+  .onboarding-shell {
+    padding: 18px 16px;
+    gap: 20px;
+  }
+  .onboarding-content {
+    padding-inline: 16px;
+  }
+  .onboarding-progress {
+    justify-content: safe center;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .onboarding-title-line {
+    white-space: normal;
+  }
+  .onboarding-progress-item small {
+    display: none;
+  }
+  .onboarding-progress-item::after {
+    width: 18px;
+    flex: 0 0 18px;
+  }
+  .onboarding-welcome {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+  .workflow-preview {
+    grid-column: 1;
+    grid-row: auto;
+    padding: 16px 10px;
+  }
+  .workflow-preview-step > svg {
+    display: none;
+  }
+  .onboarding-technology,
+  .onboarding-advanced-grid {
+    grid-template-columns: 1fr;
+  }
+  .onboarding-discord-fields {
+    grid-template-columns: 1fr;
+  }
+  .onboarding-radio-card {
+    padding: 12px 13px;
+  }
+  .onboarding-radio-list-3.ui-radio-group.vertical,
+  .onboarding-radio-list-2.ui-radio-group.vertical {
+    grid-template-columns: 1fr;
+  }
+  .onboarding-summary,
+  .report-mode-choice-list,
+  .settings-choice-list-2.ui-radio-group.vertical {
+    grid-template-columns: 1fr;
+  }
+  .manual-report-field {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .manual-report-field > .ui-button {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .about-tutorial-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-data-reset-spinner {
+    animation: none !important;
+  }
+
+  .onboarding-content > * {
+    animation: none;
+  }
+}
+
+.pywebview-drag-region,
+.window-resize-overlay,
+.resize-handle {
+  user-select: none;
+}

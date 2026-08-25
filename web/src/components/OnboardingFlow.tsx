@@ -22,6 +22,7 @@ import {
   WindowItem,
 } from '../types';
 import { Button, Dropdown, Input, RadioGroup, Switch } from './ui';
+import { getReporterBridge } from '../bridge/reporterBridge';
 
 interface OnboardingFlowProps {
   config: AppConfig;
@@ -93,13 +94,14 @@ export default function OnboardingFlow({
       setDiscordTestMessage('請先貼上 Discord Webhook 網址。');
       return;
     }
-    if (!window.pywebview?.api?.test_discord_webhook) {
+    const bridge = getReporterBridge();
+    if (!bridge) {
       setDiscordTestState('success');
       setDiscordTestMessage('預覽模式已略過連線測試。');
       return;
     }
     setDiscordTestState('testing');
-    const result = await window.pywebview.api.test_discord_webhook(webhook);
+    const result = await bridge.integrations.testDiscordWebhook(webhook);
     setDiscordTestState(result.success ? 'success' : 'error');
     setDiscordTestMessage(result.message);
   };
