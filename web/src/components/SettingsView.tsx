@@ -653,24 +653,34 @@ export default function SettingsView({
     { value: 15, label: '15 秒' },
     { value: 20, label: '20 秒 (推薦)' },
     { value: 25, label: '25 秒' },
-    { value: 30, label: '30 秒 (上限)' },
+    { value: 30, label: '30 秒' },
+    { value: 60, label: '60 秒' },
+    { value: 120, label: '2 分鐘' },
+    { value: 180, label: '3 分鐘' },
+    { value: 300, label: '5 分鐘 (上限)' },
   ];
 
   const handlePresetChange = (presetKey: PresetKey) => {
     const selectedPreset = RECORDING_PRESETS.find((p) => p.key === presetKey);
     if (selectedPreset) {
+      const updates: Partial<AppConfig> = {
+        recording_preset: selectedPreset.key,
+        record_duration_sec: selectedPreset.duration,
+        record_fps: selectedPreset.fps,
+        replay_buffer_sec: selectedPreset.replay,
+      };
+      if (
+        typeof config.replay_save_sec === 'number' &&
+        config.replay_save_sec > selectedPreset.replay
+      ) {
+        updates.replay_save_sec = null;
+      }
       if (onUpdateConfigBatch) {
-        onUpdateConfigBatch({
-          recording_preset: selectedPreset.key,
-          record_duration_sec: selectedPreset.duration,
-          record_fps: selectedPreset.fps,
-          replay_buffer_sec: selectedPreset.replay,
-        });
+        onUpdateConfigBatch(updates);
       } else {
-        onUpdateConfig('recording_preset', selectedPreset.key);
-        onUpdateConfig('record_duration_sec', selectedPreset.duration);
-        onUpdateConfig('record_fps', selectedPreset.fps);
-        onUpdateConfig('replay_buffer_sec', selectedPreset.replay);
+        Object.entries(updates).forEach(([key, value]) =>
+          onUpdateConfig(key as keyof AppConfig, value)
+        );
       }
     }
   };
@@ -689,8 +699,11 @@ export default function SettingsView({
   };
 
   const handleManualReplayChange = (val: number) => {
-    const nextReplay = Math.max(5, Math.min(120, val));
+    const nextReplay = Math.max(5, Math.min(300, val));
     onUpdateConfig('replay_buffer_sec', nextReplay);
+    if (typeof config.replay_save_sec === 'number' && config.replay_save_sec > nextReplay) {
+      onUpdateConfig('replay_save_sec', null);
+    }
     const matched = detectPresetKey(config.record_duration_sec, config.record_fps, nextReplay);
     onUpdateConfig('recording_preset', matched);
   };

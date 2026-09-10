@@ -43,6 +43,7 @@ REPLAY_KEYFRAME_BASE_INTERVAL_SECONDS = 2.0
 REPLAY_KEYFRAME_TAIL_WINDOW_SECONDS = 5.0
 REPLAY_KEYFRAME_TAIL_INTERVAL_SECONDS = 0.5
 REPLAY_KEYFRAME_MAX_COUNT = 40
+MAX_REPLAY_BUFFER_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -358,7 +359,7 @@ class ReplayBufferRecorder(QObject):
             self._running = True
             self._saving = False
             self._fps = max(1, int(fps))
-            self._buffer_seconds = max(3, int(buffer_seconds))
+            self._buffer_seconds = min(MAX_REPLAY_BUFFER_SECONDS, max(3, int(buffer_seconds)))
             self._bounds = (left, top, width, height)
             self._stop_event.clear()
 
@@ -436,7 +437,13 @@ class ReplayBufferRecorder(QObject):
             self._saving = False
         self._emit_state(ReplayState.IDLE, 0.0)
 
-    def save_replay(self) -> bool:
+    def save_replay(self, save_seconds: Optional[int] = None) -> bool:
+        """Save the most recent replay segment, optionally limited in length.
+
+        ``None`` preserves the original behavior and saves the entire available
+        buffer. A caller may request a shorter segment without changing the
+        background buffer or interrupting capture.
+        """
         with self._lock:
             if not self._running or self._saving or len(self._frames) < 2:
                 return False
@@ -444,7 +451,16 @@ class ReplayBufferRecorder(QObject):
             self._saving = True
             buffer_seconds = self._buffer_seconds
 
-        start_time = max(frames[0].captured_at, frames[-1].captured_at - buffer_seconds)
+        if save_seconds is None:
+            target_seconds = buffer_seconds
+        else:
+            try:
+                requested_seconds = int(save_seconds)
+            except (TypeError, ValueError):
+                requested_seconds = buffer_seconds
+            target_seconds = max(1, min(buffer_seconds, requested_seconds))
+        end_time = frames[-1].captured_at
+        start_time = max(frames[0].captured_at, end_time - target_seconds)
         frames = [frame for frame in frames if frame.captured_at >= start_time]
         if len(frames) < 2:
             with self._lock:
@@ -727,6 +743,7 @@ __all__ = [
     "REPLAY_KEYFRAME_TAIL_WINDOW_SECONDS",
     "REPLAY_KEYFRAME_TAIL_INTERVAL_SECONDS",
     "REPLAY_KEYFRAME_MAX_COUNT",
+    "MAX_REPLAY_BUFFER_SECONDS",
     "_build_replay_keyframe_times",
     "_build_replay_keyframe_indices",
     "capture_monitor_frame",

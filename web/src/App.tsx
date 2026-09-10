@@ -73,6 +73,8 @@ export default function App() {
     countdownFraction,
     recordingFraction,
     replayTime,
+    replayBufferTotal,
+    replaySaving,
     modalOpen,
     modalStage,
     modalProgress,
@@ -218,7 +220,7 @@ export default function App() {
             initData.replay_state &&
             ['warming', 'ready', 'saving'].includes(initData.replay_state)
           ) {
-            restoreReplayState(initData.replay_state, initData.replay_duration);
+            restoreReplayState(initData.replay_state, initData.replay_duration, initData.replay_total);
           }
 
           // Trigger startup sanction sync once if applicable
@@ -744,7 +746,7 @@ export default function App() {
                 recordingTime={recordingTime}
                 totalRecordingDuration={config.record_duration_sec || 8}
                 recordingFraction={recordingFraction}
-                disabled={isResetting}
+                disabled={isResetting || replaySaving}
               />
             </section>
 
@@ -894,15 +896,17 @@ export default function App() {
         totalCountdown={activeTotalCountdown}
         countdownFraction={countdownFraction}
         replayTime={replayTime}
-        maxReplayBuffer={config.replay_buffer_sec || 30}
+        maxReplayBuffer={replayBufferTotal}
+        replaySaveSeconds={config.replay_save_sec ?? null}
         targetWindowTitle={config.selected_window_title || '新楓之谷：經典版'}
         windowSize={currentWindowSize}
         audioDevice={currentAudioDevice}
         quality={currentQuality}
-        disabled={isResetting}
+        disabled={isResetting || replaySaving}
         onCancelRecording={handleCancelRecording}
         onStopReplay={handleStopReplay}
         onSaveReplay={handleSaveReplay}
+        onReplaySaveSecondsChange={(value) => void updateConfig('replay_save_sec', value)}
       />
 
       {modalOpen && (

@@ -6,6 +6,7 @@
   "record_fps": 20,
   "record_countdown_sec": 0,
   "replay_buffer_sec": 30,
+  "replay_save_sec": null,
   "selected_window_title": "test-window",
   "gdrive_folder_name": "MapleClassic_Reports",
   "discord_webhook_url": "",

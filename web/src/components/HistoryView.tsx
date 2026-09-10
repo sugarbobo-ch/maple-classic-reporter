@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   ArrowLeft,
   ExternalLink,
@@ -122,6 +123,23 @@ export default function HistoryView({
   ocrAutofillId = true,
   ocrAutofillMap = true,
 }: HistoryViewProps) {
+  const batchLabels = useMemo(() => {
+    const firstRecords = new Map<string, HistoryRecord>();
+    const batchCounts = new Map<string, number>();
+    for (const record of history) {
+      if (!record.batch_id) continue;
+      batchCounts.set(record.batch_id, (batchCounts.get(record.batch_id) || 0) + 1);
+      const first = firstRecords.get(record.batch_id);
+      if (!first || (record.batch_order ?? 0) < (first.batch_order ?? 0)) {
+        firstRecords.set(record.batch_id, record);
+      }
+    }
+    return new Map([...firstRecords].filter(([id]) => (batchCounts.get(id) || 0) >= 2).map(([id, record]) => {
+      const time = record.time || record.timestamp;
+      return [id, time ? `同批檢舉（${formatLastSyncTime(time)}）` : '同批檢舉'];
+    }));
+  }, [history]);
+
   const {
     copiedUrl,
     isClearingHistory,
@@ -252,8 +270,8 @@ export default function HistoryView({
   const renderReportStatus = (row: HistoryRecord) => {
     if (getSubmissionState(row) === SUBMISSION_DRAFT) {
       return (
-        <Badge variant={row.media_available === false ? 'danger' : 'warning'} size="sm">
-          {row.media_available === false ? '檔案遺失' : '尚未送出'}
+        <Badge variant={(row.media_available === false && !row.url) ? 'danger' : 'warning'} size="sm">
+          {['sending', 'unknown'].includes(row.batch_phase || '') ? '結果待確認' : (row.media_available === false && !row.url) ? '檔案遺失' : '尚未送出'}
         </Badge>
       );
     }
@@ -643,7 +661,7 @@ export default function HistoryView({
                       </td>
                     )}
                     <td className="cell-date">{row.timestamp || row.time || '-'}</td>
-                    <td className="cell-suspect">{row.suspect_id || row.id || '-'}</td>
+                    <td className="cell-suspect">{row.suspect_id || row.id || '-'}{row.batch_id && batchLabels.has(row.batch_id) && <small className="history-batch-label">{batchLabels.get(row.batch_id)}</small>}</td>
                     <td className="cell-nowrap">{row.server || '-'}</td>
                     <td>{row.map_name || row.map || '-'}</td>
                     <td className="cell-nowrap">{renderReportStatus(row)}</td>
@@ -657,7 +675,7 @@ export default function HistoryView({
                         {!managementOpen && getSubmissionState(row) === SUBMISSION_DRAFT ? (
                           <Tooltip
                             content={
-                              row.media_available === false
+                              (row.media_available === false && !row.url)
                                 ? '找不到本機證據檔案，無法繼續處理'
                                 : '選擇如何繼續處理這份檢舉'
                             }
@@ -667,7 +685,7 @@ export default function HistoryView({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setDraftToContinue(row)}
-                                disabled={row.media_available === false || !onContinueDraft}
+                                disabled={(row.media_available === false && !row.url) || !onContinueDraft}
                                 data-testid={`continue-draft-${row.record_id || idx}`}
                               >
                                 繼續處理
@@ -905,7 +923,7 @@ export default function HistoryView({
                 刪除後將不再顯示這 {actionDialog.records.length} 筆紀錄，也會停止追蹤官方處分結果。
               </p>
               <div className="history-action-dialog-summary">
-                待處理 {actionPendingCount} 筆・已完成 {actionSubmittedCount} 筆
+                待處理 {actionPendingCount} 筆，已完成 {actionSubmittedCount} 筆
               </div>
             </div>
           ) : (

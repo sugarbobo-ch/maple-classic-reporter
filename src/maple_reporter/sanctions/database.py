@@ -128,6 +128,11 @@ class SanctionDatabase:
                 ("remote_evidence_state", "TEXT"),
                 ("remote_evidence_cleaned_at", "TEXT"),
                 ("remote_cleanup_error", "TEXT"),
+                ("batch_id", "TEXT"),
+                ("batch_order", "INTEGER"),
+                ("batch_note", "TEXT"),
+                ("note_override", "TEXT"),
+                ("batch_phase", "TEXT"),
                 ("local_evidence_cleaned_at", "TEXT"),
             ):
                 if column not in report_columns:
@@ -180,14 +185,14 @@ class SanctionDatabase:
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
                     ban_result, ban_masked_name, ban_checked_at,
                     evidence_provider, remote_evidence_id, remote_evidence_state,
-                    remote_evidence_cleaned_at, remote_cleanup_error, local_evidence_cleaned_at
+                    remote_evidence_cleaned_at, remote_cleanup_error, batch_id, batch_order, batch_note, note_override, batch_phase, local_evidence_cleaned_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
                     :submission_state, :submission_mode, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
                     :ban_result, :ban_masked_name, :ban_checked_at,
                     :evidence_provider, :remote_evidence_id, :remote_evidence_state,
-                    :remote_evidence_cleaned_at, :remote_cleanup_error, :local_evidence_cleaned_at
+                    :remote_evidence_cleaned_at, :remote_cleanup_error, :batch_id, :batch_order, :batch_note, :note_override, :batch_phase, :local_evidence_cleaned_at
                 );
             """
             for r in reports:
@@ -216,6 +221,11 @@ class SanctionDatabase:
                     "remote_evidence_state": r.get("remote_evidence_state", ""),
                     "remote_evidence_cleaned_at": r.get("remote_evidence_cleaned_at", ""),
                     "remote_cleanup_error": r.get("remote_cleanup_error", ""),
+                    "batch_id": r.get("batch_id"),
+                    "batch_order": r.get("batch_order"),
+                    "batch_note": r.get("batch_note"),
+                    "note_override": r.get("note_override"),
+                    "batch_phase": r.get("batch_phase"),
                     "local_evidence_cleaned_at": r.get("local_evidence_cleaned_at", ""),
                 }
                 conn.execute(insert_sql, params)
@@ -249,6 +259,11 @@ class SanctionDatabase:
                 "remote_evidence_state": r.get("remote_evidence_state", ""),
                 "remote_evidence_cleaned_at": r.get("remote_evidence_cleaned_at", ""),
                 "remote_cleanup_error": r.get("remote_cleanup_error", ""),
+                "batch_id": r.get("batch_id"),
+                "batch_order": r.get("batch_order"),
+                "batch_note": r.get("batch_note"),
+                "note_override": r.get("note_override"),
+                "batch_phase": r.get("batch_phase"),
                 "local_evidence_cleaned_at": r.get("local_evidence_cleaned_at", ""),
             }
             conn.execute("""
@@ -258,14 +273,14 @@ class SanctionDatabase:
                     ban_status, ban_date, ban_announcement_url, ban_bulletin_id,
                     ban_result, ban_masked_name, ban_checked_at,
                     evidence_provider, remote_evidence_id, remote_evidence_state,
-                    remote_evidence_cleaned_at, remote_cleanup_error, local_evidence_cleaned_at
+                    remote_evidence_cleaned_at, remote_cleanup_error, batch_id, batch_order, batch_note, note_override, batch_phase, local_evidence_cleaned_at
                 ) VALUES (
                     :record_id, :time, :suspect_id, :server, :map, :url, :status, :note,
                     :submission_state, :submission_mode, :media_path, :media_type,
                     :ban_status, :ban_date, :ban_announcement_url, :ban_bulletin_id,
                     :ban_result, :ban_masked_name, :ban_checked_at,
                     :evidence_provider, :remote_evidence_id, :remote_evidence_state,
-                    :remote_evidence_cleaned_at, :remote_cleanup_error, :local_evidence_cleaned_at
+                    :remote_evidence_cleaned_at, :remote_cleanup_error, :batch_id, :batch_order, :batch_note, :note_override, :batch_phase, :local_evidence_cleaned_at
                 )
                 ON CONFLICT(record_id) DO UPDATE SET
                     time=excluded.time,
@@ -291,6 +306,11 @@ class SanctionDatabase:
                     remote_evidence_state=excluded.remote_evidence_state,
                     remote_evidence_cleaned_at=excluded.remote_evidence_cleaned_at,
                     remote_cleanup_error=excluded.remote_cleanup_error,
+                    batch_id=excluded.batch_id,
+                    batch_order=excluded.batch_order,
+                    batch_note=excluded.batch_note,
+                    note_override=excluded.note_override,
+                    batch_phase=excluded.batch_phase,
                     local_evidence_cleaned_at=excluded.local_evidence_cleaned_at;
             """, params)
 

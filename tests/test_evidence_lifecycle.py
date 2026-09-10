@@ -70,3 +70,32 @@ class EvidenceLifecycleTests(TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["record"]["media_path"], "")
         unlink.assert_called_once()
+
+    def test_batch_cleanup_reuses_one_history_snapshot(self):
+        repository = MagicMock()
+        records = [
+            {
+                "record_id": f"record-{index}",
+                "url": "https://drive.google.com/file/d/shared-file/view",
+                "evidence_provider": "gdrive",
+                "remote_evidence_id": "shared-file",
+                "remote_evidence_state": "available",
+                "media_path": f"C:/recordings/shared-{index}.mp4",
+            }
+            for index in range(3)
+        ]
+        repository.load_history.return_value = records
+        drive = MagicMock()
+        drive.trash_file.return_value = (True, "trashed")
+        manager = EvidenceLifecycleManager(repository=repository, drive_manager=drive)
+
+        with patch(
+            "maple_reporter.evidence.lifecycle.is_owned_recording_path", return_value=True
+        ), patch("maple_reporter.evidence.lifecycle.os.path.exists", return_value=False):
+            result = manager.cleanup_records(
+                [record["record_id"] for record in records],
+                {"local", "google_drive"},
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(repository.load_history.call_count, 1)

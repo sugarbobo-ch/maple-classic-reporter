@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from maple_reporter.utils.config import REPLAY_SAVE_SECONDS
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -117,6 +119,7 @@ class ConfigBridgeMixin:
             "gdrive_authenticated": gdrive_auth,
             "replay_state": self._replay_state,
             "replay_duration": self._replay_duration,
+            "replay_total": self.replay_recorder.buffer_seconds,
             "app_data_dir": str(mod.get_user_app_data_dir()),
             "sanction_sync_status": sync_status,
             "last_complete_sync_at": cache.last_complete_sync_at or None,
@@ -143,6 +146,15 @@ class ConfigBridgeMixin:
 
                 candidate_config = dict(current_config)
                 candidate_config[key] = value
+                if key == "replay_save_sec":
+                    if value is not None:
+                        try:
+                            value = int(value)
+                        except (TypeError, ValueError):
+                            return False
+                        if value not in REPLAY_SAVE_SECONDS:
+                            return False
+                    candidate_config[key] = value
                 if key == "audio_capture_mode":
                     mode = str(value).casefold()
                     if mode not in {"process", "system", "off"}:
@@ -158,7 +170,6 @@ class ConfigBridgeMixin:
                 if key in ("global_hotkeys_enabled", "save_replay_hotkey", "record_video_hotkey"):
                     self._init_hotkeys()
                 elif key in (
-                    "replay_buffer_sec",
                     "selected_window_title",
                     "record_fps",
                     "record_audio",
@@ -191,6 +202,15 @@ class ConfigBridgeMixin:
                     return False
                 candidate_config["audio_capture_mode"] = mode
                 candidate_config["record_audio"] = mode != "off"
+                replay_save_sec = candidate_config.get("replay_save_sec")
+                if replay_save_sec is not None:
+                    try:
+                        replay_save_sec = int(replay_save_sec)
+                    except (TypeError, ValueError):
+                        return False
+                    if replay_save_sec not in REPLAY_SAVE_SECONDS:
+                        return False
+                candidate_config["replay_save_sec"] = replay_save_sec
 
                 # Validate hotkey conflicts
                 save_hk = str(candidate_config.get("save_replay_hotkey", "")).strip().lower()

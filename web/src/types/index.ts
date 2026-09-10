@@ -26,6 +26,7 @@ export interface AppConfig {
   record_fps: number;
   record_countdown_sec?: number;
   replay_buffer_sec: number;
+  replay_save_sec?: number | null;
   upload_destination: UploadDestination;
   gdrive_folder_name: string;
   discord_webhook_url: string;
@@ -98,6 +99,12 @@ export interface AudioDeviceItem {
 }
 
 export interface HistoryRecord {
+  batch_id?: string;
+  batch_order?: number;
+  batch_note?: string;
+  note_override?: string | null;
+  batch_phase?: 'draft' | 'queued' | 'sending' | 'unknown' | 'manual' | 'completed';
+
   record_id?: string;
   timestamp?: string;
   time?: string;
@@ -220,12 +227,16 @@ export interface InitialDataResponse {
   gdrive_authenticated?: boolean;
   replay_state?: string;
   replay_duration?: number;
+  replay_total?: number;
   sanction_sync_status?: SanctionSyncStatus;
   last_complete_sync_at?: string;
   update_status?: UpdateStatus;
 }
 
 export interface SubmissionResponse {
+  batch_id?: string;
+  records?: HistoryRecord[];
+
   status: 'success' | 'manual_ready' | 'error';
   message: string;
   evidence_url?: string;
@@ -234,6 +245,9 @@ export interface SubmissionResponse {
 }
 
 export interface ConfirmManualReportResponse {
+  next_record?: HistoryRecord | null;
+  records?: HistoryRecord[];
+
   status: 'success' | 'error';
   message: string;
   record?: HistoryRecord;
@@ -249,6 +263,9 @@ export interface DraftSaveResponse {
 export type SubmissionStatusKind = 'progress' | 'success' | 'error';
 
 export interface SubmissionStatusData {
+  batch_id?: string;
+  records?: HistoryRecord[];
+
   step?: string;
   status?: SubmissionStatusKind;
   message: string;
@@ -347,10 +364,18 @@ declare global {
           audioCaptureMode?: AudioCaptureMode
         ) => Promise<boolean>;
         stop_replay: () => Promise<boolean>;
-        save_replay: () => Promise<boolean>;
-        get_replay_status: () => Promise<{ state: string; duration: number; is_running: boolean }>;
+        save_replay: (saveSeconds?: number | null) => Promise<boolean>;
+        get_replay_status: () => Promise<{
+          state: string;
+          duration: number;
+          is_running: boolean;
+          total?: number;
+        }>;
         select_local_file: () => Promise<string | null>;
         process_imported_file: (filePath: string) => Promise<OcrResultData>;
+        submit_report_batch: (formData: Record<string, unknown>) => Promise<SubmissionResponse>;
+        save_report_batch: (formData: Record<string, unknown>) => Promise<DraftSaveResponse>;
+        resolve_report_result: (data: { record_id: string; completed: boolean }) => Promise<SubmissionResponse>;
         submit_report: (formData: Record<string, unknown>) => Promise<SubmissionResponse>;
         confirm_manual_report: (recordId: string) => Promise<ConfirmManualReportResponse>;
         save_report_draft: (formData: Record<string, unknown>) => Promise<DraftSaveResponse>;

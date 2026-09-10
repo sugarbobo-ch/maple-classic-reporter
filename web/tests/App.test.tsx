@@ -112,7 +112,8 @@ describe('App submission workflow', () => {
     fireEvent.click(screen.getByTestId('continue-draft-with-recognition'));
 
     await waitFor(() => expect(processImportedFile).toHaveBeenCalledWith(draft.media_path));
-    expect(await screen.findByTestId('report-suspect-id')).toHaveValue('recognized-player');
+    expect(await screen.findByRole('button', { name: '刪除 saved-player' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'recognized-player' })).toBeInTheDocument();
     expect(screen.getByTestId('report-map-name')).toHaveValue('Saved Map');
   });
 
@@ -139,8 +140,7 @@ describe('App submission workflow', () => {
       },
     });
 
-    const suspectInput = await screen.findByTestId('report-suspect-id');
-    expect(suspectInput).toHaveValue('old-suspect');
+    expect(await screen.findByRole('button', { name: '刪除 old-suspect' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
     await waitFor(() => expect(screen.queryByTestId('report-suspect-id')).not.toBeInTheDocument());
 
@@ -162,7 +162,7 @@ describe('App submission workflow', () => {
       },
     });
 
-    expect(await screen.findByTestId('report-suspect-id')).toHaveValue('new-suspect');
+    expect(await screen.findByRole('button', { name: '刪除 new-suspect' })).toBeInTheDocument();
   });
 
   it('does not reopen recognition progress when replay saving finishes after OCR is skipped', async () => {
@@ -183,10 +183,8 @@ describe('App submission workflow', () => {
       data: { state: 'ready', duration: 30, total: 30 },
     });
     await screen.findByText('REC');
-    await waitFor(() => {
-      expect(document.querySelectorAll('.status-actions-group button')).toHaveLength(2);
-    });
-    fireEvent.click(document.querySelectorAll('.status-actions-group button')[1]);
+    const saveReplayButton = await screen.findByRole('button', { name: '儲存影片片段' });
+    fireEvent.click(saveReplayButton);
     fireEvent.click(await screen.findByTestId('skip-ocr-button'));
     expect(await screen.findByTestId('report-map-name')).toBeInTheDocument();
     await waitFor(() => expect(api.cancel_ocr).toHaveBeenCalledTimes(1));
@@ -333,7 +331,7 @@ describe('App submission workflow', () => {
     await waitFor(() => {
       expect(recognizeVideoFrame).toHaveBeenCalledWith('C:\\test\\evidence.mp4', 0);
     });
-    expect(await screen.findByText('frame-player')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'frame-player' })).toBeInTheDocument();
   });
 
   it('keeps the form open and exposes the failure when submission fails', async () => {
@@ -342,7 +340,7 @@ describe('App submission workflow', () => {
       message: 'submission-failed-in-test',
     });
     const api = installMockPyWebView(
-      { submit_report: submitReport },
+      { submit_report_batch: submitReport },
       {
         config: TEST_CONFIG,
         history: [],
@@ -389,7 +387,7 @@ describe('App submission workflow', () => {
       );
     });
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('submission-failed-in-test');
+    expect(await screen.findByText('submission-failed-in-test', { selector: '[role="alert"]' })).toBeInTheDocument();
     expect(screen.getByTestId('report-submit')).toBeInTheDocument();
   });
 

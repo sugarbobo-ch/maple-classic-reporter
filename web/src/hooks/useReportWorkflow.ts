@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getReporterBridge } from '../bridge/reporterBridge';
 import { usePyWebViewEvents } from './usePyWebViewEvents';
 import { useToast } from './useToast';
@@ -13,6 +13,7 @@ import {
   OcrResultData,
   StatusState,
   SubmissionStatusData,
+  SubmissionResponse,
 } from '../types';
 import { normalizeOcrResult } from '../utils/appHelpers';
 
@@ -29,6 +30,8 @@ export interface ReportWorkflowResult {
   countdownFraction: number | undefined;
   recordingFraction: number | undefined;
   replayTime: number;
+  replayBufferTotal: number;
+  replaySaving: boolean;
   modalOpen: boolean;
   modalStage: 'progress' | 'form';
   modalProgress: number;
@@ -57,10 +60,10 @@ export interface ReportWorkflowResult {
   handleConfirmManualReport: (recordId: string) => Promise<void>;
   handleSaveReportDraft: (formData: Record<string, unknown>) => Promise<void>;
   handleContinueDraft: (record: HistoryRecord, runRecognition: boolean) => Promise<void>;
-  handleContinueManual: (record: HistoryRecord) => void;
+  handleContinueManual: (record: HistoryRecord) => Promise<void>;
   handleCloseReport: () => void;
   handleStopReplay: () => Promise<void>;
-  restoreReplayState: (state?: string, duration?: number) => void;
+  restoreReplayState: (state?: string, duration?: number, total?: number) => void;
 }
 
 export function useReportWorkflow({
@@ -75,6 +78,8 @@ export function useReportWorkflow({
   const [countdownFraction, setCountdownFraction] = useState<number | undefined>(undefined);
   const [recordingFraction, setRecordingFraction] = useState<number | undefined>(undefined);
   const [replayTime, setReplayTime] = useState(0);
+  const [replayBufferTotal, setReplayBufferTotal] = useState(config.replay_buffer_sec || 20);
+  const [replaySaving, setReplaySaving] = useState(false);
   const animFrameRef = useRef<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -99,6 +104,12 @@ export function useReportWorkflow({
   const [isConfirmingManual, setIsConfirmingManual] = useState(false);
   const ocrCancelledRef = useRef(false);
   const frameOcrActiveRef = useRef(false);
+
+  useEffect(() => {
+    if (statusState === 'idle') {
+      setReplayBufferTotal(config.replay_buffer_sec || 20);
+    }
+  }, [config.replay_buffer_sec, statusState]);
 
   const resetOcrResultsForWorkflow = (
     mediaPath = '',
@@ -195,15 +206,20 @@ export function useReportWorkflow({
       toast.error('錄影失敗', data.message);
       setModalOpen(false);
     },
-    REPLAY_STATE_CHANGED: (data: { state: string; duration: number; total: number }) => {
+    REPLAY_STATE_CHANGED: (data: { state: string; duration: number; total?: number }) => {
+      setReplaySaving(data.state === 'saving');
       if (['warming', 'ready', 'saving'].includes(data.state)) {
         setStatusState('replaying');
       } else {
         setStatusState('idle');
       }
       setReplayTime(Math.floor(data.duration));
+      if (typeof data.total === 'number' && data.total > 0) {
+        setReplayBufferTotal(data.total);
+      }
     },
     REPLAY_SAVED: (data?: { file_path?: string }) => {
+      setReplaySaving(false);
       if (ocrCancelledRef.current) {
         const savedPath = data?.file_path || '';
         if (savedPath) {
@@ -223,6 +239,7 @@ export function useReportWorkflow({
       setModalOpen(true);
     },
     REPLAY_ERROR: (data: { message: string }) => {
+      setReplaySaving(false);
       toast.error('循環錄影錯誤', data.message);
       setModalOpen(false);
     },
@@ -245,11 +262,16 @@ export function useReportWorkflow({
     SUBMISSION_STATUS: (data: SubmissionStatusData) => {
       if (!data?.message) return;
       setSubmissionStatus({
+        ...data,
         step: data.step,
         status: data.status || 'progress',
         message: data.message,
       });
       setModalStatusText(data.message);
+      if (data.records?.length) {
+        setActiveHistoryRecord(data.records[0]);
+        void refreshHistory();
+      }
     },
     GLOBAL_HOTKEY_TRIGGERED: (data: { action: string }) => {
       toast.info(
@@ -451,6 +473,7 @@ export function useReportWorkflow({
   };
 
   const handleToggleReplay = async () => {
+    if (replaySaving) return;
     if (statusState === 'replaying') {
       await getReporterBridge()?.capture.stopReplay();
       setStatusState('idle');
@@ -470,6 +493,8 @@ export function useReportWorkflow({
       );
       if (ok) {
         setStatusState('replaying');
+        setReplaySaving(false);
+        setReplayBufferTotal(config.replay_buffer_sec || 20);
         toast.info('已啟動循環錄影', `持續保留最近 ${config.replay_buffer_sec || 30} 秒畫面`);
       }
     } else {
@@ -496,12 +521,13 @@ export function useReportWorkflow({
   };
 
   const handleSaveReplay = async () => {
+    if (replaySaving) return;
     beginOcrWorkflow('', 'video');
     setSubmissionStatus(null);
     const bridge = getReporterBridge();
     if (bridge) {
       try {
-        const ok = await bridge.capture.saveReplay();
+        const ok = await bridge.capture.saveReplay(config.replay_save_sec ?? null);
         if (!ok) {
           toast.warning('循環錄影片段尚未就緒', '請稍候幾秒待緩衝累積後再儲存');
         } else {
@@ -654,12 +680,19 @@ export function useReportWorkflow({
 
     const bridge = getReporterBridge();
     if (bridge) {
+      let result: SubmissionResponse | null = null;
       try {
-        const result = await bridge.reports.submit({
+        result = await (
+          Array.isArray(formData.suspects) ? bridge.reports.submitBatch : bridge.reports.submit
+        )({
           ...formData,
           file_path: evidencePath,
           upload_destination: config.upload_destination || 'gdrive',
         });
+        if (result?.records?.length) {
+          setActiveHistoryRecord(result.records[0]);
+          await refreshHistory();
+        }
         if (result?.status === 'manual_ready') {
           const record: HistoryRecord = result.record || {
             record_id: result.record_id,
@@ -692,13 +725,25 @@ export function useReportWorkflow({
         } else {
           const message = result?.message || '請確認網路與帳號授權狀態';
           toast.error('送出失敗', message);
-          setSubmissionStatus({ step: 'failed', status: 'error', message });
+          setSubmissionStatus({
+            step: 'failed',
+            status: 'error',
+            message,
+            batch_id: result?.batch_id,
+            records: result?.records,
+          });
           setModalStatusText(message);
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : '送出發生錯誤，請稍後重試';
         toast.error('送出表單異常', message);
-        setSubmissionStatus({ step: 'failed', status: 'error', message });
+        setSubmissionStatus({
+          step: 'failed',
+          status: 'error',
+          message,
+          batch_id: result?.batch_id,
+          records: result?.records,
+        });
         setModalStatusText(message);
       } finally {
         setIsSubmittingReport(false);
@@ -723,9 +768,9 @@ export function useReportWorkflow({
       }
       await refreshHistory();
       toast.success('已完成檢舉', result.deleted ? '紀錄已更新，本機證據已清理。' : result.message);
-      setManualReport(null);
-      setActiveHistoryRecord(null);
-      setModalOpen(false);
+      setManualReport(result.next_record || null);
+      setActiveHistoryRecord(result.next_record || null);
+      setModalOpen(Boolean(result.next_record));
     } catch (error: unknown) {
       toast.error('無法完成確認', error instanceof Error ? error.message : '請稍後再試。');
     } finally {
@@ -749,7 +794,11 @@ export function useReportWorkflow({
 
     setIsSavingDraft(true);
     try {
-      const result = await bridge.reports.saveDraft(formData);
+      const result = await (
+        Array.isArray(formData.suspects) && (formData.suspects.length || formData.batch_id)
+          ? bridge.reports.saveBatch
+          : bridge.reports.saveDraft
+      )(formData);
       if (result.status !== 'success') {
         toast.error('儲存失敗', result.message || '請確認證據檔案後重試');
         return;
@@ -769,7 +818,11 @@ export function useReportWorkflow({
   };
 
   const openDraftForm = (record: HistoryRecord) => {
-    if (getSubmissionState(record) !== SUBMISSION_DRAFT || record.media_available === false) return;
+    if (
+      getSubmissionState(record) !== SUBMISSION_DRAFT ||
+      (record.media_available === false && !record.url)
+    )
+      return;
     ocrCancelledRef.current = false;
     setActiveHistoryRecord(record);
     setReportWorkflowId((previous) => previous + 1);
@@ -788,8 +841,30 @@ export function useReportWorkflow({
     setModalOpen(true);
   };
 
-  const handleContinueManual = (record: HistoryRecord) => {
+  const handleContinueManual = async (record: HistoryRecord) => {
     if (getSubmissionState(record) !== SUBMISSION_AWAITING_MANUAL) return;
+    try {
+      const records = await refreshHistory();
+      if (record.batch_id) {
+        record =
+          records
+            .filter(
+              (item) =>
+                item.batch_id === record.batch_id &&
+                getSubmissionState(item) === SUBMISSION_AWAITING_MANUAL
+            )
+            .sort((a, b) => (a.batch_order || 0) - (b.batch_order || 0))[0] || record;
+      } else {
+        record = records.find((item) => item.record_id === record.record_id) || record;
+      }
+      if (!record.media_path || record.media_available === false) {
+        toast.error('本機證據檔案不存在', '原本的影片可能已移動或刪除，請重新選取檔案建立檢舉。');
+        return;
+      }
+    } catch {
+      toast.error('無法確認本機證據', '請稍後再試。');
+      return;
+    }
     setActiveHistoryRecord(record);
     setManualReport(record);
     setReportWorkflowId((previous) => previous + 1);
@@ -798,11 +873,27 @@ export function useReportWorkflow({
   };
 
   const handleContinueDraft = async (record: HistoryRecord, runRecognition: boolean) => {
+    try {
+      const latest = (await refreshHistory()).find((item) => item.record_id === record.record_id);
+      if (!latest) {
+        toast.error('找不到這筆檢舉紀錄', '請重新整理回報紀錄後再試。');
+        return;
+      }
+      record = latest;
+      if (!record.media_path || record.media_available === false) {
+        toast.error('本機證據檔案不存在', '原本的影片可能已移動或刪除，請重新選取檔案建立檢舉。');
+        return;
+      }
+    } catch {
+      toast.error('無法確認本機證據', '請稍後再試。');
+      return;
+    }
+
     if (!runRecognition) {
       openDraftForm(record);
       return;
     }
-    if (getSubmissionState(record) !== SUBMISSION_DRAFT || record.media_available === false) return;
+    if (getSubmissionState(record) !== SUBMISSION_DRAFT) return;
 
     const mediaPath = record.media_path || '';
     const bridge = getReporterBridge();
@@ -841,13 +932,7 @@ export function useReportWorkflow({
       }
 
       const normalized = normalizeOcrResult(result, initialOcr, config);
-      const recognizedId =
-        config.ocr_autofill_id !== false
-          ? normalized.suspect_ids.find((id) => !config.whitelist.includes(id)) ||
-            normalized.suspect_ids[0] ||
-            record.suspect_id ||
-            ''
-          : record.suspect_id || '';
+      const recognizedId = record.suspect_id || '';
       const hasRecognizedMap =
         config.ocr_autofill_map !== false &&
         (normalized.map_name_source === 'ocr' || Boolean(normalized.ocr_map_name));
@@ -864,7 +949,7 @@ export function useReportWorkflow({
         ...normalized,
         suspect_ids: recognizedId
           ? [recognizedId, ...normalized.suspect_ids.filter((id) => id !== recognizedId)]
-          : [],
+          : normalized.suspect_ids,
         map_name: recognizedMap,
       });
       setReportWorkflowId((previous) => previous + 1);
@@ -899,16 +984,19 @@ export function useReportWorkflow({
   };
 
   const handleStopReplay = async () => {
+    if (replaySaving) return;
     await getReporterBridge()?.capture.stopReplay();
     setStatusState('idle');
     setReplayTime(0);
     toast.info('已停止循環錄影');
   };
 
-  const restoreReplayState = useCallback((state?: string, duration?: number) => {
+  const restoreReplayState = useCallback((state?: string, duration?: number, total?: number) => {
     if (state && ['warming', 'ready', 'saving'].includes(state)) {
       setStatusState('replaying');
+      setReplaySaving(state === 'saving');
       setReplayTime(Math.floor(duration || 0));
+      if (typeof total === 'number' && total > 0) setReplayBufferTotal(total);
     }
   }, []);
 
@@ -920,6 +1008,8 @@ export function useReportWorkflow({
     countdownFraction,
     recordingFraction,
     replayTime,
+    replayBufferTotal,
+    replaySaving,
     modalOpen,
     modalStage,
     modalProgress,

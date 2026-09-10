@@ -14,6 +14,9 @@ import { Button, Badge, Dialog } from '../ui';
 export interface MediaPreviewSectionProps {
   currentMediaPath: string;
   mediaStreamUrl: string;
+  mediaError?: string;
+  readOnly?: boolean;
+  onMediaError?: () => void;
   previewUrl: string;
   originalBackupPath: string | null;
   isVideo: boolean;
@@ -47,6 +50,9 @@ export interface MediaPreviewSectionProps {
 export default function MediaPreviewSection({
   currentMediaPath,
   mediaStreamUrl,
+  mediaError,
+  readOnly = false,
+  onMediaError,
   previewUrl,
   originalBackupPath,
   isVideo,
@@ -99,7 +105,11 @@ export default function MediaPreviewSection({
         {/* Left Column: 16:9 Media Player & Expandable Trim Panel */}
         <div className="media-player-column">
           <div className="media-player-box">
-            {isVideo && mediaStreamUrl ? (
+            {mediaError ? (
+              <div className="media-placeholder" role="alert">
+                <span>{mediaError}</span>
+              </div>
+            ) : isVideo && mediaStreamUrl ? (
               <video
                 ref={videoRef}
                 key={mediaStreamUrl || currentMediaPath}
@@ -107,6 +117,7 @@ export default function MediaPreviewSection({
                 controls
                 preload="auto"
                 onLoadedMetadata={onLoadedMetadata}
+                onError={onMediaError}
                 onTimeUpdate={onTimeUpdate}
                 onPlay={onVideoPlay}
                 onPause={onVideoPause}
@@ -143,7 +154,7 @@ export default function MediaPreviewSection({
           </div>
 
           {/* Expandable Video Segment Trim Panel */}
-          {isVideo && isTrimOpen && (
+          {isVideo && isTrimOpen && !readOnly && (
             <div className="video-trim-panel">
               <div className="trim-header-row">
                 <div className="trim-time-indicator">
@@ -277,6 +288,8 @@ export default function MediaPreviewSection({
               icon={ScanLine}
               onClick={onRecognizeCurrentFrame}
               disabled={
+                readOnly ||
+                Boolean(mediaError) ||
                 !currentMediaPath ||
                 !mediaStreamUrl ||
                 !isVideoPaused ||
@@ -288,8 +301,8 @@ export default function MediaPreviewSection({
                 !mediaStreamUrl
                   ? '影片載入完成後，請先暫停影片再辨識'
                   : isVideoPaused
-                  ? '以目前暫停位置擷取畫面並重新辨識'
-                  : '請先暫停影片，再辨識目前畫面'
+                    ? '以目前暫停位置擷取畫面並重新辨識'
+                    : '請先暫停影片，再辨識目前畫面'
               }
               style={{
                 width: '100%',
@@ -336,6 +349,7 @@ export default function MediaPreviewSection({
               size="md"
               icon={Scissors}
               onClick={onToggleTrimOpen}
+              disabled={readOnly || Boolean(mediaError)}
               data-testid="video-trim-toggle"
               style={{ width: '100%', justifyContent: 'flex-start' }}
             >
@@ -349,7 +363,7 @@ export default function MediaPreviewSection({
               size="md"
               icon={RotateCcw}
               onClick={onRestoreOriginal}
-              disabled={isTrimming}
+              disabled={isTrimming || readOnly || Boolean(mediaError)}
               style={{
                 width: '100%',
                 justifyContent: 'flex-start',

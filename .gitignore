@@ -27,6 +27,7 @@ web/node_modules/
 web/dist/
 .pnpm-store/
 *.local
+*.log
 
 # Local agent tooling and Impeccable review artifacts
 .codex/

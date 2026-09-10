@@ -42,6 +42,12 @@ export default function RecordingTab({
     { value: 'system', label: '所有系統聲音' },
     { value: 'off', label: '不錄音' },
   ];
+  const audioModeDescription =
+    audioMode === 'process'
+      ? '只錄製遊戲聲音，會跟隨目前選擇的錄影視窗及其子程序。'
+      : audioMode === 'system'
+        ? '錄製所有系統聲音，包含其他應用程式與系統通知。'
+        : '不錄製任何聲音。';
 
   return (
     <>
@@ -132,7 +138,7 @@ export default function RecordingTab({
       <div className="setting-row">
         <div className="setting-info">
           <span className="setting-label">錄音來源</span>
-          <span className="setting-desc">選擇只錄製遊戲聲音、所有系統聲音或不錄音。</span>
+          <span className="setting-desc">{audioModeDescription}</span>
         </div>
         <div style={{ width: '220px', minWidth: '180px' }}>
           <Dropdown<AudioCaptureMode>
@@ -142,15 +148,6 @@ export default function RecordingTab({
           />
         </div>
       </div>
-
-      {audioMode === 'process' && (
-        <div className="setting-row">
-          <div className="setting-info">
-            <span className="setting-label">遊戲音訊來源</span>
-            <span className="setting-desc">跟隨上方選擇的錄影視窗及其子程序。</span>
-          </div>
-        </div>
-      )}
 
       {audioMode === 'system' && (
         <div className="setting-row">

@@ -20,6 +20,7 @@ export const TEST_CONFIG: AppConfig = {
   record_fps: 30,
   record_countdown_sec: 0,
   replay_buffer_sec: 30,
+  replay_save_sec: null,
   upload_destination: 'gdrive',
   gdrive_folder_name: 'MapleClassic_Reports',
   discord_webhook_url: '',
@@ -121,6 +122,9 @@ export function createMockPyWebViewApi(
       media_path: '',
       media_type: 'image',
     }),
+    submit_report_batch: vi.fn().mockResolvedValue({ status: 'success', message: '完成' }),
+    save_report_batch: vi.fn().mockResolvedValue({ status: 'success', message: '已儲存' }),
+    resolve_report_result: vi.fn().mockResolvedValue({ status: 'success', message: '已更新' }),
     submit_report: vi.fn().mockResolvedValue({
       status: 'success',
       message: 'Submitted',

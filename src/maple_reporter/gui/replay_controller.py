@@ -38,8 +38,8 @@ class ReplayController(QObject):
     def stop(self) -> None:
         self.recorder.stop()
 
-    def save(self) -> bool:
-        return self.recorder.save_replay()
+    def save(self, save_seconds: int | None = None) -> bool:
+        return self.recorder.save_replay(save_seconds)
 
 
 __all__ = ["ReplayController"]

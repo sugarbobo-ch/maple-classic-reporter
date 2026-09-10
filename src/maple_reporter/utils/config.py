@@ -45,6 +45,7 @@ def get_default_token_path() -> Path:
 
 _SECRET_CONFIG_KEYS = ("discord_webhook_url",)
 _REMOVED_CONFIG_KEYS = ("gemini_api_key", "recording_prompt_enabled")
+REPLAY_SAVE_SECONDS = (30, 60, 120, 180, 300)
 
 
 def get_default_secret_path(name: str) -> Path:
@@ -103,6 +104,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "record_fps": 20,
     "record_countdown_sec": 3,
     "replay_buffer_sec": 20,
+    # None means that a replay save uses every frame currently buffered.
+    "replay_save_sec": None,
     "selected_window_title": "新楓之谷：經典版",
     "gdrive_token_file": str(get_default_token_path()),
     "gdrive_folder_name": "MapleClassic_Reports",
@@ -269,6 +272,15 @@ def load_config() -> Dict[str, Any]:
             changed = True
         merged["audio_capture_mode"] = audio_mode
         merged["record_audio"] = audio_mode != "off"
+        replay_save_sec = merged.get("replay_save_sec")
+        if replay_save_sec is not None:
+            try:
+                replay_save_sec = int(replay_save_sec)
+            except (TypeError, ValueError):
+                replay_save_sec = None
+            if replay_save_sec not in REPLAY_SAVE_SECONDS:
+                replay_save_sec = None
+        merged["replay_save_sec"] = replay_save_sec
         for name in _REMOVED_CONFIG_KEYS:
             if name in sanitized:
                 sanitized.pop(name, None)
@@ -309,6 +321,15 @@ def save_config(cfg: Dict[str, Any]) -> None:
     with _CONFIG_LOCK:
         ensure_config_dir()
         serializable = dict(cfg)
+        replay_save_sec = serializable.get("replay_save_sec")
+        if replay_save_sec is not None:
+            try:
+                replay_save_sec = int(replay_save_sec)
+            except (TypeError, ValueError):
+                replay_save_sec = None
+            if replay_save_sec not in REPLAY_SAVE_SECONDS:
+                replay_save_sec = None
+        serializable["replay_save_sec"] = replay_save_sec
         audio_mode = str(serializable.get("audio_capture_mode", "")).casefold()
         if audio_mode in {"process", "system", "off"}:
             serializable["record_audio"] = audio_mode != "off"

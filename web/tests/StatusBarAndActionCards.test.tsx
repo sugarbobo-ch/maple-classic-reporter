@@ -66,6 +66,36 @@ describe('StatusBar component', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
+  it('offers save lengths supported by the active replay buffer', () => {
+    const onSaveLengthChange = vi.fn();
+    render(
+      <StatusBar
+        statusState="replaying"
+        replayTime={120}
+        maxReplayBuffer={300}
+        replaySaveSeconds={null}
+        onReplaySaveSecondsChange={onSaveLengthChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '儲存影片長度' }));
+    expect(screen.getByRole('option', { name: '最近 30 秒' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '最近 60 秒' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '最近 2 分鐘' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '最近 3 分鐘' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '最近 5 分鐘' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: '最近 2 分鐘' }));
+    expect(onSaveLengthChange).toHaveBeenCalledWith(120);
+  });
+
+  it('only exposes all buffered content when the active buffer is shorter than 30 seconds', () => {
+    render(<StatusBar statusState="replaying" maxReplayBuffer={20} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '儲存影片長度' }));
+    expect(screen.queryByRole('option', { name: '最近 30 秒' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '全部片段' })).toBeInTheDocument();
+  });
+
   it('renders countdown state in StatusBar with countdown text and cancel action', () => {
     const onCancel = vi.fn();
     render(<StatusBar countdown={3} totalCountdown={3} onCancelRecording={onCancel} />);

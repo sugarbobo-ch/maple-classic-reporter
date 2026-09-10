@@ -78,18 +78,22 @@ export default function QuickSettings({
   const handlePresetChange = (presetKey: PresetKey) => {
     const selectedPreset = RECORDING_PRESETS.find((p) => p.key === presetKey);
     if (selectedPreset) {
+      const updates: Partial<AppConfig> = {
+        recording_preset: selectedPreset.key,
+        record_duration_sec: selectedPreset.duration,
+        record_fps: selectedPreset.fps,
+        replay_buffer_sec: selectedPreset.replay,
+      };
+      if (
+        typeof config.replay_save_sec === 'number' &&
+        config.replay_save_sec > selectedPreset.replay
+      ) {
+        updates.replay_save_sec = null;
+      }
       if (onUpdateConfigBatch) {
-        onUpdateConfigBatch({
-          recording_preset: selectedPreset.key,
-          record_duration_sec: selectedPreset.duration,
-          record_fps: selectedPreset.fps,
-          replay_buffer_sec: selectedPreset.replay,
-        });
+        onUpdateConfigBatch(updates);
       } else {
-        onUpdateConfig('recording_preset', selectedPreset.key);
-        onUpdateConfig('record_duration_sec', selectedPreset.duration);
-        onUpdateConfig('record_fps', selectedPreset.fps);
-        onUpdateConfig('replay_buffer_sec', selectedPreset.replay);
+        Object.entries(updates).forEach(([key, value]) => onUpdateConfig(key, value));
       }
     }
   };
@@ -108,8 +112,11 @@ export default function QuickSettings({
   };
 
   const handleManualReplayChange = (val: number) => {
-    const nextReplay = Math.max(5, Math.min(120, val));
+    const nextReplay = Math.max(5, Math.min(300, val));
     onUpdateConfig('replay_buffer_sec', nextReplay);
+    if (typeof config.replay_save_sec === 'number' && config.replay_save_sec > nextReplay) {
+      onUpdateConfig('replay_save_sec', null);
+    }
     const matched = detectPresetKey(config.record_duration_sec, config.record_fps, nextReplay);
     onUpdateConfig('recording_preset', matched);
   };
@@ -393,7 +400,7 @@ export default function QuickSettings({
               value={config.replay_buffer_sec || 20}
               onChange={(e) => handleManualReplayChange(parseInt(e.target.value) || 1)}
               min="5"
-              max="120"
+              max="300"
             />
             <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>秒</span>
           </div>

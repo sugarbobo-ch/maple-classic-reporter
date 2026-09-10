@@ -129,6 +129,17 @@ class BaseBridgeMixin:
         status: str = "progress",
     ) -> None:
         """Publish a consistent submission lifecycle event to the React UI."""
+        batch_id = getattr(self, "_active_batch_id", "")
+        if batch_id:
+            records = self._batch_records(batch_id)
+            current = next((r for r in records if r.get("batch_phase") == "sending"), None)
+            if current:
+                message = f"{current['suspect_id']}（{current['batch_order'] + 1}/{len(records)}）：{message}"
+            self._emit_event("SUBMISSION_STATUS", {
+                "step": step, "status": status, "message": message,
+                "batch_id": batch_id, "records": records,
+            })
+            return
         self._emit_event(
             "SUBMISSION_STATUS",
             {"step": step, "status": status, "message": message},

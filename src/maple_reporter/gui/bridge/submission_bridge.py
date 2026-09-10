@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import wraps
+from .batch_submission import BatchSubmissionMixin
 import logging
 import os
 from pathlib import Path
@@ -48,10 +49,14 @@ def _submission_guard(method):
     return guarded
 
 
-class SubmissionBridgeMixin:
+class SubmissionBridgeMixin(BatchSubmissionMixin):
     """Methods for uploading evidence and submitting official reports via Playwright or dev simulation."""
 
+    @_submission_guard
     def save_report_draft(self, form_data: dict[str, Any]) -> dict[str, Any]:
+        return self._save_report_draft(form_data)
+
+    def _save_report_draft(self, form_data: dict[str, Any]) -> dict[str, Any]:
         """Persist evidence and form values without uploading or submitting them."""
         mod = _bridge_mod()
         raw_path = form_data.get("file_path") or form_data.get("media_path") or ""
@@ -84,12 +89,30 @@ class SubmissionBridgeMixin:
                 if stored_path.suffix.lower() in {".mp4", ".mkv", ".avi", ".mov"}
                 else "image"
             )
+        record_id = str(form_data.get("record_id", "") or "").strip()
+        existing_record = None
+        if record_id:
+            existing_record = next(
+                (
+                    item
+                    for item in self.sanction_repo.load_history()
+                    if item.get("record_id") == record_id
+                ),
+                None,
+            )
+        evidence_url = str(
+            form_data.get("url")
+            or form_data.get("evidence_url")
+            or (existing_record or {}).get("url")
+            or (existing_record or {}).get("evidence_url")
+            or ""
+        ).strip()
         payload = {
             "suspect_id": str(form_data.get("suspect_id", "") or "").strip(),
             "server": str(form_data.get("server_name") or form_data.get("server") or ""),
             "map": str(form_data.get("map_name", "") or "").strip(),
             "map_name": str(form_data.get("map_name", "") or "").strip(),
-            "url": "",
+            "url": evidence_url,
             "status": "尚未送出",
             "note": str(form_data.get("note", "") or "").strip(),
             "submission_state": SUBMISSION_DRAFT,
@@ -97,7 +120,6 @@ class SubmissionBridgeMixin:
             "media_type": media_type,
             "ban_status": "pending",
         }
-        record_id = str(form_data.get("record_id", "") or "").strip()
         if record_id:
             record = self.sanction_repo.update_history_entry(record_id, payload)
             if record is None:
@@ -167,6 +189,9 @@ class SubmissionBridgeMixin:
 
     @_submission_guard
     def submit_report(self, form_data: dict[str, Any]) -> dict[str, Any]:
+        return self._submit_report(form_data)
+
+    def _submit_report(self, form_data: dict[str, Any]) -> dict[str, Any]:
         """Upload evidence to GDrive/Discord and submit report via Playwright."""
         mod = _bridge_mod()
         LOGGER.info("PyWebViewBridge: Submitting report form: %s", form_data)
@@ -234,6 +259,15 @@ class SubmissionBridgeMixin:
                 evidence_url = res_msg
                 form_data["evidence_provider"] = "discord"
                 form_data["remote_evidence_id"] = ""
+
+        if form_data.get("_upload_only"):
+            self._update_batch(form_data["batch_id"], {
+                "url": evidence_url,
+                "evidence_provider": form_data.get("evidence_provider") or dest,
+                "remote_evidence_id": form_data.get("remote_evidence_id") or "",
+                "remote_evidence_state": "available" if dest == "gdrive" else "",
+            })
+            return {"status": "success", "message": "影片已上傳。", "evidence_url": evidence_url}
 
         submission_mode = str(
             form_data.get("submission_mode")
@@ -331,8 +365,8 @@ class SubmissionBridgeMixin:
         )
 
         # 4. Auto-delete local recording if enabled
-        if ok and bool(self.config.get("auto_delete_after_upload", False)):
-            if file_path and mod.is_owned_recording_path(file_path):
+        if ok and not form_data.get("batch_id") and bool(self.config.get("auto_delete_after_upload", False)):
+            if file_path and mod.is_owned_recording_path(file_path) and self._can_cleanup_shared_local(file_path):
                 try:
                     os.remove(file_path)
                     LOGGER.info("Auto-deleted confirmed evidence: %s", file_path)
@@ -350,6 +384,7 @@ class SubmissionBridgeMixin:
             "evidence_url": evidence_url,
         }
 
+    @_submission_guard
     def confirm_manual_report(self, record_id: str) -> dict[str, Any]:
         """Confirm a user-completed manual report and apply safe evidence cleanup."""
         normalized_id = str(record_id or "").strip()
@@ -367,23 +402,33 @@ class SubmissionBridgeMixin:
         if record is None or get_submission_state(record) != SUBMISSION_AWAITING_MANUAL:
             return {"status": "error", "message": "這筆紀錄已完成或無法繼續確認。"}
 
+        updates = {
+            "submission_state": SUBMISSION_SUBMITTED,
+            "submission_mode": "manual",
+            "status": "成功",
+        }
+        if record.get("batch_id"):
+            updates["batch_phase"] = "completed"
         updated = self.sanction_repo.update_history_entry(
             normalized_id,
-            {
-                "submission_state": SUBMISSION_SUBMITTED,
-                "submission_mode": "manual",
-                "status": "成功",
-            },
+            updates,
             evaluate=True,
         )
         if updated is None:
             return {"status": "error", "message": "無法更新檢舉紀錄，請稍後再試。"}
 
+        if updated.get("batch_id"):
+            self._cleanup_completed_batch(updated["batch_id"])
+            result = self._batch_result(updated["batch_id"], message="已記錄為完成檢舉。")
+            result["next_record"] = next((r for r in result["records"]
+                if get_submission_state(r) == SUBMISSION_AWAITING_MANUAL), None)
+            return result
+
         deleted = False
         file_path = str(updated.get("media_path") or "")
         if bool(self.config.get("auto_delete_after_upload", False)):
             mod = _bridge_mod()
-            if file_path and mod.is_owned_recording_path(file_path):
+            if file_path and mod.is_owned_recording_path(file_path) and self._can_cleanup_shared_local(file_path):
                 try:
                     os.remove(file_path)
                     deleted = True

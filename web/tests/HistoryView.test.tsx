@@ -26,6 +26,16 @@ function renderHistory(
 }
 
 describe('HistoryView evidence links and sanction status', () => {
+  it.each([1, 2])('shows batch labels only for multiple records (%i people)', (count) => {
+    const history: HistoryRecord[] = Array.from({ length: count }, (_, index) => ({
+      record_id: `person-${index}`, suspect_id: `角色${index}`, batch_id: 'shared',
+      batch_order: index, time: '2026-09-08 12:00:00', submission_state: 'submitted',
+    }));
+    renderHistory(vi.fn(), vi.fn(), vi.fn(), { history });
+    expect(screen.queryAllByText('同批檢舉（2026-09-08 12:00）')).toHaveLength(count > 1 ? count : 0);
+    for (const record of history) expect(screen.getByText(record.suspect_id!)).toBeInTheDocument();
+  });
+
   it('offers continue reporting only for available drafts', () => {
     const onContinueDraft = vi.fn();
     const draft: HistoryRecord = {

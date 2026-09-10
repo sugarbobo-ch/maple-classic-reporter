@@ -34,7 +34,7 @@ export default function ReplayTab({
         <div className="setting-info">
           <span className="setting-label">循環錄影保留秒數</span>
           <span className="setting-desc">
-          持續在背景保留最近一段遊戲畫面（最多 30 秒）
+          持續在背景保留最近一段遊戲畫面（最多 5 分鐘，時間越長記憶體用量越高）。修改後請停止並重新啟動循環錄影才會套用。
           </span>
         </div>
         <div style={{ width: '160px', minWidth: '140px' }}>
@@ -61,8 +61,7 @@ export default function ReplayTab({
         <div style={{ fontWeight: 700, color: 'var(--color-text-heading)', marginBottom: '4px' }}>
           循環錄影運作方式：
         </div>
-        啟動後會像行車記錄器一樣持續保留最近一段畫面與聲音；超過設定秒數的內容會自動刪除。按下「儲存循環錄影」或快捷鍵只會輸出目前時間範圍的影片，並分析最後
-        5 秒畫面，背景循環錄影不會中斷。
+        啟動後會像行車記錄器一樣持續保留最近一段畫面與聲音；超過設定秒數的內容會自動刪除。儲存按鈕旁可選擇這次要輸出的長度，背景循環錄影不會中斷。儲存後會分析片段中的代表畫面，最後 5 秒取樣會更密集。停止循環錄影會清空尚未儲存的片段，請先儲存需要的內容。
       </div>
     </>
   );

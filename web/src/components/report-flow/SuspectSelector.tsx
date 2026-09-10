@@ -1,9 +1,12 @@
+import SuspectTags from './SuspectTags';
 import { Clipboard, ShieldCheck, Check, AlertCircle } from 'lucide-react';
-import { Input, Button } from '../ui';
+import { Button } from '../ui';
 import { OcrResultData } from '../../types';
 
 export interface SuspectSelectorProps {
   suspectId: string;
+  names: string[];
+  onNamesChange: (names: string[]) => void;
   whitelistMode: boolean;
   ocrResults: OcrResultData;
   existingWhitelist: string[];
@@ -19,6 +22,8 @@ export interface SuspectSelectorProps {
 
 export default function SuspectSelector({
   suspectId,
+  names,
+  onNamesChange,
   whitelistMode,
   ocrResults,
   existingWhitelist,
@@ -39,14 +44,10 @@ export default function SuspectSelector({
     }
     if (!idOcrEnabled) {
       return hasCandidates
-        ? '文字辨識（OCR）結果：已關閉自動填入，點選下方名稱可帶入角色 ID。'
+        ? '點選辨識結果可加入或移除名字，請確認角色 ID 是否正確。'
         : '已關閉自動辨識角色 ID，請手動輸入';
     }
-    if (hasCandidates) {
-      return suspectId
-        ? '文字辨識（OCR）結果：已自動填入首選角色 ID，點選下方名稱可快速替換。'
-        : '文字辨識（OCR）結果：點選下方名稱即可帶入角色 ID。';
-    }
+    if (hasCandidates) return '點選辨識結果可加入或移除名字，請確認角色 ID 是否正確。';
     return '';
   };
 
@@ -60,17 +61,17 @@ export default function SuspectSelector({
       </div>
 
       <div className="report-suspect-input-row">
-        <Input
-          label="疑似角色 ID"
-          placeholder="請輸入或點選下方候選角色 ID"
-          value={suspectId}
-          onChange={(e) => onSuspectIdChange(e.target.value)}
-          required
-          data-testid="report-suspect-id"
+        <SuspectTags
+          names={names}
+          input={suspectId}
+          onNamesChange={onNamesChange}
+          onInputChange={onSuspectIdChange}
+          pasteAction={
+            <Button variant="ghost" size="md" icon={Clipboard} onClick={onPasteClipboard}>
+              貼上
+            </Button>
+          }
         />
-        <Button variant="secondary" size="md" icon={Clipboard} onClick={onPasteClipboard}>
-          貼上
-        </Button>
       </div>
 
       {/* Suggestions Chips Area */}
@@ -107,7 +108,7 @@ export default function SuspectSelector({
               {ocrResults.suspect_ids.map((id, idx) => {
                 const isAlreadyWhitelisted = existingWhitelist.includes(id);
                 const isSelectedForWhitelist = selectedForWhitelist.includes(id);
-                const isCurrentInputMatch = suspectId === id;
+                const isCurrentInputMatch = names.includes(id);
 
                 if (whitelistMode) {
                   return (
@@ -135,7 +136,11 @@ export default function SuspectSelector({
                     type="button"
                     key={idx}
                     className={`chip ${isCurrentInputMatch ? 'active' : ''}`}
-                    onClick={() => onSuspectIdChange(id)}
+                    onClick={() =>
+                      onNamesChange(
+                        names.includes(id) ? names.filter((name) => name !== id) : [...names, id]
+                      )
+                    }
                     aria-pressed={isCurrentInputMatch}
                   >
                     {id}

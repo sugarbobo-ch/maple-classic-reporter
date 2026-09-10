@@ -52,9 +52,19 @@ class ReplayBridgeMixin:
         self.replay_recorder.stop()
         return True
 
-    def save_replay(self) -> bool:
-        """Save the current buffer segment to mp4 file."""
-        return self.replay_recorder.save_replay()
+    def save_replay(self, save_seconds: int | None = None) -> bool:
+        """Save the selected recent segment to an MP4 file.
+
+        Omitting ``save_seconds`` uses the persisted UI selection. ``None`` in
+        that setting means all currently buffered frames, preserving the legacy
+        hotkey and bridge behavior.
+        """
+        selected_seconds = save_seconds
+        if selected_seconds is None:
+            selected_seconds = self.config.get("replay_save_sec")
+        if selected_seconds is None:
+            return self.replay_recorder.save_replay()
+        return self.replay_recorder.save_replay(selected_seconds)
 
     def get_replay_status(self) -> dict[str, Any]:
         """Return current replay buffer state and duration."""
@@ -62,6 +72,7 @@ class ReplayBridgeMixin:
             "state": self._replay_state,
             "duration": self._replay_duration,
             "is_running": self.replay_recorder.is_running,
+            "total": self.replay_recorder.buffer_seconds,
         }
 
     def _on_replay_state_changed(self, state: str, duration: float) -> None:
@@ -72,7 +83,7 @@ class ReplayBridgeMixin:
             {
                 "state": state,
                 "duration": duration,
-                "total": int(self.config.get("replay_buffer_sec", 30)),
+                "total": self.replay_recorder.buffer_seconds,
             },
         )
 

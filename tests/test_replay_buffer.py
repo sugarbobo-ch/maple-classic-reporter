@@ -139,6 +139,25 @@ class TestReplayBuffer(unittest.TestCase):
         self.assertLess(final_memory - memory_after_warmup, 256 * 1024)
         self.assertLess(last_batch_time, (first_batch_time * 2.5) + 0.05)
 
+    def test_save_replay_can_limit_output_to_recent_seconds(self):
+        recorder = ReplayBufferRecorder()
+        recorder._running = True
+        recorder._buffer_seconds = 300
+        recorder._fps = 10
+        recorder._frames = deque(
+            BufferedFrame(float(index), b"frame") for index in range(301)
+        )
+        captured = []
+        recorder._encode_video = lambda frames: (captured.append(frames) or ("replay.mp4", []))
+
+        self.assertTrue(recorder.save_replay(60))
+        recorder._save_thread.join(timeout=2.0)
+
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0][0].captured_at, 240.0)
+        self.assertEqual(captured[0][-1].captured_at, 300.0)
+        self.assertEqual(len(captured[0]), 61)
+
     def test_audio_ring_discards_chunks_older_than_the_sliding_window(self):
         audio = RollingAudioRecorder(buffer_seconds=30, sample_rate=10)
         for index in range(36_000):

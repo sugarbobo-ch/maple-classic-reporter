@@ -6,6 +6,10 @@ import { HistoryRecord } from '../../types';
 
 interface ManualReportAssistantProps {
   record: HistoryRecord;
+  mediaStreamUrl?: string;
+  mediaPreviewUrl?: string;
+  mediaError?: string;
+  onMediaError?: () => void;
   isConfirming?: boolean;
   onOpenReportPage: () => void;
   onConfirm: (recordId: string) => void | Promise<void>;
@@ -18,9 +22,19 @@ const COPY_FIELDS: Array<{
   value: (record: HistoryRecord) => string;
   copyable: boolean;
 }> = [
-  { key: 'suspect', label: '角色 ID', value: (record) => record.suspect_id || record.id || '', copyable: true },
+  {
+    key: 'suspect',
+    label: '角色 ID',
+    value: (record) => record.suspect_id || record.id || '',
+    copyable: true,
+  },
   { key: 'server', label: '伺服器', value: (record) => record.server || '', copyable: false },
-  { key: 'map', label: '地圖名稱', value: (record) => record.map_name || record.map || '', copyable: true },
+  {
+    key: 'map',
+    label: '地圖名稱',
+    value: (record) => record.map_name || record.map || '',
+    copyable: true,
+  },
   { key: 'note', label: '違規說明', value: (record) => record.note || '', copyable: true },
   {
     key: 'evidence',
@@ -32,6 +46,10 @@ const COPY_FIELDS: Array<{
 
 export default function ManualReportAssistant({
   record,
+  mediaStreamUrl = '',
+  mediaPreviewUrl = '',
+  mediaError = '',
+  onMediaError,
   isConfirming = false,
   onOpenReportPage,
   onConfirm,
@@ -54,11 +72,35 @@ export default function ManualReportAssistant({
 
   return (
     <div className="manual-report-assistant" data-testid="manual-report-assistant">
+      <div className="manual-evidence-preview" aria-label="檢舉證據預覽">
+        <div className="manual-evidence-preview-heading">檢舉證據預覽</div>
+        {mediaError ? (
+          <div className="manual-evidence-preview-message" role="alert">
+            {mediaError}
+          </div>
+        ) : record.media_type === 'image' && mediaPreviewUrl ? (
+          <img src={mediaPreviewUrl} alt="檢舉證據畫面預覽" />
+        ) : record.media_type !== 'image' && mediaStreamUrl ? (
+          <video
+            src={mediaStreamUrl}
+            controls
+            preload="metadata"
+            playsInline
+            onError={onMediaError}
+          />
+        ) : (
+          <div className="manual-evidence-preview-message" role="status">
+            正在載入檢舉證據…
+          </div>
+        )}
+      </div>
       <div className="manual-report-intro">
         <h2>證據已上傳，接著完成官方表單</h2>
         <p>請開啟外掛檢舉頁面，依照下方順序填寫。伺服器請直接在表單中選取。</p>
         <div className="manual-report-open-action">
-          <span className="manual-report-field-order" aria-hidden="true">1</span>
+          <span className="manual-report-field-order" aria-hidden="true">
+            1
+          </span>
           <Button variant="primary" size="lg" icon={ExternalLink} onClick={onOpenReportPage}>
             開啟外掛檢舉頁面
           </Button>
@@ -71,7 +113,9 @@ export default function ManualReportAssistant({
           const copied = copiedKey === field.key;
           return (
             <div className="manual-report-field" key={field.key}>
-              <div className="manual-report-field-order" aria-hidden="true">{index + 2}</div>
+              <div className="manual-report-field-order" aria-hidden="true">
+                {index + 2}
+              </div>
               <div className="manual-report-field-content">
                 <span>{field.label}</span>
                 <strong>{value || '尚無資料'}</strong>
@@ -100,7 +144,12 @@ export default function ManualReportAssistant({
             <p>完成確認後，這筆紀錄才會開始追蹤官方處分狀態。</p>
           </div>
           <div className="manual-report-confirm-actions">
-            <Button variant="outline" size="md" onClick={() => setConfirmOpen(false)} disabled={isConfirming}>
+            <Button
+              variant="outline"
+              size="md"
+              onClick={() => setConfirmOpen(false)}
+              disabled={isConfirming}
+            >
               返回檢查
             </Button>
             <Button
@@ -116,7 +165,9 @@ export default function ManualReportAssistant({
         </div>
       ) : (
         <div className="manual-report-actions">
-          <Button variant="outline" size="md" onClick={onLater}>稍後完成</Button>
+          <Button variant="outline" size="md" onClick={onLater}>
+            稍後完成
+          </Button>
           <Button variant="success" size="md" icon={Check} onClick={() => setConfirmOpen(true)}>
             我已完成檢舉
           </Button>

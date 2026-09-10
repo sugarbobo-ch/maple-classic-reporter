@@ -1,8 +1,4 @@
-import type {
-  EvidenceCleanupResult,
-  EvidenceCleanupTarget,
-  HistoryRecord,
-} from '../types';
+import type { EvidenceCleanupResult, EvidenceCleanupTarget, HistoryRecord } from '../types';
 
 type PyWebViewApi = NonNullable<NonNullable<Window['pywebview']>['api']>;
 type ApiMethod<Name extends keyof PyWebViewApi> = PyWebViewApi[Name];
@@ -33,6 +29,9 @@ export type ReporterBridgeTransport = Pick<
   | 'get_replay_status'
   | 'select_local_file'
   | 'process_imported_file'
+  | 'submit_report_batch'
+  | 'save_report_batch'
+  | 'resolve_report_result'
   | 'submit_report'
   | 'confirm_manual_report'
   | 'save_report_draft'
@@ -98,6 +97,9 @@ export interface ReporterBridge {
   };
   reports: {
     submit: ApiMethod<'submit_report'>;
+    submitBatch: ApiMethod<'submit_report_batch'>;
+    saveBatch: ApiMethod<'save_report_batch'>;
+    resolveResult: ApiMethod<'resolve_report_result'>;
     confirmManual: ApiMethod<'confirm_manual_report'>;
     saveDraft: ApiMethod<'save_report_draft'>;
   };
@@ -172,7 +174,7 @@ export function createReporterBridge(transport: ReporterBridgeTransport): Report
       cancelOcr: () => transport.cancel_ocr(),
       startReplay: (...args) => transport.start_replay(...args),
       stopReplay: () => transport.stop_replay(),
-      saveReplay: () => transport.save_replay(),
+      saveReplay: (saveSeconds) => transport.save_replay(saveSeconds),
       replayStatus: () => transport.get_replay_status(),
       selectLocalFile: () => transport.select_local_file(),
       processImportedFile: (filePath) => transport.process_imported_file(filePath),
@@ -181,6 +183,9 @@ export function createReporterBridge(transport: ReporterBridgeTransport): Report
     },
     reports: {
       submit: (formData) => transport.submit_report(formData),
+      submitBatch: (formData) => transport.submit_report_batch(formData),
+      saveBatch: (formData) => transport.save_report_batch(formData),
+      resolveResult: (data) => transport.resolve_report_result(data),
       confirmManual: (recordId) => transport.confirm_manual_report(recordId),
       saveDraft: (formData) => transport.save_report_draft(formData),
     },
@@ -232,8 +237,7 @@ export function createHistoryBridge(transport: HistoryBridgeTransport): Reporter
   return {
     load: () => transport.get_history(),
     clear: () => transport.clear_history(),
-    cleanupEvidence: (recordIds, targets) =>
-      transport.cleanup_history_evidence(recordIds, targets),
+    cleanupEvidence: (recordIds, targets) => transport.cleanup_history_evidence(recordIds, targets),
     deleteEntries: (...args) => transport.delete_history_entries(...args),
   };
 }

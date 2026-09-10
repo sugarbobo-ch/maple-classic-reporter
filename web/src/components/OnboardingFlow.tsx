@@ -23,6 +23,7 @@ import {
 } from '../types';
 import { Button, Dropdown, Input, RadioGroup, Switch } from './ui';
 import { getReporterBridge } from '../bridge/reporterBridge';
+import { RECORDING_PRESETS } from '../constants/presets';
 
 interface OnboardingFlowProps {
   config: AppConfig;
@@ -78,13 +79,14 @@ export default function OnboardingFlow({
     config.audio_capture_mode || (config.record_audio === false ? 'off' : 'process');
 
   const applyRecordingPreset = (preset: string) => {
-    const values =
-      preset === 'smooth'
-        ? { recording_preset: 'smooth' as const, record_duration_sec: 10, record_fps: 30, replay_buffer_sec: 30 }
-        : preset === 'ultra_fast'
-          ? { recording_preset: 'ultra_fast' as const, record_duration_sec: 6, record_fps: 15, replay_buffer_sec: 15 }
-          : { recording_preset: 'balanced' as const, record_duration_sec: 8, record_fps: 20, replay_buffer_sec: 20 };
-    onUpdateConfigBatch(values);
+    const selectedPreset = RECORDING_PRESETS.find((item) => item.key === preset) ?? RECORDING_PRESETS[2];
+    onUpdateConfigBatch({
+      recording_preset: selectedPreset.key,
+      record_duration_sec: selectedPreset.duration,
+      record_fps: selectedPreset.fps,
+      replay_buffer_sec: selectedPreset.replay,
+      replay_save_sec: null,
+    });
   };
 
   const testDiscord = async () => {
@@ -187,15 +189,15 @@ export default function OnboardingFlow({
               options={[
                 {
                   value: 'ultra_fast',
-                  label: <span className="onboarding-radio-copy"><strong>省效能</strong><small>降低 FPS 與片段長度，適合較舊的電腦。</small></span>,
+                  label: <span className="onboarding-radio-copy"><strong>省效能</strong><small>15 FPS，背景保留 10 秒，適合較舊的電腦。</small></span>,
                 },
                 {
                   value: 'balanced',
-                  label: <span className="onboarding-radio-copy"><strong>平衡（建議）</strong><small>兼顧辨識畫質、錄影流暢度與系統負擔。</small></span>,
+                  label: <span className="onboarding-radio-copy"><strong>平衡（建議）</strong><small>20 FPS，背景保留 20 秒，兼顧辨識畫質與系統負擔。</small></span>,
                 },
                 {
                   value: 'smooth',
-                  label: <span className="onboarding-radio-copy"><strong>較流暢</strong><small>使用較高 FPS，適合效能充足的電腦。</small></span>,
+                  label: <span className="onboarding-radio-copy"><strong>較流暢</strong><small>比省效能模式更流暢，背景保留 15 秒，適合效能充足的電腦。</small></span>,
                 },
               ]}
             />

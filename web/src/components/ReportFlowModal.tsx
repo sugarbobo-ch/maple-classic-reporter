@@ -1,3 +1,5 @@
+import IndividualNoteEditor from './report-flow/IndividualNoteEditor';
+import { appendSuspects } from '../domain/suspects';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ArrowRight, FileCheck, Save } from 'lucide-react';
 import { Dialog, Button, Badge, RadioGroup, Switch } from './ui';
@@ -97,29 +99,90 @@ export default function ReportFlowModal({
     [config.whitelist]
   );
 
-  // Form State - auto-populate suspect ID from OCR candidate if enabled
-  const initialSuspectId = initialRecord
-    ? String(initialRecord.suspect_id || initialRecord.id || '')
-    : config.ocr_autofill_id !== false &&
-    Array.isArray(ocrResults.suspect_ids) &&
-    ocrResults.suspect_ids.length > 0
-      ? ocrResults.suspect_ids.find((id) => !existingWhitelist.includes(id)) ||
-        ocrResults.suspect_ids[0] ||
-        ''
-      : '';
-  const [suspectId, setSuspectId] = useState(initialSuspectId);
+  const targetBatchId = manualReport?.batch_id || initialRecord?.batch_id || submissionStatus?.batch_id;
+  const batchRows = useMemo(() => {
+    const historyRows = targetBatchId
+      ? history.filter((r) => r.batch_id === targetBatchId)
+      : [];
+    const rows = submissionStatus?.records?.length
+      ? submissionStatus.records
+      : historyRows.length
+        ? historyRows
+        : manualReport && manualReport.batch_id === targetBatchId
+          ? [manualReport]
+          : [];
+    return [...rows].sort((a, b) => (a.batch_order || 0) - (b.batch_order || 0));
+  }, [history, manualReport, submissionStatus?.records, targetBatchId]);
+  const activeBatchId = initialRecord?.batch_id || submissionStatus?.batch_id || batchRows[0]?.batch_id;
+  const [names, setNames] = useState<string[]>(() =>
+    batchRows.length
+      ? batchRows.map((r) => r.suspect_id || '').filter(Boolean)
+      : initialRecord?.suspect_id
+        ? [initialRecord.suspect_id]
+        : []
+  );
+  const [suspectId, setSuspectId] = useState('');
+  const didAutofill = useRef(Boolean(initialRecord));
+  useEffect(() => {
+    if (didAutofill.current || config.ocr_autofill_id === false) return;
+    const first = ocrResults.suspect_ids?.find((id) => !existingWhitelist.includes(id));
+    if (!first) return;
+    didAutofill.current = true;
+    if (!names.length && !suspectId) setNames([first]);
+  }, [config.ocr_autofill_id, existingWhitelist, ocrResults.suspect_ids, names.length, suspectId]);
+  const [overrides, setOverrides] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      batchRows.filter((r) => r.note_override != null).map((r) => [r.suspect_id!, r.note_override!])
+    )
+  );
+  const [resolving, setResolving] = useState(false);
+  const [resolutionError, setResolutionError] = useState('');
+  const getOverride = (name: string): string | undefined =>
+    Object.prototype.hasOwnProperty.call(overrides, name) ? overrides[name] : undefined;
+  const batchLocked = batchRows.some((r) => r.batch_phase !== 'draft');
+  const effectiveNames = appendSuspects(names, suspectId);
+  const commitNames = () => {
+    setNames(effectiveNames);
+    setSuspectId('');
+    return effectiveNames;
+  };
+  const makeSuspects = (values: string[]) =>
+    values.map((name) => ({
+      suspect_id: name,
+      note_override: getOverride(name) ?? null,
+    }));
+  const resolveResult = async (record: HistoryRecord, completed: boolean) => {
+    const bridge = getReporterBridge();
+    if (!bridge || !record.record_id) return;
+    setResolving(true);
+    setResolutionError('');
+    try {
+      const result = await bridge.reports.resolveResult({ record_id: record.record_id, completed });
+      if (result.status === 'error') setResolutionError(result.message);
+    } catch (error: unknown) {
+      setResolutionError(error instanceof Error ? error.message : '無法更新送件結果，請稍後再試。');
+    } finally {
+      setResolving(false);
+    }
+  };
   const [server, setServer] = useState(initialRecord?.server || config.default_server || '雪吉拉');
   const [mapName, setMapName] = useState(
-    initialRecord ? String(initialRecord.map_name || initialRecord.map || '') : ocrResults.map_name || ''
+    initialRecord
+      ? String(initialRecord.map_name || initialRecord.map || '')
+      : ocrResults.map_name || ''
   );
   const [note, setNote] = useState(
-    initialRecord ? String(initialRecord.note || '') : config.default_note || '自動打怪/外掛行為'
+    initialRecord
+      ? String(initialRecord.batch_note ?? initialRecord.note ?? '')
+      : config.default_note || '自動打怪/外掛行為'
   );
   const [formSubmitHeadless, setFormSubmitHeadless] = useState(
     config.form_submit_headless !== false
   );
   const [submissionMode, setSubmissionMode] = useState<'manual' | 'automatic'>(
-    config.report_submission_mode === 'manual' ? 'manual' : 'automatic'
+    (initialRecord?.submission_mode || config.report_submission_mode) === 'manual'
+      ? 'manual'
+      : 'automatic'
   );
   const backgroundSettingRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBackgroundRef = useRef(false);
@@ -147,6 +210,7 @@ export default function ReportFlowModal({
     initialRecord?.media_path || ocrResults.media_path || ''
   );
   const [mediaStreamUrl, setMediaStreamUrl] = useState<string>('');
+  const [mediaError, setMediaError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [originalBackupPath, setOriginalBackupPath] = useState<string | null>(null);
 
@@ -220,51 +284,37 @@ export default function ReportFlowModal({
   }, [ocrResults?.map_name]);
 
   useEffect(() => {
-    if (
-      config.ocr_autofill_id !== false &&
-      Array.isArray(ocrResults?.suspect_ids) &&
-      ocrResults.suspect_ids.length > 0
-    ) {
-      const topCandidate =
-        ocrResults.suspect_ids.find((id) => !existingWhitelist.includes(id)) ||
-        ocrResults.suspect_ids[0];
-      if (topCandidate) {
-        setSuspectId((prev) => prev || topCandidate);
-      }
-    }
-  }, [config.ocr_autofill_id, existingWhitelist, ocrResults?.suspect_ids]);
-
-  useEffect(() => {
-    const activePath = ocrResults?.media_path;
-    if (!activePath) return;
-
+    const activePath =
+      manualReport?.media_path || initialRecord?.media_path || ocrResults?.media_path || '';
+    let cancelled = false;
     setCurrentMediaPath(activePath);
-
-    // Fetch streaming URL for video
+    setMediaStreamUrl('');
+    setPreviewUrl('');
+    setMediaError('');
+    setVideoDuration(0);
+    if (!activePath) return;
     const bridge = getReporterBridge();
-    if (bridge) {
-      bridge.media
-        .streamUrl(activePath)
-        .then((streamUrl) => {
-          if (streamUrl) setMediaStreamUrl(streamUrl);
-        })
-        .catch((e) => {
-          console.debug('Failed to get media stream url:', e);
-        });
-    }
-
-    // Fetch fallback thumbnail
-    if (bridge) {
-      bridge.media
-        .preview(activePath)
-        .then((dataUrl) => {
-          if (dataUrl) setPreviewUrl(dataUrl);
-        })
-        .catch((e) => {
-          console.debug('Failed to get media preview:', e);
-        });
-    }
-  }, [ocrResults?.media_path]);
+    if (!bridge) return;
+    void bridge.media
+      .streamUrl(activePath)
+      .then((url) => {
+        if (cancelled) return;
+        setMediaStreamUrl(url || '');
+        if (!url) setMediaError('無法讀取本機證據，檔案可能已移動、刪除或無法開啟。');
+      })
+      .catch(() => {
+        if (!cancelled) setMediaError('無法載入本機證據，請確認檔案是否仍存在。');
+      });
+    void bridge.media
+      .preview(activePath)
+      .then((url) => {
+        if (!cancelled) setPreviewUrl(url || '');
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [initialRecord?.media_path, manualReport?.media_path, ocrResults?.media_path]);
 
   // Video metadata & time update
   const handleLoadedMetadata = () => {
@@ -288,9 +338,7 @@ export default function ReportFlowModal({
   const handleRecognizeCurrentFrame = async () => {
     if (!onRecognizeCurrentFrame || !isVideo || !isVideoPaused || !currentMediaPath) return;
 
-    const timestamp = Number(
-      (videoRef.current?.currentTime ?? currentPlaybackTime).toFixed(2)
-    );
+    const timestamp = Number((videoRef.current?.currentTime ?? currentPlaybackTime).toFixed(2));
     setIsRecognizingCurrentFrame(true);
     try {
       await onRecognizeCurrentFrame(currentMediaPath, timestamp);
@@ -415,10 +463,7 @@ export default function ReportFlowModal({
     try {
       const bridge = getReporterBridge();
       if (bridge) {
-        const res = await bridge.media.restore(
-          currentMediaPath,
-          originalBackupPath
-        );
+        const res = await bridge.media.restore(currentMediaPath, originalBackupPath);
         if (res.success && res.restored_path) {
           setCurrentMediaPath(res.restored_path);
           if (res.stream_url) {
@@ -450,7 +495,7 @@ export default function ReportFlowModal({
   const handlePasteClipboard = async () => {
     const text = await readClipboard();
     if (text) {
-      setSuspectId(text.trim());
+      setNames(appendSuspects(names, text));
     }
   };
 
@@ -476,10 +521,13 @@ export default function ReportFlowModal({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (isSubmitting || !suspectId.trim() || !mapName.trim()) return;
+    if (isSubmitting || !effectiveNames.length || !mapName.trim()) return;
+    const selected = commitNames();
 
     await onSubmitReport({
-      suspect_id: suspectId.trim(),
+      suspect_id: selected[0],
+      suspects: makeSuspects(selected),
+      batch_id: activeBatchId,
       server,
       map_name: mapName.trim(),
       note: note.trim(),
@@ -496,11 +544,24 @@ export default function ReportFlowModal({
   const handleSaveDraft = async () => {
     if (!onSaveDraft || isSavingDraft || isSubmitting || !currentMediaPath) return;
     const fromProgress = stage === 'progress';
+    const selected = commitNames();
+    const isExistingBatch = Boolean(activeBatchId);
     await onSaveDraft({
-      suspect_id: fromProgress ? '' : suspectId.trim(),
-      server: fromProgress ? '' : server,
-      map_name: fromProgress ? '' : mapName.trim(),
-      note: fromProgress ? '' : note.trim(),
+      suspect_id: isExistingBatch
+        ? selected[0] || initialRecord?.suspect_id || ''
+        : fromProgress
+          ? ''
+          : selected[0] || '',
+      suspects: isExistingBatch
+        ? makeSuspects(selected)
+        : fromProgress
+          ? undefined
+          : makeSuspects(selected),
+      batch_id: activeBatchId,
+      submission_mode: submissionMode,
+      server: isExistingBatch ? server : fromProgress ? '' : server,
+      map_name: isExistingBatch ? mapName.trim() : fromProgress ? '' : mapName.trim(),
+      note: isExistingBatch ? note.trim() : fromProgress ? '' : note.trim(),
       media_path: currentMediaPath,
       file_path: currentMediaPath,
       media_type: isVideo ? 'video' : 'image',
@@ -517,8 +578,19 @@ export default function ReportFlowModal({
         titleIcon={FileCheck}
         maxWidth="680px"
       >
+        {manualReport.batch_id && (
+          <p className="report-mode-description" role="status">
+            本批已完成 {batchRows.filter((r) => r.submission_state === 'submitted').length} /{' '}
+            {batchRows.length} 人；目前處理 {manualReport.suspect_id}
+          </p>
+        )}
         <ManualReportAssistant
+          key={manualReport.record_id}
           record={manualReport}
+          mediaStreamUrl={mediaStreamUrl}
+          mediaPreviewUrl={previewUrl}
+          mediaError={mediaError}
+          onMediaError={() => setMediaError('影片無法播放，請確認本機檔案完整且格式受支援。')}
           isConfirming={isConfirmingManual}
           onOpenReportPage={() => onOpenReportPage?.()}
           onConfirm={(recordId) => onConfirmManual?.(recordId)}
@@ -559,7 +631,7 @@ export default function ReportFlowModal({
               取消
             </Button>
             <div className="report-footer-actions">
-              {onSaveDraft && !initialRecord && (
+              {onSaveDraft && !batchLocked && (!initialRecord || initialRecord.batch_id) && (
                 <Button
                   variant="secondary"
                   size="md"
@@ -598,7 +670,7 @@ export default function ReportFlowModal({
               取消
             </Button>
             <div className="report-footer-actions">
-              {onSaveDraft && !initialRecord && (
+              {onSaveDraft && !batchLocked && (!initialRecord || initialRecord.batch_id) && (
                 <Button
                   variant="secondary"
                   size="md"
@@ -617,18 +689,29 @@ export default function ReportFlowModal({
                 icon={ArrowRight}
                 iconPosition="right"
                 onClick={handleSubmit}
-                disabled={!suspectId.trim() || !mapName.trim() || isSubmitting || isSavingDraft}
+                disabled={
+                  !effectiveNames.length ||
+                  !mapName.trim() ||
+                  isSubmitting ||
+                  isSavingDraft ||
+                  resolving ||
+                  batchRows.some((r) => ['unknown', 'sending'].includes(r.batch_phase || ''))
+                }
                 loading={isSubmitting}
                 aria-busy={isSubmitting}
                 data-testid="report-submit"
               >
                 {isSubmitting
-                  ? submissionMode === 'manual' ? '上傳中…' : '送出中…'
+                  ? submissionMode === 'manual'
+                    ? '上傳中…'
+                    : '送出中…'
                   : config.dev_mode && submissionMode === 'automatic'
-                    ? '模擬送出檢舉 (不實際送出)'
+                    ? `模擬檢舉 ${effectiveNames.length} 人（不實際送出）`
                     : submissionMode === 'manual'
-                      ? '上傳並開始手動檢舉'
-                      : '送出自動檢舉'}
+                      ? `開始手動檢舉 ${effectiveNames.length} 人`
+                      : batchLocked
+                        ? '繼續未完成的檢舉'
+                        : `開始檢舉 ${effectiveNames.length} 人`}
               </Button>
             </div>
           </div>
@@ -652,10 +735,66 @@ export default function ReportFlowModal({
             </div>
           )}
 
+          {resolutionError && (
+            <div className="submission-status-message error" role="alert">
+              {resolutionError}
+            </div>
+          )}
+          {batchRows.length > 0 && (
+            <div className="batch-progress" aria-label="逐人檢舉進度">
+              <p>
+                已完成 {batchRows.filter((r) => r.submission_state === 'submitted').length} /{' '}
+                {batchRows.length} 人
+                <span className="batch-progress-caption">每人分開儲存紀錄</span>
+              </p>
+              {batchRows.map((row) => (
+                <div className="batch-progress-row" key={row.record_id}>
+                  <span>{row.suspect_id}</span>
+                  <span>
+                    {row.submission_state === 'submitted'
+                      ? '已完成'
+                      : row.batch_phase === 'sending' && isSubmitting
+                        ? '送出中'
+                        : ['unknown', 'sending'].includes(row.batch_phase || '')
+                          ? '結果待確認'
+                          : row.submission_state === 'awaiting_manual'
+                            ? '待手動檢舉'
+                            : '尚未送出'}
+                  </span>
+                  {!isSubmitting && ['unknown', 'sending'].includes(row.batch_phase || '') && (
+                    <div className="report-footer-actions">
+                      <Button
+                        size="sm"
+                        disabled={resolving}
+                        onClick={() => resolveResult(row, true)}
+                      >
+                        確認已完成
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={resolving}
+                        onClick={() => resolveResult(row, false)}
+                      >
+                        允許重試
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {/* Step 1: Media Confirmation with Direct 16:9 Preview & Right Actions */}
           <MediaPreviewSection
             currentMediaPath={currentMediaPath}
             mediaStreamUrl={mediaStreamUrl}
+            mediaError={mediaError}
+            readOnly={isSubmitting || isSavingDraft || batchLocked}
+            onMediaError={() =>
+              setMediaError(
+                '影片無法播放，請確認本機檔案完整且格式受支援，也可使用系統播放器開啟。'
+              )
+            }
             previewUrl={previewUrl}
             originalBackupPath={originalBackupPath}
             isVideo={isVideo}
@@ -689,91 +828,120 @@ export default function ReportFlowModal({
             isVideoPaused={isVideoPaused}
           />
 
-          {/* Step 2: Suspect ID & Whitelist Selection */}
-          <SuspectSelector
-            suspectId={suspectId}
-            whitelistMode={whitelistMode}
-            ocrResults={ocrResults}
-            existingWhitelist={existingWhitelist}
-            selectedForWhitelist={selectedForWhitelist}
-            idOcrEnabled={config.ocr_autofill_id !== false}
-            onSuspectIdChange={setSuspectId}
-            onPasteClipboard={handlePasteClipboard}
-            onToggleWhitelistChip={handleToggleWhitelistChip}
-            onEnterWhitelistMode={() => setWhitelistMode(true)}
-            onCancelWhitelistMode={() => setWhitelistMode(false)}
-            onFinishWhitelistMode={handleFinishWhitelistMode}
-          />
-
-          {/* Steps 3, 4, 5: Server, Map, Notes & Headless Toggle */}
-          <ReportFormSection
-            server={server}
-            mapName={mapName}
-            note={note}
-            mapOcrEnabled={mapOcrEnabled}
-            ocrMapName={ocrMapName}
-            historicalMaps={historicalMaps}
-            templates={config.violation_templates || []}
-            onServerChange={setServer}
-            onMapNameChange={setMapName}
-            onNoteChange={setNote}
-          />
-
-          <div className="step-block report-mode-selector" data-testid="report-mode-selector">
-            <div className="step-title-row">
-              <span className="step-number">6</span>
-              <span>檢舉方式</span>
-            </div>
-            <div className="report-mode-description">選擇手動填寫或由工具自動填寫。</div>
-            <RadioGroup<'manual' | 'automatic'>
-              name="submission-mode"
-              value={submissionMode}
-              direction="horizontal"
-              className="report-mode-choice-list"
-              onChange={(mode) => {
-                shouldScrollToBackgroundRef.current = mode === 'automatic';
-                setSubmissionMode(mode);
-                onPersistSubmissionMode?.(mode);
-              }}
-              options={[
-                {
-                  value: 'automatic',
-                  label: (
-                    <span><strong>自動檢舉</strong><small>使用獨立瀏覽器填寫官方表單，並可設定是否在背景進行。</small></span>
-                  ),
-                },
-                {
-                  value: 'manual',
-                  label: (
-                    <span><strong>手動檢舉</strong><small>上傳證據後，由你開啟官方頁面並複製欄位。</small></span>
-                  ),
-                },
-              ]}
+          <fieldset
+            className="batch-edit-fields"
+            disabled={isSubmitting || isSavingDraft || batchLocked}
+          >
+            {/* Step 2: Suspect ID & Whitelist Selection */}
+            <SuspectSelector
+              suspectId={suspectId}
+              names={names}
+              onNamesChange={setNames}
+              whitelistMode={whitelistMode}
+              ocrResults={ocrResults}
+              existingWhitelist={existingWhitelist}
+              selectedForWhitelist={selectedForWhitelist}
+              idOcrEnabled={config.ocr_autofill_id !== false}
+              onSuspectIdChange={setSuspectId}
+              onPasteClipboard={handlePasteClipboard}
+              onToggleWhitelistChip={handleToggleWhitelistChip}
+              onEnterWhitelistMode={() => setWhitelistMode(true)}
+              onCancelWhitelistMode={() => setWhitelistMode(false)}
+              onFinishWhitelistMode={handleFinishWhitelistMode}
             />
-            {submissionMode === 'automatic' && (
-              <div
-                ref={backgroundSettingRef}
-                className="report-background-setting"
-                data-testid="report-background-setting"
-                role="region"
-                aria-label="自動檢舉設定"
-                aria-live="polite"
-              >
-                <div>
-                  <strong>在背景完成填表</strong>
-                  <span>開啟後不顯示瀏覽器視窗；關閉後可看到填表與送出過程。</span>
-                </div>
-                <Switch
-                  checked={formSubmitHeadless}
-                  onChange={(value) => {
-                    setFormSubmitHeadless(value);
-                    onPersistFormSubmitHeadless?.(value);
-                  }}
-                  aria-label="在背景完成填表"
-                />
+
+            {/* Steps 3, 4, 5: Server, Map, Notes & Headless Toggle */}
+            <ReportFormSection
+              server={server}
+              mapName={mapName}
+              note={note}
+              mapOcrEnabled={mapOcrEnabled}
+              ocrMapName={ocrMapName}
+              historicalMaps={historicalMaps}
+              templates={config.violation_templates || []}
+              onServerChange={setServer}
+              onMapNameChange={setMapName}
+              onNoteChange={setNote}
+              individualNotes={
+                names.length > 0 && (
+                  <IndividualNoteEditor
+                    names={names}
+                    sharedNote={note}
+                    getOverride={getOverride}
+                    disabled={isSubmitting || isSavingDraft || batchLocked}
+                    onChange={(name, value) => setOverrides({ ...overrides, [name]: value })}
+                    onReset={(name) => {
+                      const next = { ...overrides };
+                      delete next[name];
+                      setOverrides(next);
+                    }}
+                  />
+                )
+              }
+            />
+
+            <div className="step-block report-mode-selector" data-testid="report-mode-selector">
+              <div className="step-title-row">
+                <span className="step-number">6</span>
+                <span>檢舉方式</span>
               </div>
-            )}
-          </div>
+              <div className="report-mode-description">選擇手動填寫或由工具自動填寫。</div>
+              <RadioGroup<'manual' | 'automatic'>
+                name="submission-mode"
+                value={submissionMode}
+                direction="horizontal"
+                className="report-mode-choice-list"
+                onChange={(mode) => {
+                  shouldScrollToBackgroundRef.current = mode === 'automatic';
+                  setSubmissionMode(mode);
+                  onPersistSubmissionMode?.(mode);
+                }}
+                options={[
+                  {
+                    value: 'automatic',
+                    label: (
+                      <span>
+                        <strong>自動檢舉</strong>
+                        <small>使用獨立瀏覽器填寫官方表單，並可設定是否在背景進行。</small>
+                      </span>
+                    ),
+                  },
+                  {
+                    value: 'manual',
+                    label: (
+                      <span>
+                        <strong>手動檢舉</strong>
+                        <small>上傳證據後，由你開啟官方頁面並複製欄位。</small>
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+              {submissionMode === 'automatic' && (
+                <div
+                  ref={backgroundSettingRef}
+                  className="report-background-setting"
+                  data-testid="report-background-setting"
+                  role="region"
+                  aria-label="自動檢舉設定"
+                  aria-live="polite"
+                >
+                  <div>
+                    <strong>在背景完成填表</strong>
+                    <span>開啟後不顯示瀏覽器視窗；關閉後可看到填表與送出過程。</span>
+                  </div>
+                  <Switch
+                    checked={formSubmitHeadless}
+                    onChange={(value) => {
+                      setFormSubmitHeadless(value);
+                      onPersistFormSubmitHeadless?.(value);
+                    }}
+                    aria-label="在背景完成填表"
+                  />
+                </div>
+              )}
+            </div>
+          </fieldset>
         </form>
       )}
     </Dialog>

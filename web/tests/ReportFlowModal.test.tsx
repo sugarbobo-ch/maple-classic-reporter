@@ -346,7 +346,7 @@ describe('ReportFlowModal evidence selection', () => {
     expect(screen.queryByTestId('history-map-suggestion-5')).not.toBeInTheDocument();
   });
 
-  it('auto-fills the top non-whitelisted suspect candidate into the input', () => {
+  it('auto-fills the top non-whitelisted suspect candidate as a tag and supports OCR multiselect', () => {
     render(
       <ToastProvider>
         <ReportFlowModal
@@ -372,11 +372,15 @@ describe('ReportFlowModal evidence selection', () => {
     );
 
     const suspectInput = screen.getByTestId('report-suspect-id');
-    expect(suspectInput).toHaveValue('target_suspect');
+    expect(suspectInput).toHaveValue('');
+    expect(screen.getByRole('button', { name: '刪除 target_suspect' })).toBeInTheDocument();
 
-    // Clicking another candidate should update the input
+    // Clicking another candidate adds to the confirmed list.
     fireEvent.click(screen.getByText('another_player'));
-    expect(suspectInput).toHaveValue('another_player');
+    expect(screen.getByRole('button', { name: '刪除 another_player' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '刪除 target_suspect' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全部刪除' }));
+    expect(screen.queryByRole('button', { name: '刪除 target_suspect' })).not.toBeInTheDocument();
   });
 
   it('shows single warning line with alert icon when suspect ID OCR is disabled', () => {

@@ -37,6 +37,7 @@ LOGGER = logging.getLogger(__name__)
 
 # Process-wide lock for atomic history & sanction cache mutations
 HISTORY_LOCK = threading.RLock()
+MAX_HISTORY_RECORDS = 200
 
 
 def get_sanction_cache_path() -> Path:
@@ -175,7 +176,7 @@ class SanctionRepository:
         """Atomically persist history records to both SQLite database and JSON files."""
         with self._lock:
             clean_records = []
-            for r in records[:200]:
+            for r in records[:MAX_HISTORY_RECORDS]:
                 record = dict(r)
                 if not record.get("record_id"):
                     record["record_id"] = str(uuid.uuid4())

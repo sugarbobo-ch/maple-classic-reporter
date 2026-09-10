@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { RadioGroup, Input, Textarea } from '../ui';
 import { ViolationTemplateItem } from '../../types';
@@ -10,6 +11,7 @@ export interface ReportFormSectionProps {
   ocrMapName: string;
   historicalMaps: string[];
   templates?: ViolationTemplateItem[];
+  individualNotes?: ReactNode;
   onServerChange: (val: string) => void;
   onMapNameChange: (val: string) => void;
   onNoteChange: (val: string) => void;
@@ -26,6 +28,7 @@ export default function ReportFormSection({
   onServerChange,
   onMapNameChange,
   onNoteChange,
+  individualNotes,
 }: ReportFormSectionProps) {
   return (
     <>
@@ -180,8 +183,8 @@ export default function ReportFormSection({
             </div>
           </div>
         )}
+        {individualNotes}
       </div>
-
     </>
   );
 }

@@ -11,6 +11,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   record_fps: 20,
   record_countdown_sec: 0,
   replay_buffer_sec: 20,
+  replay_save_sec: null,
   recording_preset: 'balanced',
   has_initialized_defaults: false,
   onboarding_completed: false,

@@ -1,6 +1,6 @@
 import { RotateCcw, Shield, X, Save, Square } from 'lucide-react';
-import { Button } from './ui';
-import { StatusState } from '../types';
+import { Button, Dropdown } from './ui';
+import { DropdownOption, StatusState } from '../types';
 
 export interface StatusBarProps {
   statusState?: StatusState;
@@ -13,6 +13,7 @@ export interface StatusBarProps {
   countdownFraction?: number;
   replayTime?: number;
   maxReplayBuffer?: number;
+  replaySaveSeconds?: number | null;
   targetWindowTitle?: string;
   windowSize?: string;
   audioDevice?: string;
@@ -21,6 +22,7 @@ export interface StatusBarProps {
   onCancelRecording?: () => void;
   onStopReplay?: () => void;
   onSaveReplay?: () => void;
+  onReplaySaveSecondsChange?: (seconds: number | null) => void;
 }
 
 export default function StatusBar({
@@ -32,6 +34,7 @@ export default function StatusBar({
   countdownFraction: propCountdownFraction,
   replayTime = 0,
   maxReplayBuffer = 30,
+  replaySaveSeconds = null,
   targetWindowTitle = '新楓之谷：經典版',
   windowSize = '1920 × 1080',
   audioDevice = '系統預設',
@@ -40,6 +43,7 @@ export default function StatusBar({
   onCancelRecording,
   onStopReplay,
   onSaveReplay,
+  onReplaySaveSecondsChange,
 }: StatusBarProps) {
   const formatSec = (sec: number) => {
     const m = Math.floor(sec / 60)
@@ -55,6 +59,21 @@ export default function StatusBar({
   const isRecordingActive = statusState === 'recording' && !isCountdownActive;
   const isReplayingActive = statusState === 'replaying';
   const showRecBadge = isCountdownActive || isRecordingActive || isReplayingActive;
+  const replaySaveOptions: DropdownOption<number>[] = [
+    { value: 30, label: '最近 30 秒' },
+    { value: 60, label: '最近 60 秒' },
+    { value: 120, label: '最近 2 分鐘' },
+    { value: 180, label: '最近 3 分鐘' },
+    { value: 300, label: '最近 5 分鐘' },
+  ].filter((option) => option.value <= maxReplayBuffer);
+  replaySaveOptions.push({ value: 0, label: '全部片段' });
+  const selectedReplaySaveValue = replaySaveOptions.some(
+    (option) => option.value === (replaySaveSeconds ?? 0)
+  )
+    ? replaySaveSeconds ?? 0
+    : 0;
+  const isSelectedSaveLongerThanAvailable =
+    selectedReplaySaveValue > 0 && replayTime > 0 && replayTime < selectedReplaySaveValue;
 
   // Exact continuous countdown fraction: 1.0 -> 0.0
   const activeCountdownFraction = isCountdownActive
@@ -193,16 +212,33 @@ export default function StatusBar({
                 停止循環錄影
               </Button>
 
-              <Button
-                variant="primary"
-                size="md"
-                icon={Save}
-                disabled={disabled}
-                onClick={onSaveReplay}
-                title="立即儲存過去的影片片段並進入檢舉流程"
-              >
-                儲存影片片段
-              </Button>
+              <div className="status-replay-save-controls">
+                <Dropdown<number>
+                  ariaLabel="儲存影片長度"
+                  className="status-replay-length-dropdown"
+                  options={replaySaveOptions}
+                  value={selectedReplaySaveValue}
+                  disabled={disabled}
+                  onChange={(value) =>
+                    onReplaySaveSecondsChange?.(value === 0 ? null : value)
+                  }
+                />
+                <Button
+                  variant="primary"
+                  size="md"
+                  icon={Save}
+                  disabled={disabled}
+                  onClick={onSaveReplay}
+                  title="儲存選定長度的影片片段並進入檢舉流程"
+                >
+                  儲存影片片段
+                </Button>
+                {isSelectedSaveLongerThanAvailable && (
+                  <span className="status-replay-save-hint" role="status">
+                    目前只有 {formatSec(replayTime)}，會儲存已累積內容
+                  </span>
+                )}
+              </div>
             </>
           ) : isRecordingActive || isCountdownActive ? (
             <Button

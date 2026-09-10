@@ -1276,7 +1276,6 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  height: var(--size-md);
   min-height: var(--size-md);
   box-sizing: border-box;
 }
@@ -1328,7 +1327,29 @@ body {
   gap: 10px;
   flex-shrink: 0;
   margin-left: auto;
-  height: var(--size-md);
+  min-height: var(--size-md);
+}
+
+.status-replay-save-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.status-replay-length-dropdown {
+  width: 150px;
+  flex: 0 0 150px;
+}
+
+.status-replay-save-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .status-rec-badge {
@@ -3354,6 +3375,16 @@ body {
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  .status-replay-save-controls {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+  }
+
+  .status-replay-save-hint {
+    flex-basis: 100%;
+    text-align: right;
   }
 
   .core-actions-grid > .action-card-capture,
