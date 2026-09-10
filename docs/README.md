@@ -19,5 +19,3 @@
 - [v1.1.2](releases/v1.1.2.md)
 - [v1.1.1](releases/v1.1.1.md)
 - [v1.1.0](releases/v1.1.0.md)
-
-`archive/` 保存歷史規格與交接文件。除非正在追查歷史行為，否則以目前程式碼、README、CONTEXT 與本索引為準。
