@@ -14,6 +14,7 @@
 
 ## Release notes
 
+- [v2.4.0](releases/v2.4.0.md)：多人批次檢舉、可恢復送件、共用證據安全清理與錄影流程改善。
 - [v2.0.0](releases/v2.0.0.md)：正式版，包含可選擇的錄音來源、內建 updater、檔案級差分、簽章 manifest、更新狀態與 Release notes 顯示。
 - [v2.0.0-pre](releases/v2.0.0-pre.md)：2.0.0 預覽版與 PyWebView + React UI 架構升級。
 - [v1.1.2](releases/v1.1.2.md)
