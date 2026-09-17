@@ -38,6 +38,7 @@ LOGGER = logging.getLogger(__name__)
 # Process-wide lock for atomic history & sanction cache mutations
 HISTORY_LOCK = threading.RLock()
 MAX_HISTORY_RECORDS = 200
+SANCTION_PARSER_REVISION = "2"
 
 
 def get_sanction_cache_path() -> Path:
@@ -90,6 +91,8 @@ class SanctionRepository:
             bootstrap_start = self.db.get_meta("bootstrap_start_date")
 
             if db_bulletins or db_dates or last_complete:
+                if self.db.get_meta("parser_revision") != SANCTION_PARSER_REVISION:
+                    return self._invalidate_parsed_cache()
                 return SanctionCache(
                     schema_version=1,
                     bootstrap_start_date=bootstrap_start,
@@ -105,6 +108,8 @@ class SanctionRepository:
             try:
                 with open(self._cache_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                if isinstance(data, dict) and data.get("parser_revision") != SANCTION_PARSER_REVISION:
+                    return self._invalidate_parsed_cache()
                 cache = SanctionCache.from_dict(data)
                 # Seed SQLite DB from JSON
                 self.save_cache(cache)
@@ -112,6 +117,13 @@ class SanctionRepository:
             except Exception as error:
                 LOGGER.warning("讀取制裁快取失敗，重置為預設狀態 (%s: %s)", type(error).__name__, error)
                 return SanctionCache()
+
+    def _invalidate_parsed_cache(self) -> SanctionCache:
+        """Re-fetch announcements parsed by older code; preserve report history."""
+        self.db.reset_all_cache()
+        cache = SanctionCache()
+        self.save_cache(cache)
+        return cache
 
     def save_cache(self, cache: SanctionCache) -> None:
         """Save sanction cache atomically to both SQLite database and JSON."""
@@ -123,15 +135,18 @@ class SanctionRepository:
             self.db.set_meta("last_complete_sync_at", cache.last_complete_sync_at)
             self.db.set_meta("last_attempt_at", cache.last_attempt_at)
             self.db.set_meta("bootstrap_start_date", cache.bootstrap_start_date)
+            self.db.set_meta("parser_revision", SANCTION_PARSER_REVISION)
 
             # 2. Mirror to JSON file
-            _write_json_atomic(self._cache_path, cache.to_dict())
+            data = cache.to_dict()
+            data["parser_revision"] = SANCTION_PARSER_REVISION
+            _write_json_atomic(self._cache_path, data)
 
     def reset_cache_for_development(self) -> None:
         """Reset sanction database and cache for development purposes."""
         with self._lock:
             self.db.reset_all_cache()
-            _write_json_atomic(self._cache_path, SanctionCache().to_dict())
+            self.save_cache(SanctionCache())
 
     # --- History IO & Record ID Migration ---
 

@@ -12,7 +12,8 @@ from maple_reporter.sanctions.models import (
     SanctionCache,
     SanctionEntry,
 )
-from maple_reporter.sanctions.repository import SanctionRepository
+from maple_reporter.sanctions.repository import SANCTION_PARSER_REVISION, SanctionRepository
+from maple_reporter.sanctions.parser import parse_sanction_html_table
 
 
 class TestSanctionRepository(unittest.TestCase):
@@ -68,6 +69,65 @@ class TestSanctionRepository(unittest.TestCase):
         loaded = self.repo.load_cache()
         self.assertEqual(loaded.schema_version, 1)
         self.assertEqual(len(loaded.bulletins), 0)
+
+    def test_old_parser_cache_is_refetched_without_losing_history(self):
+        self.test_load_and_save_cache()
+        record = self.repo.add_history_entry({'suspect_id': 'TestID', 'status': '成功'})
+        self.repo.db.set_meta('parser_revision', '')
+        loaded = self.repo.load_cache()
+        self.assertFalse(loaded.bulletins)
+        self.assertFalse(loaded.dates)
+        self.assertFalse(loaded.last_complete_sync_at)
+        self.assertEqual(self.repo.load_history()[0]['record_id'], record['record_id'])
+        self.assertFalse(self.repo.load_cache().bulletins)
+
+    def test_old_json_parser_cache_is_not_seeded(self):
+        self.test_load_and_save_cache()
+        data = json.loads(self.cache_path.read_text(encoding='utf-8'))
+        data.pop('parser_revision')
+        self.repo.db.reset_all_cache()
+        self.cache_path.write_text(json.dumps(data), encoding='utf-8')
+        self.assertFalse(self.repo.load_cache().bulletins)
+        self.assertFalse(self.repo.db.load_all_bulletins())
+
+    def test_development_reset_writes_parser_revision(self):
+        self.test_load_and_save_cache()
+        self.repo.reset_cache_for_development()
+        data = json.loads(self.cache_path.read_text(encoding='utf-8'))
+        self.assertEqual(data['parser_revision'], SANCTION_PARSER_REVISION)
+        self.assertEqual(self.repo.db.get_meta('parser_revision'), SANCTION_PARSER_REVISION)
+        self.assertFalse(self.repo.load_cache().bulletins)
+
+    def test_resync_repairs_existing_incorrect_status_and_result(self):
+        self.test_load_and_save_cache()
+        self.repo.save_history([
+            {'record_id': 'missed', 'time': '2026-09-06', 'suspect_id': 'TestID',
+             'ban_status': 'unbanned', 'note': 'keep evidence'},
+            {'record_id': 'wrong-result', 'time': '2026-09-06', 'suspect_id': 'sample1',
+             'ban_status': 'banned', 'ban_result': 'T***ID', 'ban_bulletin_id': 100},
+        ])
+        self.repo.db.set_meta('parser_revision', '')
+        cache = self.repo.load_cache()
+        # Cache invalidation preserves history until corrected announcements arrive.
+        self.assertEqual(self.repo.load_history()[0]['ban_status'], 'unbanned')
+        entries = parse_sanction_html_table(
+            '<p>已執行「永久鎖定」處分。</p>'
+            '<table><tr><td colspan="6">角色名稱</td></tr>'
+            '<tr><td>sample1</td><td>T***ID</td><td>sample3</td>'
+            '<td>sample4</td><td>sample5</td><td>sample6</td></tr></table>'
+        )
+        cache.bulletins['100'] = BulletinDetail(
+            100, '2026-09-07', '制裁公告', 'https://example.com/100', '', tuple(entries),
+        )
+        # Positive corrections can already be applied during a partial sync.
+        summary, records = self.repo.commit_sync_progress(cache, is_complete=False)
+        self.assertEqual(summary.newly_banned_count, 1)
+        self.assertTrue(all(record['ban_status'] == 'banned' for record in records))
+        self.assertTrue(all(record['ban_result'] == '永久鎖定' for record in records))
+        self.assertEqual(records[0]['note'], 'keep evidence')
+        persisted = self.repo.load_history()
+        self.assertEqual(persisted[0]['ban_masked_name'], 'T***ID')
+        self.assertEqual(persisted[1]['ban_result'], '永久鎖定')
 
     def test_history_record_id_migration(self):
         legacy_data = [

@@ -131,7 +131,7 @@ def parse_bulletin_list_json(raw_bytes: bytes) -> list[BulletinHeader]:
 
 
 class _SanctionTableHTMLParser(HTMLParser):
-    """HTML parser extracting table rows and pairing columns (1/2, 3/4, 5/6)."""
+    """Extract tables independently and preserve text outside their cells."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -141,15 +141,19 @@ class _SanctionTableHTMLParser(HTMLParser):
         self.current_cell_text: list[str] = []
         self.current_row_cells: list[str] = []
         self.rows: list[list[str]] = []
+        self.tables: list[list[list[str]]] = []
+        self.outside_text: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_lower = tag.lower()
         if tag_lower == "table":
             self.in_table = True
-        elif tag_lower == "tr":
+            self.rows = []
+            self.tables.append(self.rows)
+        elif tag_lower == "tr" and self.in_table:
             self.in_row = True
             self.current_row_cells = []
-        elif tag_lower in ("td", "th"):
+        elif tag_lower in ("td", "th") and self.in_row:
             self.in_cell = True
             self.current_cell_text = []
         elif tag_lower == "br" and self.in_cell:
@@ -159,6 +163,9 @@ class _SanctionTableHTMLParser(HTMLParser):
         tag_lower = tag.lower()
         if tag_lower == "table":
             self.in_table = False
+        elif not self.in_table:
+            if tag_lower in ("p", "div", "li"):
+                self.outside_text.append("\n")
         elif tag_lower == "tr":
             self.in_row = False
             if self.current_row_cells:
@@ -174,21 +181,38 @@ class _SanctionTableHTMLParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self.in_cell:
             self.current_cell_text.append(data)
+        elif not self.in_table:
+            self.outside_text.append(data)
 
 
 _HEADER_KEYWORDS = {"角色名稱", "角色名字", "遊戲帳號", "暱稱", "制裁結果", "處分內容", "處分結果", "懲處原因", "違規原因"}
+_NAME_HEADERS = {"角色名稱", "角色名字", "遊戲帳號", "暱稱"}
+_RESULT_HEADERS = {"制裁結果", "處分內容", "處分結果", "處置", "處置結果", "處置內容", "懲處", "懲處結果"}
+_HEADER_KEYWORDS |= _RESULT_HEADERS
 
 
-def _is_header_or_empty(text: str) -> bool:
-    cleaned = re.sub(r"\s+", "", text)
-    return not cleaned or cleaned in _HEADER_KEYWORDS
+def _unified_punishment(text: str) -> str:
+    """Read an explicit disposition, without inventing one when it is absent."""
+    matches = re.finditer(
+        r'(?:已執行|執行|已進行|進行|予以|給予)\s*[「『]?\s*'
+        r'(永久(?:鎖定|停權|封鎖)|(?:停權|鎖定|封鎖)\s*[\d一二三四五六七八九十百零〇兩]+\s*(?:天|日))'
+        r'\s*[」』]?\s*(?:處分|處置|(?=[。！？；;\n]|$))',
+        text,
+    )
+    results = list(dict.fromkeys(
+        match.group(1) for match in matches
+        if not re.search(r'(?:尚未|未|不|可能|預計|將|擬)(?:\s|已|將|會)*$', text[:match.start()])
+    ))
+    if len(results) != 1:
+        raise ValueError('Names-only sanction table has no unambiguous unified punishment')
+    return results[0]
 
 
 def parse_sanction_html_table(html_content: str) -> list[SanctionEntry]:
-    """Parse announcement HTML table and extract (masked_name, result) pairs.
-    
-    Pairs columns 1/2, 3/4, 5/6 across all table rows.
-    Returns deduplicated SanctionEntry list maintaining original encounter order.
+    """Parse paired or names-only tables according to their headers.
+
+    Headerless legacy tables retain paired parsing. Names-only tables require an
+    explicit punishment outside the tables. Deduplicate in encounter order.
     """
     if not html_content or not html_content.strip():
         return []
@@ -199,19 +223,30 @@ def parse_sanction_html_table(html_content: str) -> list[SanctionEntry]:
     entries: list[SanctionEntry] = []
     seen: set[tuple[str, str]] = set()
 
-    for row in parser.rows:
-        # Pair cells (0, 1), (2, 3), (4, 5)
-        for col_idx in range(0, len(row) - 1, 2):
-            masked_name = row[col_idx].strip()
-            result = row[col_idx + 1].strip()
-
-            if _is_header_or_empty(masked_name) or _is_header_or_empty(result):
+    for table in parser.tables:
+        # Official headers use either th or td (including a single colspan cell).
+        # Only the leading non-empty row can define the schema; body names may
+        # legitimately equal one of the header keywords.
+        header_index = next((index for index, row in enumerate(table) if any(cell.strip() for cell in row)), None)
+        headers = {re.sub(r"\s+", "", cell) for cell in table[header_index]} if header_index is not None else set()
+        is_header = bool(headers & _NAME_HEADERS) and headers <= (_HEADER_KEYWORDS | {""})
+        if not is_header:
+            headers = set()
+        names_only = bool(headers & _NAME_HEADERS) and not bool(headers & _RESULT_HEADERS)
+        unified_result = _unified_punishment("".join(parser.outside_text)) if names_only else ""
+        for row_index, row in enumerate(table):
+            if is_header and row_index == header_index:
                 continue
-
-            pair = (masked_name, result)
-            if pair not in seen:
-                seen.add(pair)
-                entries.append(SanctionEntry(masked_name=masked_name, result=result))
+            pairs = ((cell.strip(), unified_result) for cell in row) if names_only else (
+                (row[index].strip(), row[index + 1].strip()) for index in range(0, len(row) - 1, 2)
+            )
+            for masked_name, result in pairs:
+                if not masked_name or not result:
+                    continue
+                pair = (masked_name, result)
+                if pair not in seen:
+                    seen.add(pair)
+                    entries.append(SanctionEntry(masked_name=masked_name, result=result))
 
     return entries
 
