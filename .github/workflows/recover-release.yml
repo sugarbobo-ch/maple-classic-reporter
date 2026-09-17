@@ -1,0 +1,37 @@
+name: Recover release publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing unpublished release tag
+        required: true
+        default: v2.5.1
+      run_id:
+        description: CI run containing the verified Windows bundle
+        required: true
+
+concurrency:
+  group: recover-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      CI_RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify CI assets and publish sequentially
+        run: python scripts/recover_release.py --tag "$RELEASE_TAG" --run-id "$CI_RUN_ID"
